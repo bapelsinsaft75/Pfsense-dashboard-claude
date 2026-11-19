@@ -182,6 +182,46 @@ function renderEvents(d) {
     : `<div class="empty">Inga larm. Här visas allt som har hänt, även larm du har stängt.</div>`;
 }
 
+/* ── Plex ── */
+const msToTime = (ms) => {
+  if (ms == null) return "–";
+  const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+};
+const POSTER_BG = ["#2f5d3a,#0f2416", "#5a3a7a,#1b1030", "#7a4a1d,#2a1406", "#1f4a6e,#0a1a2a", "#6e1f3a,#2a0a16", "#3a5a6e,#0f1a24"];
+function initials(t) { return (t || "?").replace(/^(The|En|Ett|Den|Det) /i, "").split(/[\s:–-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
+function renderPlex(d) {
+  const p = d.plex || { servers: [], sessions: [] };
+  const card = $("plex-card");
+  card.hidden = !p.servers.length;
+  if (!p.servers.length) return;
+  const t = p.totals;
+  $("plex-sum").innerHTML = `<div><b class="num">${t.streams}</b><span>${t.streams === 1 ? "ström" : "strömmar"} totalt</span></div>
+    <div><b class="num">${t.direct}</b><span>direktuppspelning</span></div><div><b class="num">${t.transcode}</b><span>omkodning</span></div>
+    <div><b class="num">${fmt(t.bandwidth_kbps / 1000, 1)}</b><span>Mbit/s totalt</span></div><div><b class="num">${t.remote}</b><span>utanför hemmet</span></div>`;
+  const down = p.servers.filter((s) => !s.ok && s.error);
+  $("plex-streams").innerHTML = p.sessions.length ? p.sessions.map((x, i) => {
+    const bg = POSTER_BG[[...x.title].reduce((a, c) => a + c.charCodeAt(0), 0) % POSTER_BG.length];
+    const art = x.thumb ? `<img src="api/plex/thumb/${x.server}?path=${encodeURIComponent(x.thumb)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+    const dec = x.decision === "transcode"
+      ? `<span class="tag tc">Omkodning${x.video && x.target ? ` ${esc(x.video.split(" · ")[0])} → ${esc(x.target)}` : ""}${x.hw ? " (HW)" : ""}</span>`
+      : `<span class="tag dp">${x.decision === "stream" ? "Direktström" : "Direktuppspelning"}</span>`;
+    const where = x.local ? "" : `<span class="tag remote">Utanför hemmet${x.country ? " · " + esc(countryName(x.country)) : ""}</span>`;
+    const quality = [x.decision !== "transcode" && x.video ? x.video : null, x.audio].filter(Boolean).map((q) => `<span class="tag">${esc(q)}</span>`).join("");
+    const pct = x.duration ? Math.min(100, (x.offset || 0) / x.duration * 100) : 0;
+    const st = x.state === "paused" ? `<span class="state pause">❚❚ Pausad · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
+      : x.state === "buffering" ? `<span class="state">Buffrar · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
+      : `<span class="state play">▶ ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`;
+    return `<article class="stream"><div class="poster" style="background:linear-gradient(160deg,${bg})"><span>${x.type === "track" ? "♪" : esc(initials(x.title))}</span>${art}</div>
+      <div class="sinfo"><div class="stitle"><b title="${esc(x.title)}">${esc(x.title)}</b><span>${esc(x.label)}</span></div>
+      <div class="ssub">${esc(x.subtitle || "")}</div>
+      <div class="swho"><span class="u">${esc(x.user)}</span><span>${esc([x.device, x.product].filter(Boolean).join(" · "))}</span></div>
+      <div class="tags">${dec}${where}${quality}${x.bandwidth_kbps ? `<span class="tag num">${fmt(x.bandwidth_kbps / 1000, 1)} Mbit/s</span>` : ""}</div>
+      <div class="prog"><div class="bar">${x.buffer ? `<em style="width:${Math.min(100, x.buffer)}%"></em>` : ""}<i style="width:${pct}%"></i></div>${st}</div></div></article>`;
+  }).join("") : `<div class="empty">Inga strömmar från Plex just nu.</div>`;
+  $("plex-err").innerHTML = down.map((s) => `<div class="problem"><b>${esc(s.name)}</b>${esc(s.error)}</div>`).join("");
+}
+
 /* ── land: vilka adresser och klienter ── */
 const PORTS = {
   20: "FTP", 21: "FTP", 22: "SSH", 25: "SMTP", 53: "DNS", 80: "HTTP", 110: "POP3", 123: "NTP", 143: "IMAP", 443: "HTTPS",
@@ -304,6 +344,14 @@ function renderStatus(d) {
     else if (enabled) { cls = ""; title = "Väntar på data"; }
     chips.push(`<span class="chip ${cls}" title="${esc(title)}">${label}</span>`);
   }
+  // Plex-servrar direkt efter VPN
+  const plexChips = ((d.plex || {}).servers || []).map((p) => {
+    const cls = p.ok ? "ok" : p.error ? "err" : "";
+    const tip = p.ok ? `${p.name}${p.version ? " · v" + p.version : ""} · ${p.streams} ${p.streams === 1 ? "ström" : "strömmar"}` : (p.error || "Väntar på svar");
+    return `<span class="chip plex ${cls}" title="${esc(tip)}">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</span>`;
+  });
+  const vpnAt = chips.findIndex((c) => c.includes(">VPN<"));
+  chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...plexChips);
   $("chips").innerHTML = chips.join("");
   $("problems").innerHTML = problems.map(([l, e]) => `<div class="problem"><b>${esc(l)}</b>${esc(e)}</div>`).join("");
   $("demo").hidden = d.mode !== "demo";
@@ -320,10 +368,11 @@ function renderKpis(d) {
   $("k-now-s").textContent = `${fmt(k.now_down_bps / 1e6, 0)} ned · ${fmt(k.now_up_bps / 1e6, 0)} upp · ${k.active_conns} anslutningar`;
   $("k-cl").textContent = k.clients_online;
   const parts = [];
-  if (k.wifi || k.wired) parts.push(`${k.wifi} trådlöst`, `${k.wired} kabel`);
-  if (k.unknown_link && (k.wifi || k.wired)) parts.push(`${k.unknown_link} okänd`);
-  parts.push(`${k.clients_total - k.clients_online} inaktiva`);
-  $("k-cl-s").textContent = parts.join(" · ");
+  const link = (status, conn, text, tip) => `<button type="button" class="kpilink" data-status="${status}" data-conn="${conn}" title="${tip}">${text}</button>`;
+  if (k.wifi || k.wired) parts.push(link("online", "wifi", `${k.wifi} trådlöst`, "Visa trådlösa klienter"), link("online", "wired", `${k.wired} kabel`, "Visa trådbundna klienter"));
+  if (k.unknown_link && (k.wifi || k.wired)) parts.push(link("online", "unknown", `${k.unknown_link} okänd`, "Online i pfSense men okända för UniFi. Klicka för att se vilka."));
+  parts.push(link("inactive", "", `${k.clients_total - k.clients_online} inaktiva`, "Visa inaktiva klienter"));
+  $("k-cl-s").innerHTML = parts.join(" · ");
   const cs = new Set(d.flows.map((f) => f.cc)), ci = new Set(d.flows.filter((f) => f.dir === "in").map((f) => f.cc));
   $("k-ctry").textContent = cs.size;
   $("k-ctry-s").textContent = `${ci.size} med anslutningar startade utifrån`;
@@ -415,7 +464,10 @@ const sigLvl = (r) => (r >= -55 ? 4 : r >= -62 ? 3 : r >= -70 ? 2 : 1);
 const sig = (r) => `<span class="sig" title="${r} dBm">${[3, 5, 8, 11].map((h, i) => `<i class="${i < sigLvl(r) ? "on" : ""}" style="height:${h}px"></i>`).join("")}</span>`;
 function connHTML(c) {
   const k = c.conn;
-  if (!k) return `<span class="muted">–</span>`;
+  if (!k) {
+    const random = c.mac && /^.[26ae]/i.test(c.mac);
+    return `<span class="muted" title="UniFi känner inte till klienten">Okänd${random ? ' <small title="Lokalt administrerad MAC-adress: mobiler och datorer slumpar den för integritetens skull">· slumpad MAC</small>' : ""}</span>`;
+  }
   if (k.kind === "wifi") return `<span class="conn">${icon("wifi")}<span>Wi-Fi ${esc(k.band || "")}</span>${k.rssi != null ? sig(k.rssi) + `<small>${k.rssi} dBm</small>` : ""}</span>`;
   return `<span class="conn">${icon("cable")}<span>${esc(k.dev_name || "Kabel")}</span>${k.port ? `<small>port ${k.port}</small>` : ""}</span>`;
 }
@@ -428,11 +480,15 @@ function renderTable(d) {
   const val = (c) => state.sortKey === "conn" ? (c.conn ? (c.conn.kind === "wifi" ? "0" + (c.conn.band || "") + String(200 + (c.conn.rssi || 0)).padStart(3, "0") : "1" + (c.conn.dev_name || "") + String(c.conn.port || 0).padStart(3, "0")) : "2")
     : state.sortKey === "now" ? c.down_bps + c.up_bps : state.sortKey === "ip" ? ipn(c.ip) : state.sortKey === "name" ? c.name.toLowerCase() : c.bytes;
   const dev = state.devF;
-  const rows = d.clients.filter((c) => (!state.connF || (c.conn && c.conn.kind === state.connF)) && (!dev || (c.conn && c.conn.dev === dev))
+  const connOk = (c) => !state.connF || (state.connF === "unknown" ? !c.conn : c.conn && c.conn.kind === state.connF);
+  const statusOk = (c) => !state.statusF || (state.statusF === "online" ? c.online : !c.online);
+  const rows = d.clients.filter((c) => connOk(c) && statusOk(c) && (!dev || (c.conn && c.conn.dev === dev))
     && (!q || `${c.name} ${c.ip || ""} ${c.mac || ""}`.toLowerCase().includes(q)))
     .sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir; });
   document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td></tr>`).join("")
     : `<tr><td colspan="7" class="muted">Inga klienter matchar filtret.</td></tr>`;
+  $("filter-count").textContent = rows.length === d.clients.length ? `${rows.length} klienter` : `${rows.length} av ${d.clients.length} klienter`;
+  $("unknown-hint").hidden = state.connF !== "unknown";
   if (editingInput) { const i = $("rename-input"); if (i) { i.focus(); if (caret != null) i.setSelectionRange(caret, caret); } }
   document.querySelectorAll("#table th button").forEach((b) => {
     const base = b.textContent.replace(/ [↑↓]$/, "");
@@ -490,7 +546,7 @@ function render() {
   if (!d) return;
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
-  renderAlerts(d); renderSecurity(d); renderEvents(d);
+  renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d);
   renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderTop(d); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
   map.flows = d.flows;
@@ -514,6 +570,16 @@ function setPressed(group, btn) { [...group.querySelectorAll("button")].forEach(
 $("period").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.period = b.dataset.p; setPressed(e.currentTarget, b); load(); });
 $("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPressed(e.currentTarget, b); map.zoom = b.dataset.z; map.makeProj(); map.render(); });
 $("connf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.connF = b.dataset.c; setPressed(e.currentTarget, b); render(); });
+$("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });
+function setClientFilter(status, conn) {
+  state.statusF = status; state.connF = conn; state.devF = null;
+  setPressed($("statusf"), $("statusf").querySelector(`[data-s="${status}"]`));
+  setPressed($("connf"), $("connf").querySelector(`[data-c="${conn}"]`));
+  render();
+  const top = $("clients-card").getBoundingClientRect().top + window.scrollY - $("alerts").offsetHeight - 12;
+  window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+}
+$("k-cl-s").addEventListener("click", (e) => { const b = e.target.closest(".kpilink"); if (b) setClientFilter(b.dataset.status, b.dataset.conn); });
 $("devs").addEventListener("click", (e) => { const b = e.target.closest("[data-dev]"); if (!b) return; state.devF = state.devF === b.dataset.dev ? null : b.dataset.dev; render(); });
 $("search").addEventListener("input", () => state.data && renderTable(state.data));
 document.querySelector("#table thead").addEventListener("click", (e) => {

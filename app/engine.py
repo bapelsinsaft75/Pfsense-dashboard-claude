@@ -17,6 +17,7 @@ from .mailer import Mailer
 from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
                       parse_state, wan_counters)
+from .plex import PlexServer
 from .settings import Settings
 from .slack import Slack
 from .syslog import parse_filterlog, parse_suricata
@@ -67,6 +68,8 @@ class Engine:
         self.settings = Settings(cfg, persist=not cfg.demo)
         self.mailer = Mailer(cfg)
         self.slack = Slack(cfg)
+        self.plex_servers = [PlexServer(i, p["name"], p["url"], p["token"], cfg.plex_verify_ssl)
+                             for i, p in enumerate(cfg.plex_servers)]
         self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
         self.gateways: dict[str, dict] = {}
         self.vpn_clients: dict[str, dict] = {}
@@ -574,6 +577,26 @@ class Engine:
         return {"cc": cc, "period": period, "clients": sorted(clients.values(), key=lambda c: c["bytes"], reverse=True),
                 "remotes": remotes}
 
+    def plex_summary(self) -> dict:
+        servers = [dict(s.status) for s in self.plex_servers]
+        sessions = [dict(x) for s in self.plex_servers for x in s.sessions]
+        for x in sessions:
+            x["country"] = None if x["local"] or not x.get("address") else self.geo.country(x["address"])
+            x["address"] = None  # visas inte på sidan
+        order = {"playing": 0, "buffering": 1, "paused": 2}
+        sessions.sort(key=lambda x: (order.get(x["state"], 3), x["user"].lower()))
+        return {
+            "servers": servers,
+            "sessions": sessions,
+            "totals": {
+                "streams": len(sessions),
+                "direct": sum(1 for x in sessions if x["decision"] in ("direct", "stream")),
+                "transcode": sum(1 for x in sessions if x["decision"] == "transcode"),
+                "remote": sum(1 for x in sessions if not x["local"]),
+                "bandwidth_kbps": sum(x["bandwidth_kbps"] or 0 for x in sessions),
+            },
+        }
+
     def security(self, since: int) -> dict:
         sec = self.history.security_summary(since)
         for item in sec["pfb_clients"]:
@@ -703,6 +726,7 @@ class Engine:
             "devices": self.device_list(),
             "series": self.history.series(since, step, now),
             "series_step": step,
+            "plex": self.plex_summary(),
             "alerts": self.alerts.banner(now),
             "events": self.alerts.recent(25),
             "security": self.security(int(now - 86400)),

@@ -44,13 +44,13 @@ def _networks(raw: str) -> list[ipaddress._BaseNetwork]:
     return nets
 
 
-def _base_url(raw: str) -> str:
+def _base_url(raw: str, default_scheme: str = "https") -> str:
     """'https://192.168.2.9:8443/manage/site/default/dashboard' → 'https://192.168.2.9:8443'."""
     raw = raw.strip()
     if not raw:
         return ""
     if "://" not in raw:
-        raw = "https://" + raw
+        raw = f"{default_scheme}://" + raw
     scheme, _, rest = raw.partition("://")
     return f"{scheme}://{rest.split('/', 1)[0]}"
 
@@ -123,6 +123,17 @@ class Config:
         self.slack_warnings = env_bool("SLACK_WARNINGS", True)
         # Adress till dashboarden, för länkar i Slack och e-post, t.ex. http://192.168.2.30:8080
         self.public_url = (env("PUBLIC_URL", "") or "").rstrip("/")
+
+        # Plex Media Server: PLEX1_NAME/PLEX1_URL/PLEX1_TOKEN, PLEX2_..., upp till fyra
+        self.plex_servers = []
+        for i in range(1, 5):
+            url = env(f"PLEX{i}_URL", "") or ""
+            token = env(f"PLEX{i}_TOKEN", "") or ""
+            if url and token:
+                self.plex_servers.append({"name": env(f"PLEX{i}_NAME", f"Plex {i}") or f"Plex {i}",
+                                          "url": _base_url(url, "http"), "token": token})
+        self.plex_verify_ssl = env_bool("PLEX_VERIFY_SSL", False)
+        self.plex_poll = max(5, env_int("PLEX_POLL_SECONDS", 10))
 
         self.debug_endpoints = env_bool("DEBUG_ENDPOINTS", True)
 

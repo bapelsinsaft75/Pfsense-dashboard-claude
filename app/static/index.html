@@ -74,11 +74,23 @@
     <div class="portkey" id="portkey"><span><i style="background:var(--accent)"></i>port med klient</span><span><i style="background:var(--muted)"></i>upplänk eller annan UniFi-enhet</span><span><i style="border:1px solid var(--accent)"></i>aktiv port, okänd enhet</span><span><i style="background:var(--track);border:1px solid var(--line)"></i>ledig port</span></div>
   </section>
 
-  <section class="card">
-    <h2>Klienter <span class="tools"><span class="seg" role="group" aria-label="Anslutningstyp" id="connf"><button type="button" aria-pressed="true" data-c="">Alla</button><button type="button" aria-pressed="false" data-c="wifi">Trådlöst</button><button type="button" aria-pressed="false" data-c="wired">Kabel</button></span><input type="search" id="search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient"></span></h2>
+  <section class="card" id="clients-card">
+    <h2>Klienter <small id="filter-count"></small></h2>
+    <div class="tools">
+      <span class="seg" role="group" aria-label="Status" id="statusf"><button type="button" aria-pressed="true" data-s="">Alla</button><button type="button" aria-pressed="false" data-s="online">Online</button><button type="button" aria-pressed="false" data-s="inactive">Inaktiva</button></span>
+      <span class="seg" role="group" aria-label="Anslutningstyp" id="connf"><button type="button" aria-pressed="true" data-c="">Alla</button><button type="button" aria-pressed="false" data-c="wifi">Trådlöst</button><button type="button" aria-pressed="false" data-c="wired">Kabel</button><button type="button" aria-pressed="false" data-c="unknown">Okänd</button></span>
+      <input type="search" id="search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient">
+    </div>
+    <p class="hint" id="unknown-hint" hidden>Okänd betyder att pfSense ser klienten men att UniFi inte känner till den. Vanliga orsaker: enheten sitter direkt i pfSense eller i en switch som inte är UniFi, det är en container på Unraid med egen IP-adress på br0, eller den nås via VPN. Kontrollera också att UniFi-markeringen är grön.</p>
     <div class="tablebox"><table id="table"><thead><tr>
       <th><button type="button" data-sort="name">Namn</button></th><th><button type="button" data-sort="ip">IP-adress</button></th><th><button type="button" data-sort="conn">Anslutning</button></th><th>MAC</th><th>Status</th>
       <th class="r-right"><button type="button" data-sort="now">Nu</button></th><th class="r-right"><button type="button" data-sort="bytes">Data ↓</button></th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="card" id="plex-card" hidden>
+    <h2>Plex · strömmar just nu <small>alla servrar tillsammans</small></h2>
+    <div class="plexsum" id="plex-sum"></div>
+    <div class="problems" id="plex-err"></div>
+    <div class="streams" id="plex-streams"></div>
   </section>
   <p class="foot">Kartdata: Natural Earth via world-atlas. Landsuppslag: <span id="geo-src">DB-IP Lite (CC BY 4.0)</span>.</p>
 </div>

@@ -9,7 +9,7 @@ import time
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import demo
@@ -68,6 +68,12 @@ async def vpn_loop(engine: Engine, pf: PfSense) -> None:
             except Exception:  # noqa: BLE001
                 log.exception("Kunde inte läsa OpenVPN-status")
         await asyncio.sleep(engine.cfg.vpn_poll)
+
+
+async def plex_loop(engine: Engine) -> None:
+    while True:
+        await asyncio.gather(*(s.poll() for s in engine.plex_servers), return_exceptions=True)
+        await asyncio.sleep(engine.cfg.plex_poll)
 
 
 async def unifi_loop(engine: Engine, uf: UniFi) -> None:
@@ -131,6 +137,9 @@ async def lifespan(app: FastAPI):
             uf = UniFi(cfg)
             closers.append(uf.close)
             tasks.append(asyncio.create_task(unifi_loop(engine, uf)))
+        if engine.plex_servers:
+            tasks.append(asyncio.create_task(plex_loop(engine)))
+            closers.extend(s.close for s in engine.plex_servers)
         if cfg.netflow_port > 0:
             loop = asyncio.get_running_loop()
             try:
@@ -215,6 +224,26 @@ async def country(cc: str, period: str = Query("24h", pattern="^(24h|7d|30d)$"))
         for r in detail["remotes"]:
             r["host"] = ptr.get(r["ip"])
     return detail
+
+
+THUMBS: dict[tuple[int, str], tuple[bytes, str, float]] = {}
+
+
+@app.get("/api/plex/thumb/{server}")
+async def plex_thumb(server: int, path: str = Query(..., max_length=300)):
+    engine: Engine = app.state.engine
+    if not path.startswith("/library/") or server < 0 or server >= len(engine.plex_servers):
+        raise HTTPException(404)
+    key = (server, path)
+    hit = THUMBS.get(key)
+    if not hit or time.time() - hit[2] > 3600:
+        got = await engine.plex_servers[server].thumb(path)
+        if not got:
+            raise HTTPException(404)
+        if len(THUMBS) > 300:
+            THUMBS.clear()
+        hit = THUMBS[key] = (got[0], got[1], time.time())
+    return Response(hit[0], media_type=hit[1], headers={"Cache-Control": "max-age=3600"})
 
 
 @app.get("/api/health")

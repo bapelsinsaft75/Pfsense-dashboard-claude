@@ -6,6 +6,8 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   **Grön** linje = anslutningen startades inifrån nätverket, **lila** = startades utifrån.
 - Vilka klienter som använder mest bandbredd just nu och mest data (24 timmar, 7 dagar, 30 dagar).
 - Lista över alla klienter med namn, IP och MAC. Du kan ge klienterna egna namn direkt i listan (pennan vid namnet).
+- Klientlistan kan filtreras på status (online, inaktiva) och anslutning (trådlöst, kabel, okänd).
+- Status för en eller flera Plex-servrar, och vilka som strömmar just nu och vad.
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
   (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,
@@ -101,7 +103,15 @@ Fungerar även med andra SMTP-tjänster: ändra `SMTP_HOST` och `SMTP_PORT`.
 Kritiska larm skickas alltid, och ett nytt meddelande när de är lösta. Varningar skickas också som standard;
 det stängs av under *Inställningar*. Webhook-adressen fungerar som ett lösenord: den som har den kan skriva i kanalen.
 
-## 5. Installera på Unraid
+## 5. Plex (valfritt)
+
+Fyll i `PLEX1_NAME`, `PLEX1_URL` och `PLEX1_TOKEN` (och `PLEX2_...` för nästa server, upp till fyra).
+Token hittar du genom att öppna Plex i webbläsaren, välja *⋯ → Hämta info → Visa XML* på en film och kopiera
+värdet efter `X-Plex-Token=` i adressfältet. Strömmarna från alla servrar visas tillsammans längst ner på sidan,
+och varje server får en egen statusmarkering. Omslagsbilderna hämtas via dashboarden, så webbläsaren behöver
+inte nå Plex-servrarna själv.
+
+## 6. Installera på Unraid
 
 Imagen byggs automatiskt av GitHub Actions och publiceras som
 `ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest`.
@@ -149,6 +159,8 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `EMAIL_WARNINGS` | `false` | Mejla även varningar (kan ändras på webbsidan) |
 | `SLACK_WEBHOOK_URL` | | Incoming Webhook från Slack |
 | `SLACK_WARNINGS` | `true` | Skicka även varningar till Slack (kan ändras på webbsidan) |
+| `PLEX1_NAME`, `PLEX1_URL`, `PLEX1_TOKEN` | `Peters Plex`, `http://192.168.2.56:32400` | Plex-server 1 (upp till `PLEX4_...`) |
+| `PLEX_VERIFY_SSL` | `false` | `false` för Plex egna certifikat |
 | `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |
 | `PFBLOCKER_TRACKER_PREFIX` | `177` | Hur pfBlockerNG-regler känns igen i brandväggsloggen |
 | `PFSENSE_VERIFY_SSL`, `UNIFI_VERIFY_SSL` | `false` | `false` för självsignerade certifikat |

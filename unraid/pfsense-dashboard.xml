@@ -39,6 +39,13 @@
   <Config Name="Slack: webhook-adress" Target="SLACK_WEBHOOK_URL" Default="" Mode="" Description="Incoming Webhook från Slack, börjar med https://hooks.slack.com/services/..." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Dashboardens adress" Target="PUBLIC_URL" Default="http://192.168.2.30:8080" Mode="" Description="Används för länkar i Slack och e-post." Type="Variable" Display="advanced" Required="false" Mask="false">http://192.168.2.30:8080</Config>
 
+  <Config Name="Plex 1: namn" Target="PLEX1_NAME" Default="Peters Plex" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">Peters Plex</Config>
+  <Config Name="Plex 1: adress" Target="PLEX1_URL" Default="" Mode="" Description="T.ex. http://192.168.2.56:32400" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Plex 1: token" Target="PLEX1_TOKEN" Default="" Mode="" Description="X-Plex-Token för servern." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Plex 2: namn" Target="PLEX2_NAME" Default="Alex Plex" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">Alex Plex</Config>
+  <Config Name="Plex 2: adress" Target="PLEX2_URL" Default="" Mode="" Description="T.ex. http://192.168.100.20:32400" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Plex 2: token" Target="PLEX2_TOKEN" Default="" Mode="" Description="X-Plex-Token för servern." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
   <Config Name="Hemstad" Target="HOME_CITY" Default="Örebro" Mode="" Description="Namn vid hus-ikonen på kartan." Type="Variable" Display="advanced" Required="false" Mask="false">Örebro</Config>
   <Config Name="Hemstad latitud" Target="HOME_LAT" Default="59.2741" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">59.2741</Config>
   <Config Name="Hemstad longitud" Target="HOME_LON" Default="15.2066" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">15.2066</Config>

@@ -135,7 +135,40 @@ def setup(engine: Engine) -> None:
     for name in ("pfsense", "unifi", "netflow", "syslog"):
         engine.status[name].update(enabled=True, ok=True, error=None, last=now)
     _seed_alerts(engine, now, rnd)
+    _seed_plex(engine, now)
     tick(engine)
+
+
+def _seed_plex(engine: Engine, now: float) -> None:
+    from .plex import PlexServer
+    peter = PlexServer(0, "Peters Plex", "http://192.168.2.56:32400", "demo", False)
+    alex = PlexServer(1, "Alex Plex", "http://192.168.100.20:32400", "demo", False)
+    base = {"buffer": None, "address": None, "thumb": None, "hw": False, "target": None}
+    peter.sessions = [
+        {**base, "server": 0, "server_name": "Peters Plex", "id": "0:1", "type": "episode", "title": "Breaking Bad",
+         "label": "S03E07", "subtitle": "One Minute · 2010", "user": "Alex", "device": "Vardagsrum-TV",
+         "product": "Plex för LG", "state": "playing", "local": True, "duration": 2822000, "offset": 1394000,
+         "decision": "direct", "video": "1080p · H264", "audio": "EAC3 5.1", "bandwidth_kbps": 12300},
+        {**base, "server": 0, "server_name": "Peters Plex", "id": "0:2", "type": "movie", "title": "Dune: Part Two",
+         "label": "Film", "subtitle": "2024 · 2 h 46 min", "user": "Peter", "device": "Apple-TV", "product": "Plex för tvOS",
+         "state": "playing", "local": True, "duration": 9960000, "offset": 2800000, "decision": "direct",
+         "video": "4K · HEVC", "audio": "TRUEHD 7.1", "bandwidth_kbps": 21800},
+        {**base, "server": 0, "server_name": "Peters Plex", "id": "0:3", "type": "track", "title": "Lorde – Melodrama",
+         "label": "Musik", "subtitle": "Green Light · 2017", "user": "Peter", "device": "Sonos-Kök", "product": "Plexamp",
+         "state": "paused", "local": True, "duration": 234000, "offset": 91000, "decision": "direct",
+         "video": None, "audio": "FLAC 1411 kbit/s", "bandwidth_kbps": 1400},
+    ]
+    alex.sessions = [
+        {**base, "server": 1, "server_name": "Alex Plex", "id": "1:1", "type": "episode", "title": "The Bear",
+         "label": "S02E06", "subtitle": "Fishes · 2023", "user": "Morfar", "device": "iPad", "product": "Plex för iOS",
+         "state": "playing", "local": False, "address": "2.249.115.243", "duration": 3960000, "offset": 2875000,
+         "buffer": 80, "decision": "transcode", "video": "4K · HEVC", "target": "720p", "hw": True, "audio": "AAC stereo",
+         "bandwidth_kbps": 4100},
+    ]
+    for srv in (peter, alex):
+        srv.status.update(ok=True, error=None, last=now, version="1.41.3.9314", streams=len(srv.sessions))
+    engine.plex_servers = [peter, alex]
+    _REMOTE_CC["2.249.115.243"] = "SE"
 
 
 def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
