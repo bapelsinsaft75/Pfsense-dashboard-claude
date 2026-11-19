@@ -26,7 +26,7 @@ body{font-family:var(--font-ui);font-size:14px;line-height:1.5}
 .legend-shell{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .legend-shell span{display:inline-flex;align-items:center;gap:8px}
 .legend-shell i{width:22px;height:3px;border-radius:2px;display:inline-block}
-.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .tab{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--chip);color:var(--fg)}
 .tab b{font-size:15px}
 .tab small{color:var(--muted);font-size:12.5px;line-height:1.35}
@@ -39,6 +39,7 @@ body{font-family:var(--font-ui);font-size:14px;line-height:1.5}
 .about ul{margin:0;padding-left:18px}
 .screen{border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:0 20px 50px -30px rgba(0,0,0,.45)}
 .foot{color:var(--muted);font-size:12.5px}
+@media (max-width:1000px){.tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.tabs{grid-template-columns:1fr}.about{grid-template-columns:1fr}}
 
 /* ── gemensamt ───────────────────────────── */
@@ -115,32 +116,33 @@ table{border-collapse:collapse;width:100%;color:inherit}
 @media (max-width:980px){.pa .grid,.pa .grid2{grid-template-columns:1fr}.pa .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ── B: Översikt ──────────────────────────── */
-.pb{--b-bg:#f5f6f8;--b-card:#ffffff;--b-fg:#1a2130;--b-muted:#667085;--b-line:#e3e6eb;--b-land:#dfe4eb;--b-accent:#1f4f8f;--out:#16935a;--in:#7a3fe0;
+.pb{--b-bg:#f5f6f8;--b-card:#ffffff;--b-fg:#1a2130;--b-muted:#667085;--b-line:#e3e6eb;--b-land:#dfe4eb;--b-accent:#1f4f8f;--b-up:#f59e0b;--b-seg:#e9ecf1;--b-shadow:0 1px 2px rgba(16,24,40,.12);--b-sphere:#f3f6fa;--b-grat:#e8ecf2;--b-halo:#ffffff;--b-track:#eef1f5;--b-input:#ffffff;--b-rowline:#f0f2f5;--b-ok-bg:#ecfdf3;--b-ok-fg:#067647;--b-idle-bg:#f2f4f7;--b-idle-fg:#475467;--b-sel:#f0f6ff;--b-r:10px;
+  --out:#16935a;--in:#7a3fe0;
   background:var(--b-bg);color:var(--b-fg);font-family:var(--font-ui);padding:20px;display:grid;gap:16px;color-scheme:light}
 .pb .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
 .pb .head h2{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em}
 .pb .head p{margin:0;color:var(--b-muted);font-size:13px}
-.pb .seg{display:inline-flex;background:#e9ecf1;border-radius:8px;padding:3px;gap:2px}
+.pb .seg{display:inline-flex;background:var(--b-seg);border-radius:8px;padding:3px;gap:2px}
 .pb .seg button{all:unset;cursor:pointer;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:500;color:var(--b-muted)}
-.pb .seg button[aria-pressed="true"]{background:var(--b-card);color:var(--b-fg);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.pb .seg button[aria-pressed="true"]{background:var(--b-card);color:var(--b-fg);box-shadow:var(--b-shadow)}
 .pb .seg button:focus-visible{outline:2px solid var(--b-accent)}
 .pb .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.pb .kpi{background:var(--b-card);border:1px solid var(--b-line);border-radius:10px;padding:14px 16px}
+.pb .kpi{background:var(--b-card);border:1px solid var(--b-line);border-radius:var(--b-r);padding:14px 16px}
 .pb .kpi .l{font-size:12.5px;color:var(--b-muted);font-weight:500}
 .pb .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
 .pb .kpi .v small{font-size:14px;color:var(--b-muted);font-weight:500;margin-left:3px}
 .pb .kpi .s{font-size:12px;color:var(--b-muted)}
 .pb .row{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:16px}
-.pb .card{background:var(--b-card);border:1px solid var(--b-line);border-radius:10px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.pb .card{background:var(--b-card);border:1px solid var(--b-line);border-radius:var(--b-r);padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
 .pb .card h3{margin:0;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .pb .card h3 small{font-weight:400;color:var(--b-muted);font-size:12.5px}
-.pb .sphere{fill:#f3f6fa;stroke:var(--b-line)}
-.pb .grat{fill:none;stroke:#e8ecf2;stroke-width:.5}
-.pb .land{fill:var(--b-land);stroke:#fff;stroke-width:.6}
+.pb .sphere{fill:var(--b-sphere);stroke:var(--b-line)}
+.pb .grat{fill:none;stroke:var(--b-grat);stroke-width:.5}
+.pb .land{fill:var(--b-land);stroke:var(--b-halo);stroke-width:.6}
 .pb .home path.house{fill:var(--b-fg)}
 .pb .home circle{fill:none;stroke:var(--b-fg);stroke-width:1}
-.pb .home text{fill:var(--b-fg);font-size:12px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3px}
-.pb .endpoint text{fill:var(--b-muted);font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:3px}
+.pb .home text{fill:var(--b-fg);font-size:12px;font-weight:700;paint-order:stroke;stroke:var(--b-halo);stroke-width:3px}
+.pb .endpoint text{fill:var(--b-muted);font-size:10px;paint-order:stroke;stroke:var(--b-halo);stroke-width:3px}
 .pb .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--b-muted)}
 .pb .legend span{display:inline-flex;align-items:center;gap:6px}
 .pb .legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
@@ -148,31 +150,55 @@ table{border-collapse:collapse;width:100%;color:inherit}
 .pb .crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:13px}
 .pb .crow .f{font-weight:600}
 .pb .crow .m{color:var(--b-muted);font-size:12px}
-.pb .split{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:#eef1f5}
+.pb .split{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--b-track)}
 .pb .split .o{background:var(--out)}
 .pb .split .i{background:var(--in)}
 .pb .chart text{fill:var(--b-muted);font-size:10.5px}
-.pb .chart .gl{stroke:#eef1f5}
+.pb .chart .gl{stroke:var(--b-track)}
 .pb .topc{display:grid;gap:9px}
 .pb .topc .r{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 10px;align-items:center;font-size:13px}
 .pb .topc .r .ico{color:var(--b-muted)}
-.pb .topc .r .t{grid-column:2/-1;height:8px;border-radius:4px;background:#eef1f5;overflow:hidden}
+.pb .topc .r .t{grid-column:2/-1;height:8px;border-radius:4px;background:var(--b-track);overflow:hidden}
 .pb .topc .r .t div{height:100%;background:var(--b-accent);border-radius:4px}
 .pb .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.pb input[type=search]{font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--b-line);border-radius:8px;min-width:0;width:240px;max-width:100%;background:#fff;color:var(--b-fg)}
+.pb input[type=search]{font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--b-line);border-radius:8px;min-width:0;width:240px;max-width:100%;background:var(--b-input);color:var(--b-fg)}
 .pb input[type=search]:focus-visible{outline:2px solid var(--b-accent);outline-offset:1px}
 .pb table{font-size:13px}
 .pb th{text-align:left;font-weight:500;color:var(--b-muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--b-line);white-space:nowrap}
 .pb th button{all:unset;cursor:pointer}
 .pb th button:focus-visible{outline:2px solid var(--b-accent)}
-.pb td{padding:8px 10px;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+.pb td{padding:8px 10px;border-bottom:1px solid var(--b-rowline);white-space:nowrap}
 .pb td.mono{font-family:var(--font-mono);font-size:12px}
 .pb .who{display:flex;align-items:center;gap:10px;font-weight:500}
 .pb .who .ico{color:var(--b-muted)}
-.pb .pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:#ecfdf3;color:#067647;font-weight:500}
-.pb .pill.idle{background:#f2f4f7;color:#475467}
+.pb .pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--b-ok-bg);color:var(--b-ok-fg);font-weight:500}
+.pb .pill.idle{background:var(--b-idle-bg);color:var(--b-idle-fg)}
 .pb .r-right{text-align:right}
 @media (max-width:980px){.pb .row{grid-template-columns:1fr}.pb .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* ── D: Översikt i Kontrollrummets färger ── */
+.pb.theme-a{--b-bg:#0a1017;--b-card:#0f1822;--b-fg:#d4e0ec;--b-muted:#6d8195;--b-line:#1c2937;--b-land:#172433;--b-accent:#ffb547;--b-up:#5aa9ff;
+  --out:#3ddc84;--in:#b46cff;--b-seg:#0b131c;--b-shadow:inset 0 0 0 1px #2a3d52;--b-sphere:#0c1520;--b-grat:#152232;--b-halo:#0a1017;--b-track:#0b131c;
+  --b-input:#0b131c;--b-rowline:#131e2a;--b-ok-bg:rgba(61,220,132,.12);--b-ok-fg:#3ddc84;--b-idle-bg:#16212d;--b-idle-fg:#6d8195;--b-sel:#1a2c40;--b-r:2px;
+  font-family:var(--font-mono);font-size:12.5px;color-scheme:dark}
+.pb.theme-a .seg button[aria-pressed="true"]{background:#1a2c40;color:var(--b-accent)}
+.pb.theme-a .head h2,.pb.theme-a .card h3{font-family:var(--font-cond);font-weight:600;text-transform:uppercase;letter-spacing:.1em}
+.pb.theme-a .head h2{font-size:22px;letter-spacing:.06em}
+.pb.theme-a .card h3{font-size:15px;color:var(--b-muted)}
+.pb.theme-a .card h3 small{font-family:var(--font-mono);text-transform:none;letter-spacing:.02em;color:var(--b-fg);font-size:11px}
+.pb.theme-a .kpi .l,.pb.theme-a th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:400}
+.pb.theme-a .kpi .v{font-family:var(--font-cond);font-size:34px;font-weight:600;letter-spacing:0;line-height:1.05}
+.pb.theme-a .kpi:first-child .v{color:var(--b-accent)}
+.pb.theme-a .map{background:radial-gradient(ellipse at 55% 30%,#102033,var(--b-card) 70%)}
+.pb.theme-a .sphere{fill:none;stroke:none}
+.pb.theme-a .home path.house,.pb.theme-a .home text{fill:var(--b-accent)}
+.pb.theme-a .home circle{stroke:var(--b-accent)}
+.pb.theme-a .home text{font-family:var(--font-cond);font-size:13px;letter-spacing:.08em;font-weight:600}
+.pb.theme-a .topc .r .t div{background:linear-gradient(90deg,#3a5874,#7fb0d8)}
+.pb.theme-a td.mono:nth-child(2){color:#8fc7ff}
+.pb.theme-a .crow,.pb.theme-a .topc .r,.pb.theme-a table{font-size:12.5px}
+.pb.theme-a .chart text{font-family:var(--font-mono);font-size:10px}
 
 /* ── C: Glob ──────────────────────────────── */
 .pc{--c-fg:#e9edff;--c-muted:#8b94bb;--c-glass:rgba(17,24,48,.62);--c-line:rgba(140,160,230,.18);--out:#4ef0a0;--in:#c48bff;--c-gold:#ffd27a;
@@ -231,7 +257,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
   <header class="top">
     <div>
       <h1>pfSense Nätverkskarta</h1>
-      <p>Tre visuella förslag för samma dashboard. Allt du ser är exempeldata. Klicka på en klient i något av förslagen för att bara se dess trafik på kartan.</p>
+      <p>Fyra visuella förslag för samma dashboard. D är det senaste: B:s layout i A:s färger. Allt du ser är exempeldata. Klicka på en klient i något av förslagen för att bara se dess trafik på kartan.</p>
     </div>
     <div class="legend-shell" aria-label="Färgförklaring">
       <span><i style="background:#2fbf71"></i>Startad inifrån nätverket</span>
@@ -243,6 +269,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
     <button class="tab" role="tab" id="tab-kontrollrum" data-view="kontrollrum"><span class="k">Förslag A</span><b>Kontrollrum</b><small>Mörk driftvy med allt på en skärm. Passar en väggskärm eller en flik som alltid är öppen.</small></button>
     <button class="tab" role="tab" id="tab-oversikt" data-view="oversikt"><span class="k">Förslag B</span><b>Översikt</b><small>Ljus och luftig rapportvy med tidsperioder, sökbar klientlista och 24-timmarsgraf.</small></button>
     <button class="tab" role="tab" id="tab-glob" data-view="glob"><span class="k">Förslag C</span><b>Glob</b><small>Snurrbar jordglob med Örebro i mitten. Mest visuellt, mindre detaljer per vy.</small></button>
+    <button class="tab" role="tab" id="tab-oversikt-mork" data-view="oversikt-mork"><span class="k">Förslag D · nytt</span><b>Översikt, mörk</b><small>Layouten från B i Kontrollrummets färger och typsnitt.</small></button>
   </nav>
 
   <!-- ═════════════ A ═════════════ -->
@@ -313,7 +340,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
         <div class="card">
           <h3>Bandbredd över dygnet <small>Mbit/s, hela WAN</small></h3>
           <div class="chart" id="b-chart"></div>
-          <div class="legend"><span><i style="background:var(--b-accent)"></i>Nedladdning</span><span><i style="background:#f59e0b"></i>Uppladdning</span></div>
+          <div class="legend"><span><i style="background:var(--b-accent)"></i>Nedladdning</span><span><i style="background:var(--b-up)"></i>Uppladdning</span></div>
         </div>
         <div class="card">
           <h3>Mest data <small id="b-topc-s">24 timmar</small></h3>
@@ -358,7 +385,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
 
   <section class="about" aria-label="Om förslagen">
     <div>
-      <h2>Samma data i alla tre</h2>
+      <h2>Samma data i alla fyra</h2>
       <ul>
         <li>Klienter, IP och MAC hämtas från pfSense DHCP-leases och ARP-tabellen.</li>
         <li>Bandbredd och datamängd per klient kommer från trafikräkning per IP (t.ex. NetFlow eller ntopng).</li>
@@ -572,7 +599,7 @@ function renderBTable(){
   const ipn=ip=>ip.split(".").reduce((a,x)=>a*256+ +x,0);
   const val=c=>sortKey==="now"?c.down+c.up:sortKey==="ip"?ipn(c.ip):sortKey==="name"?c.name.toLowerCase():c.gb;
   const rows=live.filter(c=>!q||(c.name+" "+c.ip+" "+c.mac).toLowerCase().includes(q)).sort((a,b)=>{const x=val(a),y=val(b);return(x>y?1:x<y?-1:0)*sortDir;});
-  document.querySelector("#b-table tbody").innerHTML=rows.length?rows.map(c=>`<tr class="pickable" data-id="${c.id}" ${mapB&&mapB.filter===c.id?'style="background:#f0f6ff"':""}><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="mono">${c.ip}</td><td class="mono">${c.mac}</td><td><span class="pill${c.idle?" idle":""}">${c.idle?"Inaktiv":"Online"}</span></td><td class="r-right num">${c.idle?"–":fmtRate(c.down+c.up)+" Mbit/s"}</td><td class="r-right num">${fmtGB(c.gb*period)}</td></tr>`).join(""):`<tr><td colspan="6" style="color:var(--b-muted)">Ingen klient matchar "${esc(q)}".</td></tr>`;
+  document.querySelector("#b-table tbody").innerHTML=rows.length?rows.map(c=>`<tr class="pickable" data-id="${c.id}" ${mapB&&mapB.filter===c.id?'style="background:var(--b-sel)"':""}><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="mono">${c.ip}</td><td class="mono">${c.mac}</td><td><span class="pill${c.idle?" idle":""}">${c.idle?"Inaktiv":"Online"}</span></td><td class="r-right num">${c.idle?"–":fmtRate(c.down+c.up)+" Mbit/s"}</td><td class="r-right num">${fmtGB(c.gb*period)}</td></tr>`).join(""):`<tr><td colspan="6" style="color:var(--b-muted)">Ingen klient matchar "${esc(q)}".</td></tr>`;
 }
 function drawChartB(){
   const r=rng(42),W=760,H=220,m={l:36,r:8,t:10,b:24};
@@ -586,9 +613,9 @@ function drawChartB(){
   const cv=d3.curveMonotoneX;
   s.append("path").attr("d",d3.area().x(d=>x(d.h)).y0(y(0)).y1(d=>y(d.d)).curve(cv)(data)).attr("fill","var(--b-accent)").attr("fill-opacity",.12);
   s.append("path").attr("d",d3.line().x(d=>x(d.h)).y(d=>y(d.d)).curve(cv)(data)).attr("fill","none").attr("stroke","var(--b-accent)").attr("stroke-width",2);
-  s.append("path").attr("d",d3.line().x(d=>x(d.h)).y(d=>y(d.u)).curve(cv)(data)).attr("fill","none").attr("stroke","#f59e0b").attr("stroke-width",1.6);
+  s.append("path").attr("d",d3.line().x(d=>x(d.h)).y(d=>y(d.u)).curve(cv)(data)).attr("fill","none").attr("stroke","var(--b-up)").attr("stroke-width",1.6);
   const pk=data.reduce((a,b)=>b.d>a.d?b:a);
-  s.append("circle").attr("cx",x(pk.h)).attr("cy",y(pk.d)).attr("r",4).attr("fill","var(--b-accent)").attr("stroke","#fff").attr("stroke-width",2);
+  s.append("circle").attr("cx",x(pk.h)).attr("cy",y(pk.d)).attr("r",4).attr("fill","var(--b-accent)").attr("stroke","var(--b-card)").attr("stroke-width",2);
   s.append("text").attr("x",x(pk.h)-8).attr("y",y(pk.d)-8).attr("text-anchor","end").attr("style","fill:var(--b-fg);font-weight:600;font-size:11px").text(`Topp ${fmt(pk.d,0)} Mbit/s kl ${String(Math.floor(pk.h)).padStart(2,"0")}:${pk.h%1?"30":"00"}`);
   const n3=data.find(d=>d.h===3);
   s.append("text").attr("x",x(3)+8).attr("y",y(n3.d)-4).attr("style","font-size:10.5px").text("PS5 hämtar uppdatering");
@@ -622,9 +649,12 @@ function globeInteract(){
 }
 
 /* ── vyer (#kontrollrum, #oversikt, #glob) ── */
-const VIEWS=["kontrollrum","oversikt","glob"];
-function show(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):"kontrollrum";
-  VIEWS.forEach(n=>{document.getElementById("view-"+n).hidden=n!==v;document.getElementById("tab-"+n).setAttribute("aria-selected",n===v);});}
+const VIEWS=["kontrollrum","oversikt","glob","oversikt-mork"];
+function show(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):"oversikt-mork",sec=v==="oversikt-mork"?"oversikt":v;
+  ["kontrollrum","oversikt","glob"].forEach(n=>{document.getElementById("view-"+n).hidden=n!==sec;});
+  VIEWS.forEach(n=>document.getElementById("tab-"+n).setAttribute("aria-selected",n===v));
+  document.querySelector("#view-oversikt .pb").classList.toggle("theme-a",v==="oversikt-mork");
+  document.getElementById("view-oversikt").setAttribute("aria-labelledby","tab-"+v);}
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(!b)return;
   if(location.hash==="#"+b.dataset.view)show();else location.hash=b.dataset.view;});
 window.addEventListener("hashchange",show);show();
