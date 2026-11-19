@@ -7,7 +7,9 @@ import ssl
 import threading
 import time
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+import datetime as dt
+from email.utils import format_datetime, make_msgid
+from zoneinfo import ZoneInfo
 
 from .config import Config
 
@@ -45,7 +47,7 @@ class Mailer:
         msg["Subject"] = f"{self.prefix} {subject}".strip()
         msg["From"] = self.sender
         msg["To"] = ", ".join(to)
-        msg["Date"] = formatdate(localtime=True)
+        msg["Date"] = format_datetime(dt.datetime.now(ZoneInfo("Europe/Stockholm")))
         msg["Message-ID"] = make_msgid(domain=self.sender.split("@")[-1] if "@" in self.sender else None)
         msg.set_content(body)
         ctx = ssl.create_default_context()

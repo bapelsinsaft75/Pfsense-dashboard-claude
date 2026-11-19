@@ -224,7 +224,7 @@ function unraidCard(u, i) {
   const spark = hist.length > 1 ? `<svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"><path d="${hist.map((v, j) => `${j ? "L" : "M"}${(j / (hist.length - 1) * 120).toFixed(1)} ${(26 - v / 100 * 24).toFixed(1)}`).join(" ")}" fill="none" stroke="#7fb0d8" stroke-width="1.5"/></svg>` : "";
   const started = u.array_state === "STARTED";
   const par = u.parity_last;
-  const parTxt = par ? `senaste paritetskontroll ${esc(new Date(par.date).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }))}, ${par.errors ?? "?"} fel` : "";
+  const parTxt = par ? `senaste paritetskontroll ${esc(new Date(par.date).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm", day: "numeric", month: "short" }))}, ${par.errors ?? "?"} fel` : "";
   const parBad = (u.disks || []).some((x) => x.role === "parity" && x.status === "err");
   const roleName = (x) => x.role === "parity" ? (x.name === "parity" ? "Parity" : x.name.replace(/^parity/, "Parity ")) : x.role === "cache" ? (x.name === "cache" ? "Cache" : x.name) : x.name.replace(/^disk(\d+)$/, "Disk $1");
   const disks = (u.disks || []).map((x) => {
@@ -357,6 +357,21 @@ $("cd-clients").addEventListener("click", (e) => {
 
 /* ── inställningar ── */
 const DAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
+// Egna väljare för timme och minut, så att tiden alltid visas i 24-timmarsformat oavsett webbläsarens språk
+function timePicker(id) {
+  const box = $(id);
+  const opt = (n) => `<option value="${String(n).padStart(2, "0")}">${String(n).padStart(2, "0")}</option>`;
+  box.innerHTML = `<select aria-label="Timme">${Array.from({ length: 24 }, (_, i) => opt(i)).join("")}</select><span>:</span><select aria-label="Minut">${Array.from({ length: 12 }, (_, i) => opt(i * 5)).join("")}</select>`;
+}
+function setTime(id, hm) {
+  const [h, m] = (hm || "00:00").split(":");
+  const [sh, sm] = $(id).querySelectorAll("select");
+  sh.value = h;
+  if (![...sm.options].some((o) => o.value === m)) sm.insertAdjacentHTML("beforeend", `<option value="${m}">${m}</option>`);
+  sm.value = m;
+}
+function getTime(id) { const [sh, sm] = $(id).querySelectorAll("select"); return `${sh.value}:${sm.value}`; }
+timePicker("s-qstart"); timePicker("s-qend");
 let alertKinds = [];
 function confirmHint() {
   const i = +$("s-interval").value || 0, n = +$("s-count").value || 0;
@@ -442,7 +457,7 @@ async function openSettings() {
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
     $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
     $("s-kinds").innerHTML = alertKinds.map((k) => `<label class="check"><input type="checkbox" data-kind="${k.id}" ${st.alert_kinds[k.id] ? "checked" : ""}> ${esc(k.label)}${k.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}</label>`).join("");
-    $("s-quiet").checked = !!st.quiet_enabled; $("s-qstart").value = st.quiet_start; $("s-qend").value = st.quiet_end;
+    $("s-quiet").checked = !!st.quiet_enabled; setTime("s-qstart", st.quiet_start); setTime("s-qend", st.quiet_end);
     $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
     $("s-slackwarn").checked = !!st.slack_warnings;
@@ -468,7 +483,7 @@ $("settings-form").addEventListener("submit", async (e) => {
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
     confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: kinds,
-    quiet_enabled: $("s-quiet").checked, quiet_start: $("s-qstart").value, quiet_end: $("s-qend").value,
+    quiet_enabled: $("s-quiet").checked, quiet_start: getTime("s-qstart"), quiet_end: getTime("s-qend"),
     quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
     quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
     slack_warnings: $("s-slackwarn").checked,

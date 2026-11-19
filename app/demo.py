@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import random
 import time
 
 from .engine import Engine
+
+STOCKHOLM = ZoneInfo("Europe/Stockholm")
 from .history import BUCKET
 from .pfsense import Conn
 
@@ -94,7 +98,8 @@ def setup(engine: Engine) -> None:
     start_h = int((now - 30 * 86400) // 3600 * 3600)
     for res, start, end in ((3600, start_h, start_5m), (BUCKET, start_5m, int(now))):
         for t in range(start, end, res):
-            hour = time.localtime(t).tm_hour + time.localtime(t).tm_min / 60
+            lt = datetime.fromtimestamp(t, STOCKHOLM)
+            hour = lt.hour + lt.minute / 60
             shape = _daily_shape(hour)
             for mac, name, _ip, down, up, gb, _link in CLIENTS:
                 per_slot = gb * 1e9 * res / 86400 * shape / .42

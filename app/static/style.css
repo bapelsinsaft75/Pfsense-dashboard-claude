@@ -382,3 +382,7 @@ dialog#settings{max-width:min(640px,calc(100vw - 32px))}
 .linkbtn:focus-visible{outline:2px solid var(--accent)}
 .rkinds{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px 12px}
 .rkinds .check{font-size:12px}
+
+.tpick{display:inline-flex;align-items:center;gap:2px}
+.tpick select{font:inherit;background:var(--track);color:var(--fg);border:1px solid var(--line);padding:4px 6px;width:auto}
+.tpick select:focus-visible{outline:2px solid var(--accent)}

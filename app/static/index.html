@@ -148,7 +148,7 @@
       <fieldset>
         <legend>Tysta tider</legend>
         <label class="check"><input type="checkbox" id="s-quiet"> Skicka inga mejl eller Slack-meddelanden under tysta tider</label>
-        <div class="inline"><span>Från</span><input type="time" id="s-qstart" required><span>till</span><input type="time" id="s-qend" required></div>
+        <div class="inline"><span>Från</span><span class="tpick" id="s-qstart"></span><span>till</span><span class="tpick" id="s-qend"></span><span class="muted">(svensk tid)</span></div>
         <div class="days" id="s-qdays" role="group" aria-label="Veckodagar"></div>
         <p class="hint">Tiden gäller från startdagen, så 22:00–07:00 på fredag gäller natten mot lördag. Larmen syns fortfarande i bannern och under Händelser.</p>
         <label class="check"><input type="checkbox" id="s-qcrit"> Släpp ändå igenom kritiska larm</label>

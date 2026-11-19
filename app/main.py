@@ -7,6 +7,9 @@ import logging
 import os
 import time
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -20,8 +23,19 @@ from .pfsense import PfSense, PfSenseError
 from .syslog import SyslogProtocol
 from .unifi import UniFi, UniFiError
 
-logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+STOCKHOLM = ZoneInfo("Europe/Stockholm")
+
+
+class _StockholmFormatter(logging.Formatter):
+    """Loggens tidsstämplar i svensk tid och 24-timmarsformat, oavsett containerns TZ."""
+
+    def formatTime(self, record, datefmt=None):  # noqa: N802
+        return datetime.fromtimestamp(record.created, STOCKHOLM).strftime(datefmt or "%Y-%m-%d %H:%M:%S")
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_StockholmFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), handlers=[_handler])
 log = logging.getLogger("main")
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
@@ -360,7 +374,7 @@ async def test_slack():
     try:
         await asyncio.to_thread(
             engine.slack.send, "info", "Testmeddelande från pfSense-dashboarden",
-            "Om du ser det här fungerar larmen till Slack.", time.strftime("%Y-%m-%d %H:%M"))
+            "Om du ser det här fungerar larmen till Slack.", datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M"))
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"ok": True}
