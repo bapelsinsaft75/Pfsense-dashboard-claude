@@ -815,7 +815,7 @@ function renderTop() {
         <span class="sub"><span>${all ? `${fmt(inetShare * 100, 0)} % internet · ${fmt((1 - inetShare) * 100, 0)} % internt` : `${fmtMbit(x.avg_down_bps)} ned · ${fmtMbit(x.avg_up_bps)} upp`}</span><span>topp ${fmtMbit(x.peak_bps)} Mbit/s</span>${sc === "internal" && connTxt ? `<span>${esc(connTxt)}</span>` : ""}</span></div>`;
     }
     const share = x.bytes / mx * 100;
-    return `<div class="tr pickable" data-id="${esc(x.id)}"><span class="rank">${i + 1}</span><span class="n">${linkIcon(x)}<span class="nm">${esc(x.name)}</span>${x.ip ? `<small>${esc(x.ip)}</small>` : ""}</span><span></span><span class="v num">${fmtBytes(x.bytes)}</span>
+    return `<div class="tr datarow pickable" data-id="${esc(x.id)}"><span class="n">${linkIcon(x)}<span class="nm">${esc(x.name)}</span>${x.ip ? `<small>${esc(x.ip)}</small>` : ""}</span><span class="v num">${fmtBytes(x.bytes)}</span>
       <div class="bar">${all ? `<span class="d" style="width:${share * inetShare}%"></span><span class="l" style="width:${share * (1 - inetShare)}%"></span>` : `<span class="${sc === "internal" ? "l" : "t"}" style="width:${share}%"></span>`}</div>
       <span class="sub"><span>${fmt(share, 0)} % · ${fmtBytes(x.down)} ned · ${fmtBytes(x.up)} upp</span>${all ? `<span>${fmtBytes(x.internet)} internet · ${fmtBytes(Math.max(0, x.bytes - x.internet))} internt</span>` : ""}${sc === "internal" ? (connTxt ? `<span>${esc(connTxt)}</span>` : "") : x.country ? `<span>mest till ${esc(countryName(x.country))}</span>` : ""}</span></div>`;
   }).join("");

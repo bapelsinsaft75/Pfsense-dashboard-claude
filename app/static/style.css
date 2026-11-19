@@ -536,3 +536,7 @@ body.ldrawer-open{overflow:hidden}
 /* mest bandbredd: ingen kolumn för typikon */
 .tr.bwrow{grid-template-columns:minmax(0,1fr) 72px auto}
 .tr.bwrow .bar,.tr.bwrow .sub{grid-column:1/-1}
+
+/* mest data: ingen kolumn för placering */
+.tr.datarow{grid-template-columns:minmax(0,1fr) auto}
+.tr.datarow .bar,.tr.datarow .sub{grid-column:1/-1}
