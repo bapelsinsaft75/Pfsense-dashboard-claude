@@ -19,7 +19,7 @@
       <div class="chips" id="chips" aria-label="Datakällor"></div>
       <button type="button" class="gear" id="open-settings" aria-label="Inställningar" title="Inställningar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <div class="seg" role="group" aria-label="Period" id="period">
-        <button type="button" aria-pressed="true" data-p="24h">24 timmar</button><button type="button" aria-pressed="false" data-p="7d">7 dagar</button><button type="button" aria-pressed="false" data-p="30d">30 dagar</button>
+        <button type="button" aria-pressed="false" data-p="live"><i class="livedot"></i>Just nu</button><button type="button" aria-pressed="true" data-p="24h">24 timmar</button><button type="button" aria-pressed="false" data-p="7d">7 dagar</button><button type="button" aria-pressed="false" data-p="30d">30 dagar</button>
       </div>
     </div>
   </header>
@@ -27,21 +27,21 @@
   <div class="problems" id="problems"></div>
 
   <section class="kpis" id="sec-kpis">
-    <div class="kpi"><div class="l">Total data</div><div class="v num" id="k-total">–</div><div class="s" id="k-total-s"></div></div>
-    <div class="kpi"><div class="l">Bandbredd just nu</div><div class="v num" id="k-now">–</div><div class="s" id="k-now-s"></div></div>
-    <div class="kpi"><div class="l">Anslutna klienter</div><div class="v num" id="k-cl">–</div><div class="s" id="k-cl-s"></div></div>
-    <div class="kpi"><div class="l">Länder</div><div class="v num" id="k-ctry">–</div><div class="s" id="k-ctry-s"></div></div>
+    <div class="kpi"><div class="l">Total data · <span class="per" id="per-total"></span></div><div class="v num" id="k-total">–</div><div class="s" id="k-total-s"></div></div>
+    <div class="kpi"><div class="l">Bandbredd · <span class="per now"><i class="livedot"></i>just nu</span></div><div class="v num" id="k-now">–</div><div class="s" id="k-now-s"></div></div>
+    <div class="kpi"><div class="l">Anslutna klienter · <span class="per" id="per-cl"></span></div><div class="v num" id="k-cl">–</div><div class="s" id="k-cl-s"></div></div>
+    <div class="kpi"><div class="l">Länder · <span class="per" id="per-ctry"></span></div><div class="v num" id="k-ctry">–</div><div class="s" id="k-ctry-s"></div></div>
   </section>
 
   <section class="row" id="sec-map">
     <div class="card">
-      <h2>Vart trafiken går <span class="mapctrls"><span class="seg small" role="group" aria-label="Period för kartan" id="mapwin"><button type="button" data-mwin="live" aria-pressed="false"><i class="livedot"></i>Just nu</button><button type="button" data-mwin="60m" aria-pressed="false">1 h</button><button type="button" data-mwin="24h" aria-pressed="true">24 h</button><button type="button" data-mwin="7d" aria-pressed="false">7 d</button><button type="button" data-mwin="30d" aria-pressed="false">30 d</button></span><span class="seg small" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></span></h2>
+      <h2><span class="ttl">Vart trafiken går · <span class="per" id="per-map"></span></span><span class="mapctrls"><span class="seg small" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></span></h2>
       <div class="livebar" id="livebar" hidden></div>
       <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från hemmet"></svg></div>
       <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån (klient → internet)</span><span><i style="background:var(--in)"></i>Startad utifrån (internet → klient)</span><span id="mapfilter"></span></div>
     </div>
     <div class="card">
-      <h2>Länder <small id="ctry-s">andel av data</small></h2>
+      <h2><span class="ttl">Länder · <span class="per" id="per-clist"></span></span><small id="ctry-s">andel av data</small></h2>
       <div class="clist" id="ctrylist"></div>
     </div>
   </section>

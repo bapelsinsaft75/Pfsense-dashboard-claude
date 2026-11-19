@@ -16,7 +16,7 @@ const ICONS = {
   ap: "M3 11a9 4 0 1 0 18 0a9 4 0 1 0-18 0 M12 11h.01 M3 11v2a9 4 0 0 0 18 0v-2",
 };
 const HOUSE = "M0-8.5-8-1.5h2.3V7h4.2V2.2h3V7h4.2V-1.5H8z";
-const PERIOD_LABEL = { "24h": "senaste 24 timmarna", "7d": "senaste 7 dagarna", "30d": "senaste 30 dagarna" };
+const PERIOD_LABEL = { live: "just nu", "24h": "senaste 24 timmarna", "7d": "senaste 7 dagarna", "30d": "senaste 30 dagarna" };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -42,7 +42,7 @@ const countryName = (cc) => { try { return (regionNames && regionNames.of(cc)) |
 const clock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { timeZone: "Europe/Stockholm" });
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const state = { period: "24h", data: null, mapFilter: null, devF: null, connF: "", sortKey: "bytes", sortDir: -1 };
+const state = { period: (() => { try { const p = localStorage.getItem("period"); return ["live", "24h", "7d", "30d"].includes(p) ? p : "24h"; } catch (e) { return "24h"; } })(), data: null, mapFilter: null, devF: null, connF: "", sortKey: "bytes", sortDir: -1 };
 let coords = {};
 let byId = {};
 
@@ -330,11 +330,11 @@ const PORTS = {
 async function openCountry(cc) {
   const dlg = $("country");
   $("cd-title").textContent = countryName(cc);
-  $("cd-sub").textContent = `Hämtar ${PERIOD_LABEL[state.period]} …`;
+  const per = state.period === "live" ? "24h" : state.period;
+  $("cd-sub").textContent = `Hämtar ${PERIOD_LABEL[per]} …`;
   $("cd-clients").innerHTML = ""; $("cd-remotes").innerHTML = "";
   if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute("open", "");
   try {
-    const per = ["24h", "7d", "30d"].includes(mapWin) ? mapWin : "24h";
     const r = await fetch(`api/country/${encodeURIComponent(cc)}?period=${per}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
@@ -576,10 +576,27 @@ function renderStatus(d) {
 
 function renderKpis(d) {
   const k = d.kpi;
-  $("k-total").innerHTML = bytesParts(k.total_bytes);
-  $("k-total-s").textContent = PERIOD_LABEL[d.period];
   $("k-now").innerHTML = `${fmt((k.now_down_bps + k.now_up_bps) / 1e6, 0)}<small>Mbit/s</small>`;
   $("k-now-s").textContent = `${fmt(k.now_down_bps / 1e6, 0)} ned · ${fmt(k.now_up_bps / 1e6, 0)} upp · ${k.active_conns} anslutningar`;
+  const live = state.period === "live", ld = live && mapData && mapData.window === "live" ? mapData : null;
+  const perTxt = live ? `<i class="livedot"></i>just nu` : esc(PER_HEAD[state.period]);
+  for (const id of ["per-total", "per-cl", "per-ctry", "per-map", "per-clist"]) { $(id).innerHTML = perTxt; $(id).classList.toggle("now", live); }
+  if (live) {
+    if (!ld) { for (const id of ["k-total", "k-cl", "k-ctry"]) $(id).textContent = "…"; for (const id of ["k-total-s", "k-cl-s", "k-ctry-s"]) $(id).textContent = ""; }
+    else {
+      $("k-total").innerHTML = bytesParts(ld.minute_up + ld.minute_down);
+      $("k-total-s").textContent = "senaste minuten";
+      $("k-cl").textContent = ld.clients;
+      $("k-cl-s").textContent = `med trafik · av ${k.clients_online} anslutna`;
+      const cs = new Set(ld.flows.map((f) => f.cc)), ci = new Set(ld.flows.filter((f) => f.dir === "in").map((f) => f.cc));
+      $("k-ctry").textContent = cs.size;
+      $("k-ctry-s").textContent = `med trafik · ${ci.size} startade utifrån`;
+    }
+  } else {
+    $("k-total").innerHTML = bytesParts(k.total_bytes);
+    $("k-total-s").textContent = PERIOD_LABEL[d.period];
+  }
+  if (live) return;
   $("k-cl").textContent = k.clients_online;
   const parts = [];
   const link = (status, conn, text, tip) => `<button type="button" class="kpilink" data-status="${status}" data-conn="${conn}" title="${tip}">${text}</button>`;
@@ -593,19 +610,17 @@ function renderKpis(d) {
 }
 
 /* ── kartans period: just nu eller 1 h – 30 d ── */
-let mapWin = (() => { try { return localStorage.getItem("mapWin") || "24h"; } catch (e) { return "24h"; } })();
+const PER_HEAD = { "24h": "senaste 24 h", "7d": "senaste 7 dagarna", "30d": "senaste 30 dagarna" };
 let mapData = null;
-const MAPWIN_LABEL = { live: "just nu", "60m": "senaste timmen", "24h": "senaste 24 timmarna", "7d": "senaste 7 dagarna", "30d": "senaste 30 dagarna" };
 async function loadMap() {
   try {
-    const r = await fetch(`api/flows?window=${mapWin}`, { cache: "no-store" });
+    const r = await fetch(`api/flows?window=${state.period}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     mapData = await r.json();
     renderMapWin();
   } catch (e) { /* kartan visar senaste svaret */ }
 }
 function renderMapWin() {
-  document.querySelectorAll("[data-mwin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mwin === mapWin));
   const live = mapData && mapData.window === "live";
   const lb = $("livebar");
   lb.hidden = !live;
@@ -614,19 +629,14 @@ function renderMapWin() {
     const n = new Set(mapData.flows.map((f) => f.cc)).size;
     lb.innerHTML = `<span><b class="num">${n}</b>${n === 1 ? "land" : "länder"} med trafik</span><span><b class="num">${mapData.live_conns}</b>anslutningar med trafik · av ${fmt(mapData.open_conns, 0)} öppna</span><span><b class="num">${fmtMbit(mapData.total_bps)}<small>Mbit/s</small></b>totalt just nu</span>${ago != null ? `<span><b>${ago} s</b>sedan senaste mätning</span>` : ""}`;
   }
-  $("ctry-s").textContent = live ? "Mbit/s just nu" : `andel av data · ${MAPWIN_LABEL[mapWin]}`;
+  $("ctry-s").textContent = live ? "Mbit/s" : "andel av data";
+  if (state.data) renderKpis(state.data);
   renderCountries();
   map.flows = mapData ? mapData.flows : (state.data ? state.data.flows : []);
   map.live = live;
   map.filter = state.mapFilter;
   map.render();
 }
-$("mapwin").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-mwin]"); if (!b) return;
-  mapWin = b.dataset.mwin;
-  try { localStorage.setItem("mapWin", mapWin); } catch (err) { /* ingen lagring */ }
-  mapData = null; renderMapWin(); loadMap();
-});
 
 function renderCountries() {
   const live = mapData && mapData.window === "live";
@@ -1025,7 +1035,7 @@ window.dashRender = () => render();
 
 async function load() {
   try {
-    const r = await fetch(`api/summary?period=${state.period}`, { cache: "no-store" });
+    const r = await fetch(`api/summary?period=${state.period === "live" ? "24h" : state.period}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     state.data = await r.json();
     render();
@@ -1039,7 +1049,13 @@ async function load() {
 
 /* ── händelser ── */
 function setPressed(group, btn) { [...group.querySelectorAll("button")].forEach((x) => x.setAttribute("aria-pressed", x === btn)); }
-$("period").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.period = b.dataset.p; setPressed(e.currentTarget, b); load(); });
+$("period").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.period = b.dataset.p; setPressed(e.currentTarget, b);
+  try { localStorage.setItem("period", state.period); } catch (err) { /* ingen lagring */ }
+  mapData = null; renderMapWin(); load();
+});
+setPressed($("period"), $("period").querySelector(`[data-p="${state.period}"]`));
 $("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPressed(e.currentTarget, b); map.zoom = b.dataset.z; map.makeProj(); map.render(); });
 $("connf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.connF = b.dataset.c; setPressed(e.currentTarget, b); render(); });
 $("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });

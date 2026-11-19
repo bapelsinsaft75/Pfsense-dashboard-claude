@@ -559,3 +559,8 @@ body.ldrawer-open{overflow:hidden}
 .endpoint.livept circle{animation:ptpulse 2s ease-in-out infinite}
 @keyframes ptpulse{50%{r:5}}
 @media (prefers-reduced-motion:reduce){.livedot,.endpoint.livept circle{animation:none}}
+.per{color:var(--fg);font-weight:500;white-space:nowrap}
+.per.now{color:var(--ok-fg)}
+.per .livedot{width:7px;height:7px;margin-right:5px}
+.card h2 .ttl{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
+.seg button .livedot{margin-right:7px;vertical-align:1px}

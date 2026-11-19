@@ -12,7 +12,7 @@ import statistics
 from .alerts import Alerts
 from .config import Config, is_public
 from .geoip import GeoIP
-from .history import History
+from .history import RECENT_SLOT, History
 from .mailer import Mailer
 from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
@@ -715,7 +715,14 @@ class Engine:
                 f["active"] = f["conns"]
                 flows.append(f)
             flows.sort(key=lambda f: f["bps"], reverse=True)
+            up = down = 0
+            for (slot, _cid, _cc), (u, d) in list(self.history.recent.items()):
+                if slot + RECENT_SLOT > now - 60:
+                    up += u
+                    down += d
             return {"window": "live", "flows": flows, "open_conns": len(self.conns),
+                    "clients": len({cid for f in flows for cid in f["clients"]}),
+                    "minute_up": up, "minute_down": down,
                     "live_conns": sum(f["conns"] for f in flows), "total_bps": sum(f["bps"] for f in flows),
                     "measured": self._prev_states_ts}
         seconds = {"60m": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}.get(window, 86400)
