@@ -1,0 +1,170 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Styra Pi-hole</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: Pi-hole som chip i statusraden, en egen sektion och en DNS-kolumn i klientlistan. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;
+  --ok:#3ddc84;--err:#ff6b6b;--track:#0b131c;--sel:#1a2c40;--blk:#ff6b81;--ph:#f0404f;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:16px}
+.num{font-variant-numeric:tabular-nums}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.02em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);font-size:11px;color:var(--muted);background:var(--card)}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.chip.ph{color:var(--fg);border-color:rgba(240,64,79,.5);position:relative}
+.chip.ph small{color:var(--blk);font-size:10.5px}
+.chip.ph::after{content:"ny";position:absolute;top:-9px;right:-6px;font-size:9px;padding:0 4px;background:var(--accent);color:#1a1205}
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:14px;min-width:0}
+.card h2{margin:0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 small{font-family:var(--mono);text-transform:none;letter-spacing:.02em;color:var(--fg);font-size:11px;font-weight:400}
+.ttl{display:inline-flex;align-items:center;gap:8px}
+.per{color:var(--fg);font-weight:500}
+.status{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;background:rgba(61,220,132,.12);color:var(--ok)}
+.pill.warn{background:rgba(255,181,71,.12);color:var(--accent)}
+.kp{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:800px){.kp{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kp>div{border:1px solid var(--line);background:var(--bg);padding:9px 12px}
+.kp .l{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kp .v{font-family:var(--cond);font-size:28px;font-weight:600;line-height:1.1}
+.kp .v small{font-size:13px;color:var(--muted);margin-left:3px}
+.kp .s{font-size:11px;color:var(--muted)}
+.kp .blk .v{color:var(--blk)}
+.chart svg{display:block;width:100%;height:120px}
+.legend{display:flex;gap:16px;font-size:11px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+.seg{display:inline-flex;background:var(--track);padding:3px;gap:2px}
+.seg span{padding:3px 10px;font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+.list{display:grid;gap:7px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px}
+.row .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .c{color:var(--muted)}
+.bar{grid-column:1/-1;height:4px;background:var(--track)}
+.bar i{display:block;height:100%;background:var(--up)}
+.bar i.b{background:var(--blk)}
+.bar.two{display:flex}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:400;color:var(--muted);text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line)}
+td.r,th.r{text-align:right}
+.newcol{background:rgba(255,181,71,.06)}
+th.newcol{color:var(--accent)}
+.ip{color:#8fc7ff}
+.muted{color:var(--muted)}
+.blkt{color:var(--blk)}
+.note{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px;display:grid;gap:4px}
+.note b{color:var(--fg);font-weight:500}
+.alarm{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,70px);gap:6px 10px;align-items:center;font-size:12px}
+.alarm .h{color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.box{width:14px;height:14px;border:1px solid #2a3d52;display:inline-block;background:var(--bg);position:relative}
+.box.on{background:var(--accent);border-color:var(--accent)}
+.box.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #1a1205;border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid #2a3d52;background:var(--sel);font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg)}
+.btn.warn{border-color:rgba(255,181,71,.5);color:var(--accent)}
+.btn.ok{border-color:rgba(61,220,132,.5);color:var(--ok)}
+.btn.red{border-color:rgba(255,107,129,.5);color:var(--blk)}
+.btn.sm{padding:2px 8px;font-size:12px}
+.menuwrap{position:relative;display:inline-block}
+.menu{position:absolute;right:0;top:calc(100% + 6px);width:260px;background:#0b131c;border:1px solid #2a3d52;box-shadow:0 12px 30px -10px rgba(0,0,0,.8);padding:10px;display:grid;gap:8px;z-index:2;text-transform:none;letter-spacing:0;font-family:var(--mono);font-size:12px;color:var(--fg);font-weight:400}
+.menu .h{color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.menu .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.menu .grid span{border:1px solid #2a3d52;text-align:center;padding:4px 0;font-family:var(--cond);font-size:14px;font-weight:600}
+.menu .grid span.hl{background:var(--sel);color:var(--accent)}
+.inp{display:flex;gap:6px;align-items:center}
+.inp input{all:unset;border:1px solid #2a3d52;background:var(--bg);padding:3px 8px;width:60px;font-family:var(--mono)}
+.inp input.wide{flex:1;width:auto}
+.pill.paused{background:rgba(255,181,71,.12);color:var(--accent)}
+.chip.paused::before{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.chip.paused{border-color:rgba(255,181,71,.5);color:var(--fg)}
+.chip.paused small{color:var(--accent)}
+.row.act{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+.row.act .bar{grid-column:1/-1}
+.hover{background:rgba(90,169,255,.06);outline:1px solid #2a3d52;outline-offset:3px}
+.dlg{background:#0b131c;border:1px solid #2a3d52;box-shadow:0 16px 40px -12px rgba(0,0,0,.9);padding:16px;display:grid;gap:12px;max-width:460px}
+.dlg h3{margin:0;font-family:var(--cond);font-size:18px;letter-spacing:.06em;text-transform:uppercase}
+.radio{display:grid;gap:6px}
+.radio label{display:flex;gap:8px;align-items:flex-start}
+.radio i{width:12px;height:12px;border-radius:50%;border:1px solid #2a3d52;margin-top:3px;flex:none}
+.radio i.on{border:4px solid var(--accent)}
+.radio small{display:block;color:var(--muted)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.own td .btn{float:right}
+.kind{font-size:10.5px;padding:1px 7px;border-radius:999px}
+.kind.allow{background:rgba(61,220,132,.12);color:var(--ok)}
+.kind.deny{background:rgba(255,107,129,.12);color:var(--blk)}
+</style>
+<div class="wrap">
+
+<div class="tag">A · Pausa blockering <em>knapp i Pi-hole-sektionens rubrik; menyn öppen</em></div>
+<section class="card" style="padding-bottom:210px">
+  <h2><span class="ttl">Pi-hole · <span class="per">senaste 24 h</span></span>
+    <span class="status"><span class="pill">● Blockering på</span><span>v6.1</span>
+      <span class="menuwrap"><button class="btn warn">❚❚ Pausa blockering ▾</button>
+        <span class="menu">
+          <span class="h">Pausa all blockering i</span>
+          <span class="grid"><span>1 min</span><span class="hl">5 min</span><span>15 min</span><span>60 min</span></span>
+          <span class="h">Egen tid</span>
+          <span class="inp"><input value="90"> <span class="muted">minuter</span> <button class="btn warn sm" style="margin-left:auto">Pausa</button></span>
+          <span class="muted" style="font-size:11px">Blockeringen slås på igen automatiskt när tiden gått ut – även om dashboarden stängs.</span>
+        </span></span></span></h2>
+</section>
+
+<div class="tag">B · Medan blockeringen är pausad <em>nedräkning i sektionen och i statusraden</em></div>
+<div class="chips"><span class="chip">pfSense</span><span class="chip">VPN</span><span class="chip paused">Pi-hole <small>pausad 4:32</small></span><span class="chip">GeoIP</span></div>
+<section class="card">
+  <h2><span class="ttl">Pi-hole · <span class="per">senaste 24 h</span></span>
+    <span class="status"><span class="pill paused">❚❚ Pausad · 4:32 kvar</span><span>v6.1</span><button class="btn ok">▶ Slå på igen nu</button></span></h2>
+</section>
+
+<div class="tag">C · Blockera och avblockera <em>knapp på varje rad i toppdomäner, och ett fält för valfri domän</em></div>
+<div class="two">
+<section class="card">
+  <h2>Toppdomäner <span class="seg"><span>Tillåtna</span><span class="on">Blockerade</span></span></h2>
+  <div class="list">
+    <div class="row act hover"><span class="n">telemetry.roborock.com</span><span class="c num">1 912</span><button class="btn ok sm">Avblockera</button><div class="bar"><i class="b" style="width:100%"></i></div></div>
+    <div class="row act"><span class="n">ads.samsungads.com</span><span class="c num">1 204</span><span class="muted" style="width:86px"></span><div class="bar"><i class="b" style="width:63%"></i></div></div>
+    <div class="row act"><span class="n">app-measurement.com</span><span class="c num">866</span><span style="width:86px"></span><div class="bar"><i class="b" style="width:45%"></i></div></div>
+  </div>
+  <span class="muted" style="font-size:11px">Knappen syns när du håller musen över en rad. Under fliken Tillåtna heter den ”Blockera”.</span>
+  <div class="inp"><input class="wide" value="tiktokv.com"><button class="btn red sm">Blockera</button><button class="btn ok sm">Avblockera</button></div>
+</section>
+
+<div class="dlg">
+  <h3>Avblockera telemetry.roborock.com?</h3>
+  <div class="radio">
+    <label><i class="on"></i><span>Bara den här domänen<small>telemetry.roborock.com läggs till i Pi-holes tillåtlista</small></span></label>
+    <label><i></i><span>Även alla underdomäner<small>*.roborock.com – som regex-regel</small></span></label>
+  </div>
+  <span class="muted" style="font-size:11px">Gäller alla klienter. Syns som en händelse i dashboarden och kan ångras under Egna regler.</span>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn">Avbryt</button><button class="btn ok">Avblockera</button></div>
+</div>
+</div>
+
+<div class="tag">D · Egna regler <em>det du lagt till i Pi-hole, med knapp för att ta bort (ångra)</em></div>
+<section class="card own">
+  <h2>Egna regler <small>tillåt- och blocklista i Pi-hole</small></h2>
+  <table>
+    <thead><tr><th>Domän</th><th>Typ</th><th>Tillagd</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>telemetry.roborock.com</td><td><span class="kind allow">tillåten</span></td><td class="muted">i dag 22:14 · från dashboarden</td><td><button class="btn sm">Ta bort</button></td></tr>
+      <tr><td>*.tiktokv.com</td><td><span class="kind deny">blockerad · regex</span></td><td class="muted">12 nov 19:02</td><td><button class="btn sm">Ta bort</button></td></tr>
+      <tr><td>s.youtube.com</td><td><span class="kind allow">tillåten</span></td><td class="muted">3 okt 08:40 · i Pi-hole</td><td><button class="btn sm">Ta bort</button></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<div class="note">
+  <span><b>Viktigt:</b> dashboarden har ingen inloggning. Med de här knapparna kan alla som når sidan i ditt nätverk pausa eller avblockera i Pi-hole.</span>
+</div>
+</div>
