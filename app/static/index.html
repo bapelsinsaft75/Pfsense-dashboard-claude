@@ -146,8 +146,8 @@
       </fieldset>
       <fieldset>
         <legend>Larmtyper</legend>
-        <p class="hint">Avstängda larmtyper visas varken i bannern eller skickas. Typer märkta ↻ bekräftas med kontrollerna ovan.</p>
-        <div class="kinds" id="s-kinds"></div>
+        <p class="hint">Välj per larmtyp om den ska visas i bannern, skickas med e-post och skickas till Slack. Är alla tre urkryssade är larmet avstängt. Vilka e-postadresser som får larmet väljer du under Aviseringar. Typer märkta ↻ bekräftas med kontrollerna ovan.</p>
+        <div class="tablebox"><table class="kindtable"><thead><tr><th>Larmtyp</th><th>Banner</th><th>E-post</th><th>Slack</th></tr></thead><tbody id="s-kinds"></tbody></table></div>
       </fieldset>
       <fieldset>
         <legend>Gränser</legend>
@@ -180,7 +180,7 @@
       <fieldset>
         <legend>Slack</legend>
         <div class="mailbox" id="s-slack"></div>
-        <label class="check"><input type="checkbox" id="s-slackwarn"> Skicka även varningar till Slack <span class="muted">(kritiska larm skickas alltid)</span></label>
+        <p class="hint">Vilka larm som skickas till Slack väljer du under Larm → Larmtyper.</p>
         <div class="actions"><button type="button" class="btn" id="s-test-slack">Testa Slack</button></div>
       </fieldset>
     </div>

@@ -65,7 +65,8 @@ Under *Inställningar* (kugghjulet):
 - **Larm → Bekräfta innan larm:** hur ofta en kontroll görs och hur många misslyckade kontroller i rad som krävs
   innan det larmar, t.ex. var 60:e sekund och 3 gånger. Gäller larm märkta ↻ (VPN, gateway, pfSense, UniFi,
   Unraid, Plex och övervakade containrar/VM).
-- **Larm → Larmtyper:** slå av och på varje typ av larm. Larmen för Unraid-server och Plex är avstängda från början.
+- **Larm → Larmtyper:** välj per larmtyp om den ska visas i **bannern**, skickas med **e-post** och skickas till
+  **Slack**. Alla tre urkryssade stänger av larmet. Larmen för Unraid-servern är avstängda från början.
 - **Aviseringar → Tysta tider:** inga mejl eller Slack-meddelanden mellan två klockslag på valda veckodagar.
   Larmen syns ändå i bannern. Valfritt: släpp igenom kritiska larm, och få en sammanfattning när tiden är slut.
 - **Aviseringar → E-postmottagare:** lägg till flera adresser och välj vilka larmtyper var och en ska få,

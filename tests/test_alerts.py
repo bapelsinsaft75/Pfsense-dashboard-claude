@@ -285,7 +285,7 @@ def test_quiet_hours_and_digest(engine, monkeypatch):
 
 def test_disabled_kind_and_watch(engine):
     from app.unraid import Unraid
-    engine.settings.update({"alert_kinds": {"new_device": False}})
+    engine.settings.update({"alert_kinds": {"new_device": False}, "channels": {"new_device": {"email": False, "slack": False}}})
     engine.settings.update({"recipients": [{"email": "vm@exempel.se", "kinds": ["unraid_vm"]},
                                            {"email": "jag@exempel.se", "kinds": ["unraid_watch"]}]})
     assert engine.alerts.raise_("n", "warning", "new_device", "Ny", "x") is None
@@ -439,3 +439,30 @@ def test_unifi_counters_and_orientation(engine):
     engine._unifi_traffic({mac: {"tx_bytes": 5, "rx_bytes": 5}}, t + 60)
     total = engine.history.top_scoped("all", 3600, t + 90)[mac]
     assert total["up"] >= 5_000_000 and total["down"] >= 300_000_000
+
+
+def test_channels_per_kind(engine):
+    sent_slack = []
+    engine.alerts.slack = type("S", (), {"enabled": True, "dashboard_url": "", "send_background": lambda self, *a: sent_slack.append(a)})()
+    engine.settings.update({"recipients": [{"email": "jag@exempel.se", "kinds": ["vpn_down", "new_device"]}],
+                            "channels": {"vpn_down": {"email": False, "slack": True},
+                                         "new_device": {"email": True, "slack": False}}})
+    engine.alerts.raise_("ovpn:A", "critical", "vpn_down", "VPN-anslutningen A är nere", "nere")
+    assert FakeSMTP.sent == [] and len(sent_slack) == 1  # bara Slack
+    engine.alerts.raise_("new:x", "warning", "new_device", "Ny enhet i nätverket: X", "x")
+    assert len(FakeSMTP.sent) == 1 and len(sent_slack) == 1  # bara e-post
+    # skickas men visas inte i bannern
+    engine.settings.update({"alert_kinds": {"gateway_down": False}, "channels": {"gateway_down": {"email": False, "slack": True}}})
+    aid = engine.alerts.raise_("gw:W", "critical", "gateway_down", "Gatewayen W är nere", "nere")
+    assert aid and len(sent_slack) == 2 and all(a["id"] != aid for a in engine.alerts.banner())
+    assert any(e["id"] == aid for e in engine.alerts.recent())
+    # alla tre av: avstängd
+    engine.settings.update({"alert_kinds": {"plex_down": False}, "channels": {"plex_down": {"email": False, "slack": False}}})
+    assert engine.alerts.raise_("plex:p", "critical", "plex_down", "Plex svarar inte", "x") is None
+
+
+def test_channels_follow_old_off_kinds(engine):
+    ch = engine.settings.get("channels")
+    assert ch["unraid_down"] == {"email": False, "slack": False}  # var avstängd från början
+    assert ch["vpn_down"] == {"email": True, "slack": True}
+    assert engine.alerts.raise_("unraid:x", "critical", "unraid_down", "Tower svarar inte", "x") is None

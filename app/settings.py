@@ -66,6 +66,8 @@ SCHEMA = {
     "watch": ("watch", None, None),
     # e-postmottagare och vilka larmtyper var och en får. None = använd MAIL_TO
     "recipients": ("recipients", None, None),
+    # vilka larmtyper som skickas med e-post och till Slack: typ -> {"email": bool, "slack": bool}
+    "channels": ("channels", None, None),
 }
 
 
@@ -91,6 +93,7 @@ class Settings:
             "alert_kinds": {k: v[1] for k, v in ALERT_KINDS.items()},
             "watch": {},
             "recipients": None,
+            "channels": {},
         }
         self.path = os.path.join(cfg.data_dir, "settings.json") if persist else None
         self.saved: dict = {}
@@ -103,6 +106,13 @@ class Settings:
                 log.warning("Kunde inte läsa %s: %s", self.path, exc)
 
     def get(self, key: str):
+        if key == "channels":
+            saved = self.saved.get("channels", {})
+            warn_slack = self.get("slack_warnings")
+            on = self.get("alert_kinds")  # en avstängd larmtyp skickas inte heller, tills man väljer annat
+            return {k: {"email": saved.get(k, {}).get("email", bool(on.get(k, True))),
+                        "slack": saved.get(k, {}).get("slack", bool(on.get(k, True)) and (k in CRITICAL_KINDS or warn_slack))}
+                    for k in ALERT_KINDS}
         if key == "alert_kinds":
             kinds = dict(self.defaults["alert_kinds"])
             kinds.update(self.saved.get("alert_kinds", {}))
@@ -113,6 +123,13 @@ class Settings:
 
     def all(self) -> dict:
         return {k: self.get(k) for k in SCHEMA if k != "new_device_alerts"}
+
+    def channel(self, kind: str, channel: str) -> bool:
+        """Ska larm av den här typen skickas via kanalen ("email" eller "slack")?"""
+        ch = self.get("channels").get(kind)
+        if ch is None:  # okänd larmtyp: e-post som vanligt, Slack enligt valet för varningar
+            return True if channel == "email" else bool(self.get("slack_warnings"))
+        return bool(ch.get(channel, True))
 
     def kind_enabled(self, kind: str) -> bool:
         return bool(self.get("alert_kinds").get(kind, True))
@@ -212,6 +229,11 @@ class Settings:
                                         "kinds": sorted({k for k in r.get("kinds", []) if k in ALERT_KINDS}),
                                         # None = alla servrar, annars en lista med servernamn
                                         "servers": None if servers is None else sorted({str(x) for x in servers})})
+                elif typ == "channels":
+                    if not isinstance(raw, dict):
+                        raise ValueError
+                    val = {k: {"email": bool((v or {}).get("email", True)), "slack": bool((v or {}).get("slack", True))}
+                           for k, v in raw.items() if k in ALERT_KINDS}
                 elif typ == "watch":
                     if not isinstance(raw, dict):
                         raise ValueError

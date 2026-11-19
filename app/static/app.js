@@ -465,11 +465,15 @@ async function openSettings() {
     $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
     $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
-    $("s-kinds").innerHTML = alertKinds.map((k) => `<label class="check"><input type="checkbox" data-kind="${k.id}" ${st.alert_kinds[k.id] ? "checked" : ""}> ${esc(k.label)}${k.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}</label>`).join("");
+    $("s-kinds").innerHTML = alertKinds.map((k) => {
+      const ch = (st.channels || {})[k.id] || { email: true, slack: true };
+      const box = (attr, on, label) => `<td class="c"><input type="checkbox" ${attr} ${on ? "checked" : ""} aria-label="${label}: ${esc(k.label)}"></td>`;
+      return `<tr><td>${esc(k.label)}${k.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}${k.critical ? ' <span class="kcrit" title="Kritiskt larm">kritiskt</span>' : ""}</td>${box(`data-kind="${k.id}"`, st.alert_kinds[k.id], "Banner")}${box(`data-ch="email" data-k="${k.id}"`, ch.email, "E-post")}${box(`data-ch="slack" data-k="${k.id}"`, ch.slack, "Slack")}</tr>`;
+    }).join("");
     $("s-quiet").checked = !!st.quiet_enabled; setTime("s-qstart", st.quiet_start); setTime("s-qend", st.quiet_end);
     $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
-    $("s-slackwarn").checked = !!st.slack_warnings;
+
     mailConfigured = j.email.enabled;
     serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" }))];
     recips = st.recipients ? st.recipients.map((r) => ({ ...r }))
@@ -489,6 +493,8 @@ $("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const kinds = {};
   $("s-kinds").querySelectorAll("[data-kind]").forEach((c) => { kinds[c.dataset.kind] = c.checked; });
+  const channels = {};
+  $("s-kinds").querySelectorAll("[data-ch]").forEach((c) => { (channels[c.dataset.k] = channels[c.dataset.k] || {})[c.dataset.ch] = c.checked; });
   const body = {
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
@@ -496,7 +502,7 @@ $("settings-form").addEventListener("submit", async (e) => {
     quiet_enabled: $("s-quiet").checked, quiet_start: getTime("s-qstart"), quiet_end: getTime("s-qend"),
     quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
     quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
-    slack_warnings: $("s-slackwarn").checked,
+    channels,
     recipients: readRecips(),
   };
   try {

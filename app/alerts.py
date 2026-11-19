@@ -35,7 +35,7 @@ class Alerts:
 
     def recipients_for(self, kind: str, level: str, source: str | None = None) -> list[str]:
         """Vilka e-postadresser som ska få ett larm av den här typen (och från den här servern)."""
-        if not self.mailer.configured:
+        if not self.mailer.configured or not self.settings.channel(kind, "email"):
             return []
         rec = self.settings.get("recipients")
         if rec is None:  # inga mottagare sparade i inställningarna: MAIL_TO som tidigare
@@ -71,9 +71,10 @@ class Alerts:
             raised, _still, lines, head = digest(subset)
             self.mailer.send_background(f"Sammanfattning av tysta tiden: {len(raised)} larm",
                                         head + "\n\n" + "\n".join(lines) + "\n", [addr])
-        raised, still, lines, head = digest(items)
+        slack_items = [i for i in items if self._should_slack(i[5], i[1])]
+        raised, still, lines, head = digest(slack_items)
         subject = f"Sammanfattning av tysta tiden: {len(raised)} larm"
-        if self.slack and self.slack.enabled:
+        if self.slack and self.slack.enabled and slack_items:
             level = "critical" if any(i[1] == "critical" for i in still) else "warning" if still else "info"
             self.slack.send_background(level, subject, head + "\n" + "\n".join(lines[:25]), _when(time.time()))
         return True
@@ -85,8 +86,8 @@ class Alerts:
     def _should_mail(self, level: str) -> bool:
         return level == "critical" or (level == "warning" and self.settings.get("email_warnings"))
 
-    def _should_slack(self, level: str) -> bool:
-        return level == "critical" or (level == "warning" and self.settings.get("slack_warnings"))
+    def _should_slack(self, kind: str, level: str) -> bool:
+        return self.settings.channel(kind, "slack")
 
     def _post_slack(self, key: str, level: str, title: str, message: str, when: str, force: bool = False) -> bool:
         if not self.slack or not self.slack.enabled:
@@ -111,8 +112,9 @@ class Alerts:
     def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None,
                source: str | None = None) -> int | None:
         """Skapa ett larm, eller uppdatera det om samma larm redan är aktivt. Avstängda larmtyper ignoreras."""
-        if not self.settings.kind_enabled(kind):
-            return None
+        banner = self.settings.kind_enabled(kind)
+        if not (banner or self.settings.channel(kind, "email") or self.settings.channel(kind, "slack")):
+            return None  # helt avstängd larmtyp
         now = now or time.time()
         with self.h.lock:
             row = self.h.db.execute("SELECT id, level FROM alerts WHERE key=? AND resolved IS NULL", (key,)).fetchone()
@@ -127,9 +129,12 @@ class Alerts:
             )
             self.h.db.commit()
             alert_id = cur.lastrowid
+            if not banner:  # skickas men visas inte i bannern (finns kvar under Händelser)
+                self.h.db.execute("UPDATE alerts SET acked=? WHERE id=?", (int(now), alert_id))
+                self.h.db.commit()
         log.info("Larm (%s): %s – %s", level, title, message)
         to = self.recipients_for(kind, level, source)
-        if self._quiet_blocks(level) and (to or self._should_slack(level)):
+        if self._quiet_blocks(level) and (to or self._should_slack(kind, level)):
             self.quiet_queue.append(("raised", level, title, message, now, kind, source))
             return alert_id
         if to:
@@ -140,7 +145,7 @@ class Alerts:
                 with self.h.lock:
                     self.h.db.execute("UPDATE alerts SET emailed=1 WHERE id=?", (alert_id,))
                     self.h.db.commit()
-        if self._should_slack(level) and self._post_slack(key, level, title, message, _when(now)):
+        if self._should_slack(kind, level) and self._post_slack(key, level, title, message, _when(now)):
             with self.h.lock:
                 self.h.db.execute("UPDATE alerts SET slacked=1 WHERE id=?", (alert_id,))
                 self.h.db.commit()

@@ -540,3 +540,11 @@ body.ldrawer-open{overflow:hidden}
 /* mest data: ingen kolumn för placering */
 .tr.datarow{grid-template-columns:minmax(0,1fr) auto}
 .tr.datarow .bar,.tr.datarow .sub{grid-column:1/-1}
+
+/* larmtyper per kanal */
+.kindtable{font-size:12px}
+.kindtable th{font-size:10px}
+.kindtable td{padding:5px 8px;white-space:normal}
+.kindtable td.c,.kindtable th:not(:first-child){text-align:center;width:64px}
+.kindtable input{accent-color:var(--accent);width:15px;height:15px}
+.kcrit{font-size:10px;padding:0 5px;border:1px solid rgba(255,107,107,.5);color:var(--err);margin-left:4px}
