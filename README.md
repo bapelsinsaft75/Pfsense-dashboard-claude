@@ -22,6 +22,8 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
 - Status för Unraid-servern: array, diskar med temperatur, processor, minne, Docker-containrar och
   virtuella maskiner (med filter för körs/stoppade).
 - Status för en eller flera Plex-servrar, och vilka som strömmar just nu och vad.
+- Kartan har ett eget periodval: **Just nu** visar bara anslutningar som har trafik i detta ögonblick
+  (i Mbit/s), och 1 h / 24 h / 7 d / 30 d visar datamängd över perioden. Länderlistan följer valet.
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
   (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,

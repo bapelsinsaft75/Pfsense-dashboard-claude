@@ -30,6 +30,7 @@ PERIODS = {"24h": (86400, 1800), "7d": (7 * 86400, 7200), "30d": (30 * 86400, 43
 PROTOS = {1: "icmp", 6: "tcp", 17: "udp", 58: "icmpv6"}
 NETFLOW_WINDOW = 60
 PFB_WINDOW = 600
+LIVE_WINDOW = 60  # en anslutning räknas som aktiv om den har haft trafik så här nyligen
 
 TYPE_RULES = [
     ("console", r"ps[345]|playstation|xbox|switch-?oled|nintendo|steamdeck"),
@@ -77,6 +78,7 @@ class Engine:
         self._clients_polled = False
         self._pfb_hits: dict[str, deque] = defaultdict(deque)
         self.syslog_lines = 0
+        self.live_traffic: dict[tuple, tuple[float, float]] = {}  # anslutning -> (senaste tid med trafik, bit/s)
         self._unifi_bytes: dict[str, tuple[float, int, int]] = {}
         # UniFis tx/rx är ur antingen klientens eller nätverkets synvinkel; avgörs genom jämförelse med pfSense
         self.unifi_tx_is_down: bool | None = None
@@ -280,6 +282,8 @@ class Engine:
             cid = self.cid_for_ip(c.lan_ip)
             per_cid[cid][0] += d_down
             per_cid[cid][1] += d_up
+            if (d_up or d_down) and dt > 0:
+                self.live_traffic[key] = (now, (d_up + d_down) * 8 / dt)
             if c.initiated == "in" and c.lan_port is not None:
                 self.inbound_ports[(c.lan_ip, c.lan_port, c.proto)] = now
             cc = self.geo.country(c.remote_ip) or ""
@@ -292,6 +296,8 @@ class Engine:
         self._prev_bytes = new_bytes
         self._prev_states_ts = now
         self.conns = conns
+        for k in [k for k in self.live_traffic if k not in conns or now - self.live_traffic[k][0] > LIVE_WINDOW]:
+            del self.live_traffic[k]
         if self.state_bytes and dt > 0:
             self.state_rates = {cid: (v[0] * 8 / dt, v[1] * 8 / dt) for cid, v in per_cid.items()}
             if not self._netflow_live():
@@ -683,6 +689,55 @@ class Engine:
         return {"window": window, "scope": scope, "seconds": seconds, "total_bytes": total, "total_bps": total * 8 / seconds,
                 "total_internet": sum(x["internet"] for x in items), "count": len(items), "items": items[:limit],
                 "unifi": self.status["unifi"]["enabled"]}
+
+    def map_flows(self, window: str = "24h") -> dict:
+        """Linjerna på kartan: just nu (anslutningar med trafik) eller en period ur historiken."""
+        now = time.time()
+        if window == "live":
+            agg: dict[tuple, dict] = {}
+            for key, (t, bps) in self.live_traffic.items():
+                c = self.conns.get(key)
+                if not c or now - t > LIVE_WINDOW:
+                    continue
+                cc = self.geo.country(c.remote_ip)
+                if not cc:
+                    continue
+                f = agg.setdefault((cc, c.initiated), {"cc": cc, "dir": c.initiated, "bps": 0.0, "conns": 0, "per": defaultdict(float)})
+                f["bps"] += bps
+                f["conns"] += 1
+                f["per"][self.cid_for_ip(c.lan_ip)] += bps
+            flows = []
+            for f in agg.values():
+                per = sorted(f.pop("per").items(), key=lambda kv: kv[1], reverse=True)
+                f["clients"] = [cid for cid, _ in per]
+                f["client_bps"] = [{"id": cid, "name": self.display_name(cid), "bps": b} for cid, b in per[:6]]
+                f["bytes"] = f["bps"]  # linjetjocklek följer bandbredden
+                f["active"] = f["conns"]
+                flows.append(f)
+            flows.sort(key=lambda f: f["bps"], reverse=True)
+            return {"window": "live", "flows": flows, "open_conns": len(self.conns),
+                    "live_conns": sum(f["conns"] for f in flows), "total_bps": sum(f["bps"] for f in flows),
+                    "measured": self._prev_states_ts}
+        seconds = {"60m": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}.get(window, 86400)
+        flows = self.history.country_flows(int(now - seconds))
+        active: dict[tuple, int] = defaultdict(int)
+        for c in self.conns.values():
+            cc = self.geo.country(c.remote_ip)
+            if cc:
+                active[(cc, c.initiated)] += 1
+        index = {(f["cc"], f["dir"]): f for f in flows}
+        for c in self.conns.values():  # aktiva anslutningar syns direkt, även innan historik finns
+            cc = self.geo.country(c.remote_ip)
+            if cc and (cc, c.initiated) not in index:
+                index[(cc, c.initiated)] = f = {"cc": cc, "dir": c.initiated, "bytes": 0, "conns": 0, "clients": []}
+                flows.append(f)
+            if cc:
+                cid = self.cid_for_ip(c.lan_ip)
+                if cid not in index[(cc, c.initiated)]["clients"]:
+                    index[(cc, c.initiated)]["clients"].append(cid)
+        for f in flows:
+            f["active"] = active.get((f["cc"], f["dir"]), 0)
+        return {"window": window, "flows": [f for f in flows if f["cc"]]}
 
     def chart_series(self, window: str = "60m", scope: str = "internet") -> dict:
         """Bandbredd och datamängd över tid för grafen."""

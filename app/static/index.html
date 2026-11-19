@@ -35,12 +35,13 @@
 
   <section class="row" id="sec-map">
     <div class="card">
-      <h2>Vart trafiken går <span class="seg" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></h2>
+      <h2>Vart trafiken går <span class="mapctrls"><span class="seg small" role="group" aria-label="Period för kartan" id="mapwin"><button type="button" data-mwin="live" aria-pressed="false"><i class="livedot"></i>Just nu</button><button type="button" data-mwin="60m" aria-pressed="false">1 h</button><button type="button" data-mwin="24h" aria-pressed="true">24 h</button><button type="button" data-mwin="7d" aria-pressed="false">7 d</button><button type="button" data-mwin="30d" aria-pressed="false">30 d</button></span><span class="seg small" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></span></h2>
+      <div class="livebar" id="livebar" hidden></div>
       <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från hemmet"></svg></div>
       <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån (klient → internet)</span><span><i style="background:var(--in)"></i>Startad utifrån (internet → klient)</span><span id="mapfilter"></span></div>
     </div>
     <div class="card">
-      <h2>Länder <small>andel av data</small></h2>
+      <h2>Länder <small id="ctry-s">andel av data</small></h2>
       <div class="clist" id="ctrylist"></div>
     </div>
   </section>

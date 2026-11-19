@@ -548,3 +548,14 @@ body.ldrawer-open{overflow:hidden}
 .kindtable td.c,.kindtable th:not(:first-child){text-align:center;width:64px}
 .kindtable input{accent-color:var(--accent);width:15px;height:15px}
 .kcrit{font-size:10px;padding:0 5px;border:1px solid rgba(255,107,107,.5);color:var(--err);margin-left:4px}
+
+/* kartans period och läget Just nu */
+.mapctrls{display:flex;gap:8px;flex-wrap:wrap}
+.livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok-fg);box-shadow:0 0 6px var(--ok-fg);margin-right:6px;vertical-align:0;animation:liveblink 1.6s ease-in-out infinite}
+@keyframes liveblink{50%{opacity:.35}}
+.livebar{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.livebar b{display:block;color:var(--fg);font-family:var(--cond);font-size:22px;font-weight:600;line-height:1.1}
+.livebar b small{font-size:12px;color:var(--muted);margin-left:3px;font-weight:500}
+.endpoint.livept circle{animation:ptpulse 2s ease-in-out infinite}
+@keyframes ptpulse{50%{r:5}}
+@media (prefers-reduced-motion:reduce){.livedot,.endpoint.livept circle{animation:none}}

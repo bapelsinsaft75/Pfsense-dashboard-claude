@@ -287,6 +287,12 @@ async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: in
     return await asyncio.to_thread(engine.top, window, limit, scope)
 
 
+@app.get("/api/flows")
+async def flows(window: str = Query("24h", pattern="^(live|60m|24h|7d|30d)$")):
+    engine: Engine = app.state.engine
+    return await asyncio.to_thread(engine.map_flows, window)
+
+
 @app.get("/api/series")
 async def series(window: str = Query("60m", pattern="^(5m|15m|60m|24h)$"),
                  scope: str = Query("internet", pattern="^(internet|internal|all)$")):

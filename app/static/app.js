@@ -93,7 +93,9 @@ class MapView {
     const sw = (f) => Math.max(1, Math.min(4.2, 1 + Math.sqrt(f.bytes / max) * 3.2));
     const show = (f) => !this.filter || f.clients.includes(this.filter);
     const col = (f) => (f.dir === "out" ? "var(--out)" : "var(--in)");
-    const tip = (f) => `${countryName(f.cc)} · ${f.dir === "out" ? "startad inifrån" : "startad utifrån"}\n${fmtBytes(f.bytes)} · ${f.conns} anslutningar${f.active ? ` (${f.active} aktiva nu)` : ""}\n${f.clients.slice(0, 8).map((c) => (byId[c] ? byId[c].name : c)).join(", ")}`;
+    const tip = (f) => this.live
+      ? `${countryName(f.cc)} · ${f.dir === "out" ? "startad inifrån" : "startad utifrån"}\n${fmtMbit(f.bps)} Mbit/s just nu · ${f.conns} ${f.conns === 1 ? "anslutning" : "anslutningar"} med trafik\n${(f.client_bps || []).map((c) => `${c.name} (${fmtMbit(c.bps)} Mbit/s)`).join(", ")}`
+      : `${countryName(f.cc)} · ${f.dir === "out" ? "startad inifrån" : "startad utifrån"}\n${fmtBytes(f.bytes)} · ${f.conns} anslutningar${f.active ? ` (${f.active} aktiva nu)` : ""}\n${f.clients.slice(0, 8).map((c) => (byId[c] ? byId[c].name : c)).join(", ")}`;
     const key = (f) => f.cc + f.dir;
     this.gB.selectAll("path").data(flows, key).join("path").attr("class", (f) => "flow" + (show(f) ? "" : " dim"))
       .attr("d", (f) => this.arc(f)).attr("stroke", col).attr("stroke-width", sw).attr("opacity", 0.28);
@@ -108,7 +110,8 @@ class MapView {
         const any = d.fs.some(show), both = d.fs.length > 1, hasOut = d.fs.some((f) => f.dir === "out");
         g.attr("transform", `translate(${x},${y})`).classed("dim", !any);
         g.select("circle").attr("r", 3.2).attr("fill", hasOut ? "var(--out)" : "var(--in)").attr("stroke", both ? "var(--in)" : "none").attr("stroke-width", both ? 1.6 : 0);
-        g.select("text").attr("x", 6).attr("y", 3).text(labels && d.cc !== "SE" ? countryName(d.cc) : "");
+        g.select("text").attr("x", 6).attr("y", 3).text(labels && d.cc !== "SE" ? countryName(d.cc) + (this.live ? ` · ${fmtMbit(d3.sum(d.fs, (f) => f.bps))} Mbit/s` : "") : "");
+        g.classed("livept", !!this.live);
         g.select("title").text(d.fs.map(tip).join("\n\n") + "\n\nKlicka för detaljer");
         g.attr("data-cc", d.cc).style("cursor", "pointer");
       });
@@ -331,7 +334,8 @@ async function openCountry(cc) {
   $("cd-clients").innerHTML = ""; $("cd-remotes").innerHTML = "";
   if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute("open", "");
   try {
-    const r = await fetch(`api/country/${encodeURIComponent(cc)}?period=${state.period}`, { cache: "no-store" });
+    const per = ["24h", "7d", "30d"].includes(mapWin) ? mapWin : "24h";
+    const r = await fetch(`api/country/${encodeURIComponent(cc)}?period=${per}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     const active = d.remotes.reduce((n, x) => n + x.active, 0);
@@ -588,8 +592,56 @@ function renderKpis(d) {
   $("k-ctry-s").textContent = `${ci.size} med anslutningar startade utifrån`;
 }
 
-function renderCountries(d) {
-  const by = d3.rollups(d.flows, (v) => ({ o: d3.sum(v.filter((f) => f.dir === "out"), (f) => f.bytes), i: d3.sum(v.filter((f) => f.dir === "in"), (f) => f.bytes), n: d3.sum(v, (f) => f.conns), hasIn: v.some((f) => f.dir === "in") }), (f) => f.cc)
+/* ── kartans period: just nu eller 1 h – 30 d ── */
+let mapWin = (() => { try { return localStorage.getItem("mapWin") || "24h"; } catch (e) { return "24h"; } })();
+let mapData = null;
+const MAPWIN_LABEL = { live: "just nu", "60m": "senaste timmen", "24h": "senaste 24 timmarna", "7d": "senaste 7 dagarna", "30d": "senaste 30 dagarna" };
+async function loadMap() {
+  try {
+    const r = await fetch(`api/flows?window=${mapWin}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    mapData = await r.json();
+    renderMapWin();
+  } catch (e) { /* kartan visar senaste svaret */ }
+}
+function renderMapWin() {
+  document.querySelectorAll("[data-mwin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mwin === mapWin));
+  const live = mapData && mapData.window === "live";
+  const lb = $("livebar");
+  lb.hidden = !live;
+  if (live) {
+    const ago = mapData.measured ? Math.max(0, Math.round(Date.now() / 1000 - mapData.measured)) : null;
+    const n = new Set(mapData.flows.map((f) => f.cc)).size;
+    lb.innerHTML = `<span><b class="num">${n}</b>${n === 1 ? "land" : "länder"} med trafik</span><span><b class="num">${mapData.live_conns}</b>anslutningar med trafik · av ${fmt(mapData.open_conns, 0)} öppna</span><span><b class="num">${fmtMbit(mapData.total_bps)}<small>Mbit/s</small></b>totalt just nu</span>${ago != null ? `<span><b>${ago} s</b>sedan senaste mätning</span>` : ""}`;
+  }
+  $("ctry-s").textContent = live ? "Mbit/s just nu" : `andel av data · ${MAPWIN_LABEL[mapWin]}`;
+  renderCountries();
+  map.flows = mapData ? mapData.flows : (state.data ? state.data.flows : []);
+  map.live = live;
+  map.filter = state.mapFilter;
+  map.render();
+}
+$("mapwin").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-mwin]"); if (!b) return;
+  mapWin = b.dataset.mwin;
+  try { localStorage.setItem("mapWin", mapWin); } catch (err) { /* ingen lagring */ }
+  mapData = null; renderMapWin(); loadMap();
+});
+
+function renderCountries() {
+  const live = mapData && mapData.window === "live";
+  const flows = mapData ? mapData.flows : (state.data ? state.data.flows : []);
+  if (live) {
+    const byL = d3.rollups(flows, (v) => ({ o: d3.sum(v.filter((f) => f.dir === "out"), (f) => f.bps), i: d3.sum(v.filter((f) => f.dir === "in"), (f) => f.bps), n: d3.sum(v, (f) => f.conns), hasIn: v.some((f) => f.dir === "in") }), (f) => f.cc)
+      .sort((a, b) => (b[1].o + b[1].i) - (a[1].o + a[1].i));
+    const allL = d3.sum(byL, (x) => x[1].o + x[1].i) || 1;
+    $("ctrylist").innerHTML = byL.length ? byL.slice(0, 9).map(([cc, v]) => {
+      const t = v.o + v.i, share = t / allL * 100;
+      return `<div class="crow pickable" data-cc="${esc(cc)}" title="Visa vilka adresser och klienter som pratar med ${esc(countryName(cc))}"><span class="f"><i class="livedot"></i>${esc(countryName(cc))}</span><span class="num">${fmtMbit(t)} Mbit/s</span><div class="split"><div class="o" style="width:${t ? share * v.o / t : 0}%"></div><div class="i" style="width:${v.hasIn ? Math.max(1.2, t ? share * v.i / t : 0) : 0}%"></div></div><span class="m">${v.n} ${v.n === 1 ? "anslutning" : "anslutningar"} med trafik${v.hasIn ? " · varav utifrån" : ""}</span><span class="m num">${fmt(share, 0)} %</span></div>`;
+    }).join("") : `<div class="empty">Ingen anslutning har haft trafik den senaste minuten.</div>`;
+    return;
+  }
+  const by = d3.rollups(flows, (v) => ({ o: d3.sum(v.filter((f) => f.dir === "out"), (f) => f.bytes), i: d3.sum(v.filter((f) => f.dir === "in"), (f) => f.bytes), n: d3.sum(v, (f) => f.conns), hasIn: v.some((f) => f.dir === "in") }), (f) => f.cc)
     .sort((a, b) => (b[1].o + b[1].i) - (a[1].o + a[1].i));
   const all = d3.sum(by, (x) => x[1].o + x[1].i) || 1;
   $("ctrylist").innerHTML = by.length ? by.slice(0, 9).map(([cc, v]) => {
@@ -960,9 +1012,10 @@ function render() {
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
   renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d); renderUnraids(d);
-  renderStatus(d); renderKpis(d); renderCountries(d); renderDevices(d); renderTable(d); renderMapFilter();
+  renderStatus(d); renderKpis(d); renderCountries(); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
-  map.flows = d.flows;
+  map.flows = mapData ? mapData.flows : d.flows;
+  map.live = mapData && mapData.window === "live";
   map.filter = state.mapFilter;
   map.render();
   if (window.onDashRender) window.onDashRender(d);
@@ -978,6 +1031,7 @@ async function load() {
     render();
     loadTop();
     loadChart();
+    loadMap();
   } catch (e) {
     $("problems").innerHTML = `<div class="problem"><b>Dashboard</b>Får inget svar från servern (${esc(e.message)}). Försöker igen …</div>`;
   }

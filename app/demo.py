@@ -356,6 +356,16 @@ def tick(engine: Engine) -> None:
         j = lambda: random.uniform(.78, 1.22)  # noqa: E731
         rates[mac] = (down * 1e6 * j(), up * 1e6 * j())
     engine.rates = rates
+    # anslutningar med trafik just nu (för kartans läge Just nu)
+    engine._prev_states_ts = now
+    for key, c in engine.conns.items():
+        mac = engine.cid_for_ip(c.lan_ip)
+        down, up = rates.get(mac, (0, 0))
+        n = sum(1 for k in engine.conns if k[1] == c.lan_ip) or 1
+        if down + up > 50_000 and random.random() < .85:
+            engine.live_traffic[key] = (now, (down + up) / n * random.uniform(.6, 1.4))
+        elif key in engine.live_traffic and now - engine.live_traffic[key][0] > 60:
+            del engine.live_traffic[key]
     engine.wan_rate = (sum(r[0] for r in rates.values()) * 1.02, sum(r[1] for r in rates.values()) * 1.02)
     for name in ("pfsense", "unifi", "netflow"):
         engine.status[name]["last"] = now
