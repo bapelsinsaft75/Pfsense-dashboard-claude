@@ -51,14 +51,14 @@ Stängda larm syns kvar under *Händelser*.
    läsrätt till status, diagnostik och brandväggstillstånd.
 2. **softflowd** (rekommenderas): installera under *System → Package Manager*. Under *Services → softflowd*:
    - Interface: **LAN** (och övriga lokala nät/VLAN). Inte WAN, då syns bara routerns publika adress.
-   - Host: dashboardens IP-adress, Port: `2055`
+   - Host: dashboardens IP-adress (t.ex. `192.168.2.30`), Port: `2055`
    - NetFlow-version: **9** (stöder även IPv6) eller 10 (IPFIX). Version 5 fungerar för IPv4.
    - Flow tracking level: Full
    - Om det finns en inställning för maximal livslängd eller aktiv timeout: sätt den till cirka 60 sekunder,
      så att långa anslutningar (strömning, nedladdningar) rapporteras löpande.
 
 3. **Fjärrloggning** (för Suricata och pfBlockerNG): *Status → System Logs → Settings → Remote Logging Options*
-   - Kryssa i *Enable Remote Logging*, Remote log servers: `<dashboardens IP>:5514`
+   - Kryssa i *Enable Remote Logging*, Remote log servers: `<dashboardens IP>:5514` (t.ex. `192.168.2.30:5514`)
    - Remote Syslog Contents: *Firewall Events* och *System Events* (eller *Everything*)
 4. **Suricata**: under *Services → Suricata → (interface) → Interface Settings*, kryssa i
    **Send Alerts to System Log**. Gör det för varje interface där Suricata körs.

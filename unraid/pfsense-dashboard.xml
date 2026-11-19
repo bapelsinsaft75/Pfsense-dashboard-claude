@@ -4,7 +4,7 @@
   <Repository>ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest</Repository>
   <Registry>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude/pkgs/container/pfsense-dashboard-claude</Registry>
   <Network>br0</Network>
-  <MyIP></MyIP>
+  <MyIP>192.168.2.30</MyIP>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Support>
