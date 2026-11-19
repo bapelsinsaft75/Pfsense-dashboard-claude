@@ -314,7 +314,9 @@ button.chip.unraid:hover{border-color:var(--unraid)}
 .urcol{display:grid;gap:8px;align-content:start;min-width:0}
 .urcol h3{margin:0;font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .urhead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-#ur-vm-head{margin-top:10px}
+.vmhead{margin-top:10px}
+.urcards{display:grid;gap:16px}
+.urcards:empty{display:none}
 .seg.small button{padding:3px 9px;font-size:12px}
 .dbar{display:inline-block;width:90px;height:6px;background:var(--track);vertical-align:middle;margin-right:8px}
 .dbar i{display:block;height:100%;background:#5f8fb5}

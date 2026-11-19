@@ -136,9 +136,14 @@ class Config:
         self.plex_poll = max(5, env_int("PLEX_POLL_SECONDS", 10))
 
         # Unraid (GraphQL-API, Settings → Management Access → API Keys)
-        self.unraid_url = _base_url(env("UNRAID_URL", "") or "", "http")
-        self.unraid_api_key = env("UNRAID_API_KEY", "") or ""
-        self.unraid_name = env("UNRAID_NAME", "") or ""
+        # Server 1: UNRAID_URL/UNRAID_API_KEY/UNRAID_NAME (eller UNRAID1_...). Fler: UNRAID2_..., upp till fyra.
+        self.unraid_servers = []
+        for i in range(1, 5):
+            pre = [f"UNRAID{i}_"] + (["UNRAID_"] if i == 1 else [])
+            get = lambda key: next((env(p + key) for p in pre if env(p + key)), "")  # noqa: E731
+            url, key = get("URL"), get("API_KEY")
+            if url and key:
+                self.unraid_servers.append({"name": get("NAME") or None, "url": _base_url(url, "http"), "key": key})
         self.unraid_verify_ssl = env_bool("UNRAID_VERIFY_SSL", False)
         self.unraid_poll = max(10, env_int("UNRAID_POLL_SECONDS", 30))
 

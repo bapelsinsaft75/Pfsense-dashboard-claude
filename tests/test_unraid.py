@@ -68,3 +68,18 @@ def test_query_fallback():
         assert not bad.status["ok"] and "API-nyckeln" in bad.status["error"]
 
     asyncio.run(run())
+
+
+def test_config_two_servers(monkeypatch):
+    from app.config import Config
+    for k in ("UNRAID_URL", "UNRAID_API_KEY", "UNRAID_NAME", "UNRAID1_URL", "UNRAID2_URL", "UNRAID2_API_KEY", "UNRAID2_NAME"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("UNRAID_URL", "192.168.2.10")
+    monkeypatch.setenv("UNRAID_API_KEY", "a")
+    monkeypatch.setenv("UNRAID_NAME", "LillaNasen")
+    monkeypatch.setenv("UNRAID2_URL", "http://192.168.2.11/")
+    monkeypatch.setenv("UNRAID2_API_KEY", "b")
+    monkeypatch.setenv("UNRAID2_NAME", "Tower")
+    servers = Config().unraid_servers
+    assert [(s["name"], s["url"], s["key"]) for s in servers] == [
+        ("LillaNasen", "http://192.168.2.10", "a"), ("Tower", "http://192.168.2.11", "b")]

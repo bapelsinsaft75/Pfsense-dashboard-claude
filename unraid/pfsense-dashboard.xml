@@ -39,9 +39,12 @@
   <Config Name="Slack: webhook-adress" Target="SLACK_WEBHOOK_URL" Default="" Mode="" Description="Incoming Webhook från Slack, börjar med https://hooks.slack.com/services/..." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Dashboardens adress" Target="PUBLIC_URL" Default="http://192.168.2.30:8080" Mode="" Description="Används för länkar i Slack och e-post." Type="Variable" Display="advanced" Required="false" Mask="false">http://192.168.2.30:8080</Config>
 
-  <Config Name="Unraid: adress" Target="UNRAID_URL" Default="" Mode="" Description="T.ex. http://192.168.2.10. Kräver Settings → Docker → Host access to custom networks." Type="Variable" Display="always" Required="false" Mask="false"></Config>
-  <Config Name="Unraid: API-nyckel" Target="UNRAID_API_KEY" Default="" Mode="" Description="Settings → Management Access → API Keys, med läsbehörighet." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="Unraid: namn" Target="UNRAID_NAME" Default="" Mode="" Description="Tomt = serverns namn." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Unraid 1: adress" Target="UNRAID_URL" Default="" Mode="" Description="T.ex. http://192.168.2.10. Kräver Settings → Docker → Host access to custom networks." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Unraid 1: API-nyckel" Target="UNRAID_API_KEY" Default="" Mode="" Description="Settings → Management Access → API Keys, med läsbehörighet." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Unraid 1: namn" Target="UNRAID_NAME" Default="LillaNasen" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">LillaNasen</Config>
+  <Config Name="Unraid 2: adress" Target="UNRAID2_URL" Default="" Mode="" Description="Nästa Unraid-server, t.ex. http://192.168.2.11" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Unraid 2: API-nyckel" Target="UNRAID2_API_KEY" Default="" Mode="" Description="API-nyckel från den servern." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Unraid 2: namn" Target="UNRAID2_NAME" Default="Tower" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">Tower</Config>
 
   <Config Name="Plex 1: namn" Target="PLEX1_NAME" Default="Peters Plex" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">Peters Plex</Config>
   <Config Name="Plex 1: adress" Target="PLEX1_URL" Default="" Mode="" Description="T.ex. http://192.168.2.56:32400" Type="Variable" Display="always" Required="false" Mask="false"></Config>

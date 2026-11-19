@@ -174,7 +174,7 @@ def _seed_plex(engine: Engine, now: float) -> None:
 
 def _seed_unraid(engine: Engine, now: float) -> None:
     from .unraid import Unraid, build, health
-    u = Unraid("Tower", "http://192.168.2.10", "demo", False)
+    u = Unraid("LillaNasen", "http://192.168.2.10", "demo", False)
     TB = 11_718_885_324  # 12 TB-disk i KiB, som API:et
     disk = lambda name, dev, used, temp, spin=True: {"name": name, "device": dev, "size": TB, "status": "DISK_OK",  # noqa: E731
                                                     "temp": temp, "fsSize": TB, "fsUsed": int(TB * used), "fsFree": int(TB * (1 - used)),
@@ -204,8 +204,33 @@ def _seed_unraid(engine: Engine, now: float) -> None:
     }
     u.data = build(sections)
     level, reasons = health(u.data)
-    u.status.update(ok=True, last=now, level=level, name="Tower", detail="; ".join(reasons))
-    engine.unraid = u
+    u.status.update(ok=True, last=now, level=level, name="LillaNasen", detail="; ".join(reasons))
+    engine.unraids = [u, _second_unraid(now)]
+
+
+def _second_unraid(now: float):
+    from .unraid import Unraid, build, health
+    u = Unraid("Tower", "http://192.168.2.11", "demo", False)
+    TB = 15_625_000_000  # 16 TB-disk i KiB
+    disk = lambda n, used, temp: {"name": n, "device": "TOSHIBA MG08ACA16TE", "size": TB, "status": "DISK_OK", "temp": temp,  # noqa: E731
+                                  "fsSize": TB, "fsUsed": int(TB * used), "isSpinning": True}
+    u.data = build({
+        "system": {"info": {"os": {"hostname": "Tower", "uptime": 41 * 86400}, "cpu": {"brand": "AMD Ryzen 7 5700G", "threads": 16},
+                            "versions": {"core": {"unraid": "7.2.4"}}},
+                   "metrics": {"cpu": {"percentTotal": 7.9}, "memory": {"total": 68719476736, "used": 24051816858}}},
+        "array": {"array": {"state": "STARTED",
+                            "capacity": {"kilobytes": {"total": str(3 * TB), "used": str(int(1.3 * TB)), "free": str(int(1.7 * TB))}},
+                            "parities": [{"name": "parity", "device": "TOSHIBA MG08ACA16TE", "size": TB, "status": "DISK_OK", "temp": 34,
+                                          "isSpinning": True}],
+                            "disks": [disk("disk1", .61, 35), disk("disk2", .43, 36), disk("disk3", .26, 34)],
+                            "caches": []}},
+        "docker": {"docker": {"containers": [{"names": [f"/{n}"], "state": "RUNNING", "status": "Up 41 days", "autoStart": True}
+                                             for n in ("plex", "tautulli", "immich", "nextcloud", "mariadb")]}},
+        "vms": {"vms": {"domains": []}},
+    })
+    level, reasons = health(u.data)
+    u.status.update(ok=True, last=now, level=level, name="Tower", detail="; ".join(reasons) or "Allt ser bra ut")
+    return u
 
 
 def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:

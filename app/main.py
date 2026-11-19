@@ -73,7 +73,7 @@ async def vpn_loop(engine: Engine, pf: PfSense) -> None:
 async def unraid_loop(engine: Engine) -> None:
     while True:
         try:
-            await engine.unraid.poll()
+            await asyncio.gather(*(u.poll() for u in engine.unraids), return_exceptions=True)
         except Exception:  # noqa: BLE001
             log.exception("Unraid-insamling misslyckades")
         await asyncio.sleep(engine.cfg.unraid_poll)
@@ -146,9 +146,9 @@ async def lifespan(app: FastAPI):
             uf = UniFi(cfg)
             closers.append(uf.close)
             tasks.append(asyncio.create_task(unifi_loop(engine, uf)))
-        if engine.unraid:
+        if engine.unraids:
             tasks.append(asyncio.create_task(unraid_loop(engine)))
-            closers.append(engine.unraid.close)
+            closers.extend(u.close for u in engine.unraids)
         if engine.plex_servers:
             tasks.append(asyncio.create_task(plex_loop(engine)))
             closers.extend(s.close for s in engine.plex_servers)
@@ -337,13 +337,13 @@ async def debug_unraid():
     engine: Engine = app.state.engine
     if not engine.cfg.debug_endpoints:
         raise HTTPException(404)
-    u = engine.unraid
-    if not u:
-        return {"configured": False, "hint": "Fyll i UNRAID_URL och UNRAID_API_KEY."}
+    if not engine.unraids:
+        return {"configured": False, "hint": "Fyll i UNRAID_URL och UNRAID_API_KEY (och UNRAID2_... för fler)."}
     from .unraid import QUERIES
-    return {"configured": True, "url": u.url, "status": u.status,
-            "chosen_query": {k: QUERIES[k][i] for k, i in u.chosen.items()},
-            "errors": u.errors, "raw": u.raw}
+    return {"configured": True, "servers": [
+        {"name": u.status["name"], "url": u.url, "status": u.status,
+         "chosen_query": {k: QUERIES[k][i] for k, i in u.chosen.items()}, "errors": u.errors, "raw": u.raw}
+        for u in engine.unraids]}
 
 
 @app.get("/api/debug/netflow")

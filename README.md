@@ -116,7 +116,9 @@ inte nå Plex-servrarna själv.
 ## 6. Unraid-status (valfritt)
 
 1. Skapa en API-nyckel med läsbehörighet under *Settings → Management Access → API Keys*.
-2. Fyll i `UNRAID_URL` (t.ex. `http://192.168.2.10`) och `UNRAID_API_KEY`.
+2. Fyll i `UNRAID_URL` (t.ex. `http://192.168.2.10`), `UNRAID_API_KEY` och gärna `UNRAID_NAME`.
+   Fler servrar: `UNRAID2_URL`, `UNRAID2_API_KEY`, `UNRAID2_NAME` och så vidare, upp till fyra.
+   Varje server får en egen statusmarkering och en egen sektion.
 3. Kör dashboarden på samma Unraid-server med egen IP på br0? Slå då på
    *Settings → Docker → Host access to custom networks* (Docker måste stoppas medan du ändrar), annars kan
    containern inte nå servern den körs på.
@@ -173,7 +175,8 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `SLACK_WEBHOOK_URL` | | Incoming Webhook från Slack |
 | `SLACK_WARNINGS` | `true` | Skicka även varningar till Slack (kan ändras på webbsidan) |
 | `UNRAID_URL`, `UNRAID_API_KEY` | `http://192.168.2.10` | Unraid-servern att övervaka |
-| `UNRAID_NAME` | | Visningsnamn, tomt = serverns namn |
+| `UNRAID_NAME` | `LillaNasen` | Visningsnamn, tomt = serverns namn |
+| `UNRAID2_URL`, `UNRAID2_API_KEY`, `UNRAID2_NAME` | `http://192.168.2.11`, …, `Tower` | Nästa Unraid-server (upp till `UNRAID4_...`) |
 | `PLEX1_NAME`, `PLEX1_URL`, `PLEX1_TOKEN` | `Peters Plex`, `http://192.168.2.56:32400` | Plex-server 1 (upp till `PLEX4_...`) |
 | `PLEX_VERIFY_SSL` | `false` | `false` för Plex egna certifikat |
 | `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |
