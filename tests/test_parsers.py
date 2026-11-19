@@ -135,3 +135,35 @@ def test_state_high_remote_port_is_outbound():
     c = cfg()
     st = parse_state({"protocol": "udp", "source": "142.250.74.14:19302", "destination": "192.168.1.21:58000"}, c, set())
     assert st.initiated == "out"
+
+
+def test_real_pfsense_29_state_format(monkeypatch):
+    """Samma uppbyggnad som pfSense CE 2.9.0 med REST API v2 ger (adresserna är utbytta)."""
+    monkeypatch.setenv("LAN_SUBNETS", "192.168.2.0/24")
+    c = Config()
+    wan = {"203.0.113.170"}
+    rows = [
+        {"interface": "igb3", "protocol": "tcp", "direction": "in", "source": "192.168.2.176:50642",
+         "destination": "34.117.13.189:443", "bytes_in": 2681660, "bytes_out": 285963},
+        {"interface": "igb0", "protocol": "tcp", "direction": "out", "source": "203.0.113.170:54388",
+         "destination": "34.117.13.189:443", "bytes_in": 2681660, "bytes_out": 285963},
+        {"interface": "all", "protocol": "tcp", "direction": "in", "source": "198.51.100.243:45262",
+         "destination": "192.168.2.56:32400", "bytes_in": 172807, "bytes_out": 1158599},
+        {"interface": "igb3", "protocol": "tcp", "direction": "out", "source": "198.51.100.243:45262",
+         "destination": "192.168.2.56:32400", "bytes_in": 172807, "bytes_out": 1158599},
+        {"interface": "igb3", "protocol": "tcp", "direction": "in", "source": "192.168.2.56:53801",
+         "destination": "90.184.93.175:56555", "bytes_in": 26631, "bytes_out": 752009},
+        {"interface": "igb0", "protocol": "udp", "direction": "out", "source": "203.0.113.170:18474",
+         "destination": "176.10.148.59:1194", "bytes_in": 54667037255, "bytes_out": 92201119192},
+        {"interface": "igb0", "protocol": "icmp", "direction": "out", "source": "203.0.113.170:54479",
+         "destination": "203.0.113.1:8"},
+    ]
+    # 198.51.100.x är en dokumentationsadress och räknas inte som publik; byt till en publik för testet
+    rows[2]["source"] = rows[3]["source"] = "2.249.115.243:45262"
+    parsed = [parse_state(r, c, wan) for r in rows]
+    out, out_wan, plex, plex_lan, p2p, vpn, icmp = parsed
+    assert out.initiated == "out" and out.lan_ip == "192.168.2.176" and out.up == 2681660 and out.down == 285963
+    assert out_wan is None and vpn is None and icmp is None  # routerns egna rader på WAN räknas inte
+    assert plex.initiated == "in" and plex.lan_port == 32400 and plex.up == 1158599 and plex.down == 172807
+    assert plex.key == plex_lan.key  # samma anslutning, räknas en gång
+    assert p2p.initiated == "out"  # båda portarna höga: fälten avgör

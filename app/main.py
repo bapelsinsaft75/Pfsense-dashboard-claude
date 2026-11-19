@@ -293,8 +293,10 @@ async def debug_raw(name: str):
     engine: Engine = app.state.engine
     if not engine.cfg.debug_endpoints:
         raise HTTPException(404)
-    if name not in ("states", "arp", "leases", "interfaces", "gateways", "openvpn", "unifi_clients", "unifi_devices"):
-        raise HTTPException(404, "Okänd källa")
+    valid = ("states", "arp", "leases", "interfaces", "gateways", "openvpn", "unifi_clients", "unifi_devices")
+    name = {"state": "states", "interface": "interfaces", "lease": "leases", "gateway": "gateways"}.get(name, name)
+    if name not in valid:
+        raise HTTPException(404, f"Okänd källa '{name}'. Giltiga: {', '.join(valid)}")
     return JSONResponse({"name": name, "sample": engine.raw.get(name, [])})
 
 

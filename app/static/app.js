@@ -183,6 +183,13 @@ function renderEvents(d) {
 }
 
 /* ── land: vilka adresser och klienter ── */
+const PORTS = {
+  20: "FTP", 21: "FTP", 22: "SSH", 25: "SMTP", 53: "DNS", 80: "HTTP", 110: "POP3", 123: "NTP", 143: "IMAP", 443: "HTTPS",
+  465: "SMTP", 587: "SMTP", 853: "DNS-över-TLS", 993: "IMAP", 995: "POP3", 1194: "OpenVPN", 1883: "MQTT", 3074: "Xbox Live",
+  3389: "RDP", 3478: "STUN", 3479: "STUN", 3480: "STUN", 5060: "SIP", 5222: "XMPP", 5223: "Apple push", 5228: "Google push",
+  5353: "mDNS", 8080: "HTTP", 8443: "HTTPS", 8883: "MQTT", 9339: "spel", 19302: "Google Meet", 25565: "Minecraft",
+  27015: "Steam", 32400: "Plex", 51413: "BitTorrent", 51820: "WireGuard",
+};
 async function openCountry(cc) {
   const dlg = $("country");
   $("cd-title").textContent = countryName(cc);
@@ -200,7 +207,7 @@ async function openCountry(cc) {
       d.clients.map((c) => `<tr class="pickable" data-client="${esc(c.id)}"><td>${esc(c.name)}</td><td class="ip">${esc(c.ip || "–")}</td><td class="r-right num">${c.out ? fmtBytes(c.out) : "–"}</td><td class="r-right num">${c.in ? fmtBytes(c.in) : "–"}</td><td class="r-right num">${fmt(c.conns, 0)}</td></tr>`).join("")
     }</tbody></table>` : `<p class="muted">Ingen klient har pratat med ${esc(countryName(cc))} under perioden.</p>`;
     $("cd-remotes").innerHTML = d.remotes.length ? `<table><thead><tr><th>Adress</th><th>Värdnamn</th><th>Organisation</th><th>Port</th><th>Riktning</th><th>Klient</th><th class="r-right">Data</th><th class="r-right">Anslutn.</th><th>Senast</th></tr></thead><tbody>${
-      d.remotes.map((x) => `<tr><td class="ip">${esc(x.ip)}${x.active ? ' <span class="live" title="Aktiv anslutning just nu"></span>' : ""}</td><td class="wrapcell">${esc(x.host || "–")}</td><td class="wrapcell">${esc(x.org || "–")}</td><td class="num">${x.ports.map(esc).join(", ") || "–"}</td><td>${dirPill(x.dir)}</td><td class="wrapcell">${x.clients.map((c) => esc(c.name)).join(", ")}</td><td class="r-right num">${x.bytes ? fmtBytes(x.bytes) : "–"}</td><td class="r-right num">${fmt(x.conns, 0)}</td><td class="muted">${x.active ? "nu" : ago(x.last)}</td></tr>`).join("")
+      d.remotes.map((x) => `<tr><td class="ip">${esc(x.ip)}${x.active ? ' <span class="live" title="Aktiv anslutning just nu"></span>' : ""}</td><td class="wrapcell">${esc(x.host || "–")}</td><td class="wrapcell">${esc(x.org || "–")}</td><td class="num">${x.ports.map((p) => esc(p) + (PORTS[p] ? ` <small class="muted">${PORTS[p]}</small>` : "")).join(", ") || "–"}</td><td>${dirPill(x.dir)}</td><td class="wrapcell">${x.clients.map((c) => esc(c.name)).join(", ")}</td><td class="r-right num">${x.bytes ? fmtBytes(x.bytes) : "–"}</td><td class="r-right num">${fmt(x.conns, 0)}</td><td class="muted">${x.active ? "nu" : ago(x.last)}</td></tr>`).join("")
     }</tbody></table>` : `<p class="muted">Inga adresser sparade än. Adresser sparas från och med den här versionen av dashboarden.</p>`;
   } catch (e) {
     $("cd-sub").textContent = `Kunde inte hämta detaljer (${e.message}).`;
