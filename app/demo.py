@@ -11,20 +11,20 @@ from .pfsense import Conn
 
 # id, namn, ip, typ, ned Mbit/s, upp Mbit/s, GB per dygn, anslutning
 CLIENTS = [
-    ("bc:33:29:7a:01:f2", "PS5", "192.168.1.41", 182, 3.2, 48.2, ("wired", "sw3", 3)),
-    ("a8:23:fe:10:9c:44", "Vardagsrum-TV", "192.168.1.40", 24.5, .6, 31.7, ("wired", "sw3", 2)),
-    ("d0:50:99:3a:11:0c", "Unraid", "192.168.1.10", 6.1, 41.8, 22.4, ("wired", "sw1", 3)),
-    ("04:42:1a:c3:7e:90", "Kontor-PC", "192.168.1.22", 14.2, 8.9, 12.9, ("wired", "sw2", 2)),
-    ("f4:d4:88:5b:2e:17", "MacBook-Pro", "192.168.1.21", 9.7, 2.4, 9.8, ("wifi", "5 GHz", -54)),
-    ("90:dd:5d:21:b8:03", "Apple-TV", "192.168.1.42", 0, 0, 7.1, ("wired", "sw3", 4)),
-    ("6c:4a:85:e0:33:9b", "iPad", "192.168.1.35", 3.8, .4, 4.3, ("wifi", "5 GHz", -61)),
-    ("3a:91:0f:6e:d2:55", "iPhone-15", "192.168.1.34", 2.1, .9, 3.9, ("wifi", "5 GHz", -58)),
-    ("8e:12:c7:40:aa:61", "Galaxy-S24", "192.168.1.36", 1.3, .3, 2.7, ("wifi", "5 GHz", -67)),
-    ("48:a6:b8:0d:5f:2e", "Sonos-Kök", "192.168.1.50", .32, .02, 1.2, ("wifi", "2,4 GHz", -63)),
-    ("dc:a6:32:9f:14:b7", "Home-Assistant", "192.168.1.60", .12, .21, .62, ("wired", "sw1", 5)),
-    ("64:90:c1:2b:7d:08", "Roborock", "192.168.1.62", .01, .02, .15, ("wifi", "2,4 GHz", -71)),
-    ("00:17:88:6c:41:d9", "Hue-Bridge", "192.168.1.61", 0, .01, .04, ("wired", "sw1", 7)),
-    ("30:24:a9:8e:12:7c", "Skrivare-HP", "192.168.1.70", 0, 0, .01, ("wired", "sw2", 4)),
+    ("bc:33:29:7a:01:f2", "PS5", "192.168.2.41", 182, 3.2, 48.2, ("wired", "sw3", 3)),
+    ("a8:23:fe:10:9c:44", "Vardagsrum-TV", "192.168.2.40", 24.5, .6, 31.7, ("wired", "sw3", 2)),
+    ("d0:50:99:3a:11:0c", "Unraid", "192.168.2.10", 6.1, 41.8, 22.4, ("wired", "sw1", 3)),
+    ("04:42:1a:c3:7e:90", "Kontor-PC", "192.168.2.22", 14.2, 8.9, 12.9, ("wired", "sw2", 2)),
+    ("f4:d4:88:5b:2e:17", "MacBook-Pro", "192.168.2.21", 9.7, 2.4, 9.8, ("wifi", "5 GHz", -54)),
+    ("90:dd:5d:21:b8:03", "Apple-TV", "192.168.2.42", 0, 0, 7.1, ("wired", "sw3", 4)),
+    ("6c:4a:85:e0:33:9b", "iPad", "192.168.2.35", 3.8, .4, 4.3, ("wifi", "5 GHz", -61)),
+    ("3a:91:0f:6e:d2:55", "iPhone-15", "192.168.2.34", 2.1, .9, 3.9, ("wifi", "5 GHz", -58)),
+    ("8e:12:c7:40:aa:61", "Galaxy-S24", "192.168.2.36", 1.3, .3, 2.7, ("wifi", "5 GHz", -67)),
+    ("48:a6:b8:0d:5f:2e", "Sonos-Kök", "192.168.2.50", .32, .02, 1.2, ("wifi", "2,4 GHz", -63)),
+    ("dc:a6:32:9f:14:b7", "Home-Assistant", "192.168.2.60", .12, .21, .62, ("wired", "sw1", 5)),
+    ("64:90:c1:2b:7d:08", "Roborock", "192.168.2.62", .01, .02, .15, ("wifi", "2,4 GHz", -71)),
+    ("00:17:88:6c:41:d9", "Hue-Bridge", "192.168.2.61", 0, .01, .04, ("wired", "sw1", 7)),
+    ("30:24:a9:8e:12:7c", "Skrivare-HP", "192.168.2.70", 0, 0, .01, ("wired", "sw2", 4)),
 ]
 IDLE = {"Apple-TV", "Skrivare-HP"}
 
@@ -138,7 +138,7 @@ def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
              "PS5 har använt 48,2 GB de senaste 24 timmarna. Normalt är 11,6 GB per dygn (4 gånger mer än vanligt).",
              now=now - 25 * 60)
     a.raise_("pfb:64:90:c1:2b:7d:08", "warning", "pfblocker", "Roborock försöker nå blockerade adresser",
-             "pfBlockerNG har stoppat 31 försök från Roborock (192.168.1.62) de senaste 10 minuterna, "
+             "pfBlockerNG har stoppat 31 försök från Roborock (192.168.2.62) de senaste 10 minuterna, "
              "till bland annat 47.88.0.12, 8.209.0.4. Det kan tyda på skadlig kod eller reklam/spårning.", now=now - 8 * 60)
     h = engine.history
     sigs = [("ET SCAN Suspicious inbound to mySQL port 3306", 2, 41), ("ET DROP Dshield Block Listed Source", 2, 128),

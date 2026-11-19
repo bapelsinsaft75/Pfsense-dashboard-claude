@@ -117,10 +117,10 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 
 | Variabel | Exempel | Beskrivning |
 | --- | --- | --- |
-| `PFSENSE_URL` | `https://192.168.1.1` | Tomt = demoläge |
+| `PFSENSE_URL` | `https://192.168.2.1` | Tomt = demoläge |
 | `PFSENSE_API_KEY` | | REST API-nyckel |
-| `LAN_SUBNETS` | `192.168.1.0/24` | Lokala nät, kommaseparerade |
-| `UNIFI_URL` | `https://192.168.1.5:8443` | UniFi-containerns adress |
+| `LAN_SUBNETS` | `192.168.2.0/24` | Lokala nät, kommaseparerade |
+| `UNIFI_URL` | `https://192.168.2.9:8443` | UniFi-containerns adress |
 | `UNIFI_USER` / `UNIFI_PASS` | | Lokalt UniFi-konto |
 | `UNIFI_SITE` | `default` | |
 | `NETFLOW_PORT` | `2055` | `0` stänger av NetFlow-mottagaren |

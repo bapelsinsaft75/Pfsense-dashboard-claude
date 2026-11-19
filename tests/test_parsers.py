@@ -110,3 +110,10 @@ def test_unifi():
                       "uplink": {"uplink_mac": "00:11:22:33:44:55", "uplink_remote_port": None, "port_idx": 1}})
     assert d["model"] == "USW-Lite-16-PoE" and d["ports"] == 16 and d["ports_up"] == [1, 3] and d["own_uplink"] == 1
     assert parse_device({"mac": "00:00:00:00:00:01", "type": "ugw"}) is None
+
+
+def test_base_url(monkeypatch):
+    monkeypatch.setenv("UNIFI_URL", "https://192.168.2.9:8443/manage/site/default/dashboard")
+    monkeypatch.setenv("PFSENSE_URL", "192.168.2.1/")
+    c = Config()
+    assert c.unifi_url == "https://192.168.2.9:8443" and c.pfsense_url == "https://192.168.2.1"

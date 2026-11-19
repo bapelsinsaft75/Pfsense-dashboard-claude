@@ -20,11 +20,11 @@
   <Config Name="Syslog-port" Target="5514" Default="5514" Mode="udp" Description="Hit skickar pfSense sin logg (Suricata, pfBlockerNG, brandvägg)." Type="Port" Display="always" Required="false" Mask="false">5514</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/pfsense-dashboard" Mode="rw" Description="Historik (SQLite) och GeoIP-databas." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/pfsense-dashboard</Config>
 
-  <Config Name="pfSense-adress" Target="PFSENSE_URL" Default="" Mode="" Description="T.ex. https://192.168.1.1. Lämna tomt för demoläge." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="pfSense-adress" Target="PFSENSE_URL" Default="" Mode="" Description="T.ex. https://192.168.2.1. Lämna tomt för demoläge." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="pfSense API-nyckel" Target="PFSENSE_API_KEY" Default="" Mode="" Description="Nyckel från System → REST API → Keys i pfSense. Läsrättighet räcker." Type="Variable" Display="always" Required="false" Mask="true"></Config>
-  <Config Name="LAN-nät" Target="LAN_SUBNETS" Default="192.168.1.0/24" Mode="" Description="Dina lokala nät, kommaseparerade, t.ex. 192.168.1.0/24,192.168.20.0/24" Type="Variable" Display="always" Required="true" Mask="false">192.168.1.0/24</Config>
+  <Config Name="LAN-nät" Target="LAN_SUBNETS" Default="192.168.2.0/24" Mode="" Description="Dina lokala nät, kommaseparerade, t.ex. 192.168.2.0/24,192.168.20.0/24" Type="Variable" Display="always" Required="true" Mask="false">192.168.2.0/24</Config>
 
-  <Config Name="UniFi-adress" Target="UNIFI_URL" Default="" Mode="" Description="T.ex. https://192.168.1.5:8443 (UniFi-containerns IP på br0)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="UniFi-adress" Target="UNIFI_URL" Default="" Mode="" Description="T.ex. https://192.168.2.9:8443 (UniFi-containerns IP på br0)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="UniFi-användare" Target="UNIFI_USER" Default="" Mode="" Description="Lokalt UniFi-konto med läsbehörighet." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="UniFi-lösenord" Target="UNIFI_PASS" Default="" Mode="" Description="" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="UniFi-site" Target="UNIFI_SITE" Default="default" Mode="" Description="Sitens kortnamn i UniFi (oftast default)." Type="Variable" Display="advanced" Required="false" Mask="false">default</Config>

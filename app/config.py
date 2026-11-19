@@ -44,23 +44,34 @@ def _networks(raw: str) -> list[ipaddress._BaseNetwork]:
     return nets
 
 
+def _base_url(raw: str) -> str:
+    """'https://192.168.2.9:8443/manage/site/default/dashboard' → 'https://192.168.2.9:8443'."""
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = "https://" + raw
+    scheme, _, rest = raw.partition("://")
+    return f"{scheme}://{rest.split('/', 1)[0]}"
+
+
 class Config:
     def __init__(self) -> None:
         self.data_dir = env("DATA_DIR", "/data")
         self.web_port = env_int("WEB_PORT", 8080)
 
         # pfSense REST API (pfSense-pkg-RESTAPI v2)
-        self.pfsense_url = (env("PFSENSE_URL", "") or "").rstrip("/")
+        self.pfsense_url = _base_url(env("PFSENSE_URL", "") or "")
         self.pfsense_api_key = env("PFSENSE_API_KEY", "") or ""
         self.pfsense_verify_ssl = env_bool("PFSENSE_VERIFY_SSL", False)
         self.pfsense_poll = max(3, env_int("PFSENSE_POLL_SECONDS", 10))
         self.pfsense_client_poll = max(10, env_int("PFSENSE_CLIENT_POLL_SECONDS", 60))
         self.wan_interface = (env("WAN_INTERFACE", "wan") or "wan").lower()
 
-        self.lan_subnets = _networks(env("LAN_SUBNETS", "192.168.1.0/24") or "")
+        self.lan_subnets = _networks(env("LAN_SUBNETS", "192.168.2.0/24") or "")
 
         # UniFi Network Application
-        self.unifi_url = (env("UNIFI_URL", "") or "").rstrip("/")
+        self.unifi_url = _base_url(env("UNIFI_URL", "") or "")
         self.unifi_user = env("UNIFI_USER", "") or ""
         self.unifi_pass = env("UNIFI_PASS", "") or ""
         self.unifi_site = env("UNIFI_SITE", "default") or "default"
