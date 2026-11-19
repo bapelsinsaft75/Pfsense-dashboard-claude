@@ -157,6 +157,8 @@ def setup(engine: Engine) -> None:
     _seed_alerts(engine, now, rnd)
     _seed_plex(engine, now)
     _seed_unraid(engine, now)
+    if engine.pihole is None:
+        engine.pihole = DemoPiHole(engine)
     tick(engine)
 
 
@@ -369,3 +371,142 @@ def tick(engine: Engine) -> None:
     engine.wan_rate = (sum(r[0] for r in rates.values()) * 1.02, sum(r[1] for r in rates.values()) * 1.02)
     for name in ("pfsense", "unifi", "netflow"):
         engine.status[name]["last"] = now
+
+
+# ── Pi-hole i demoläget: ett låtsas-API med samma svar som Pi-hole v6 ──
+from .pihole import PiHole  # noqa: E402
+
+PH_ALLOWED = ["www.youtube.com", "i.ytimg.com", "api.github.com", "ps5.np.playstation.net", "plex.tv", "time.apple.com",
+              "www.google.com", "gateway.icloud.com", "open.spotify.com", "www.svt.se", "s.youtube.com",
+              "connectivitycheck.gstatic.com", "netflix.com", "www.dn.se", "graph.facebook.com"]
+PH_BLOCKED = ["telemetry.roborock.com", "ads.samsungads.com", "app-measurement.com", "doubleclick.net",
+              "metrics.icloud.com", "googleads.g.doubleclick.net", "samsungacr.com", "log.tiktokv.com"]
+PH_REASON = ["GRAVITY"] * 6 + ["REGEX"]
+
+
+class DemoPiHole(PiHole):
+    def __init__(self, engine: Engine) -> None:
+        super().__init__("Pi-hole", "http://192.168.2.40", "demo", False)
+        self.engine = engine
+        self._block = {"blocking": "enabled", "timer": None, "until": None}
+        now = time.time()
+        self._rules = [
+            {"domain": "s.youtube.com", "type": "allow", "kind": "exact", "comment": "", "enabled": True,
+             "date_added": int(now - 47 * 86400), "id": 1},
+            {"domain": r"(\.|^)tiktokv\.com$", "type": "deny", "kind": "regex", "comment": "", "enabled": True,
+             "date_added": int(now - 7 * 86400), "id": 2},
+        ]
+
+    def _ips(self) -> list[str]:
+        ips = [ip for ip in self.engine.ip_to_cid if ip.startswith("192.168.")]
+        return ips or ["192.168.2.20", "192.168.2.41", "192.168.2.55", "192.168.2.62"]
+
+    def _rate(self, t: float) -> float:
+        h = datetime.fromtimestamp(t, ZoneInfo("Europe/Stockholm"))
+        return 0.6 * _daily_shape(h.hour + h.minute / 60) + 0.15
+
+    def _query(self, t: int, rnd: random.Random) -> dict:
+        ips = self._ips()
+        ip = ips[rnd.randrange(len(ips))]
+        blocked = rnd.random() < (0.9 if ip.endswith(".62") else 0.17)
+        if self._block["blocking"] != "enabled":
+            blocked = False
+        dom = (PH_BLOCKED if blocked else PH_ALLOWED)[int(rnd.paretovariate(1.2)) % (8 if blocked else 15)]
+        deny = {r["domain"] for r in self._rules if r["type"] == "deny" and r["kind"] == "exact"}
+        allow = {r["domain"] for r in self._rules if r["type"] == "allow" and r["kind"] == "exact"}
+        status, list_id = (rnd.choice(PH_REASON), None) if blocked else (rnd.choice(["FORWARDED", "CACHE", "CACHE"]), None)
+        if dom in allow:
+            status, list_id = "FORWARDED", 1
+        elif dom in deny and self._block["blocking"] == "enabled":
+            status, list_id = "DENYLIST", 3
+        return {"id": t, "time": t + rnd.random(), "type": rnd.choice(["A", "A", "AAAA", "HTTPS"]), "domain": dom,
+                "status": status, "list_id": list_id, "client": {"ip": ip, "name": None},
+                "reply": {"type": "IP" if not blocked else "BLOCKED",
+                          "time": -1 if status in PH_REASON else (0.1 if status == "CACHE" else rnd.uniform(6, 30))}}
+
+    def _queries(self, since: float, until: float) -> list[dict]:
+        out = []
+        for t in range(int(until), int(since), -1):
+            rnd = random.Random(t)
+            if rnd.random() < self._rate(t) * 1.4:
+                out.append(self._query(t, rnd))
+        return out
+
+    def _history(self, since: float, until: float) -> list[dict]:
+        out = []
+        for t in range(int(since // 600 * 600), int(until), 600):
+            r = self._rate(t)
+            rnd = random.Random(t)
+            total = int(r * 600 * 1.4 * rnd.uniform(.8, 1.2))
+            blocked = int(total * rnd.uniform(.13, .22))
+            out.append({"timestamp": t, "total": total, "blocked": blocked, "cached": int(total * .55),
+                        "forwarded": total - blocked - int(total * .55)})
+        return out
+
+    def _top(self, since: float, until: float, blocked: bool, key: str, count: int) -> list[dict]:
+        hist = self._history(since, until)
+        total = sum(h["blocked" if blocked else "total"] for h in hist)
+        if key == "domain":
+            names = PH_BLOCKED if blocked else PH_ALLOWED
+            w = [1 / (i + 1) ** 1.1 for i in range(len(names))]
+            return [{"domain": n, "count": int(total * x / sum(w))} for n, x in zip(names, w)][:count]
+        ips = self._ips()
+        w = [1 / (i + 1) ** .9 for i in range(len(ips))]
+        rows = []
+        for ip, x in zip(ips, w):
+            share = int(total * x / sum(w))
+            if blocked and ip.endswith(".62"):
+                share *= 4
+            rows.append({"ip": ip, "name": None, "count": share})
+        return sorted(rows, key=lambda r: r["count"], reverse=True)[:count]
+
+    async def _api(self, method: str, path: str, params: dict | None = None, json=None):
+        p = params or {}
+        now = time.time()
+        if self._block["until"] and now >= self._block["until"]:
+            self._block = {"blocking": "enabled", "timer": None, "until": None}
+        if path == "/auth":
+            return 200, {"session": {"valid": True, "sid": "demo", "validity": 1800}}
+        if path == "/dns/blocking":
+            if method == "POST":
+                t = (json or {}).get("timer")
+                self._block = {"blocking": "enabled" if json.get("blocking") else "disabled", "timer": t,
+                               "until": now + t if t else None}
+            left = self._block["until"] - now if self._block["until"] else None
+            return 200, {"blocking": self._block["blocking"], "timer": left}
+        if path == "/stats/summary":
+            hist = self._history(now - 86400, now)
+            total, blocked = sum(h["total"] for h in hist), sum(h["blocked"] for h in hist)
+            return 200, {"queries": {"total": total, "blocked": blocked, "percent_blocked": blocked / total * 100,
+                                     "cached": sum(h["cached"] for h in hist)},
+                         "clients": {"active": len(self._ips()), "total": len(self._ips()) + 4},
+                         "gravity": {"domains_being_blocked": 1243876, "last_update": int(now - 19 * 3600)}}
+        if path == "/info/version":
+            return 200, {"version": {"core": {"local": {"version": "v6.1"}, "remote": {"version": "v6.2"}},
+                                     "ftl": {"local": {"version": "v6.1"}, "remote": {"version": "v6.2"}},
+                                     "web": {"local": {"version": "v6.1"}, "remote": {"version": "v6.1"}}}}
+        if path == "/domains" and method == "GET":
+            return 200, {"domains": self._rules}
+        if path.startswith("/domains/"):
+            parts = path.split("/")
+            if method == "POST":
+                self._rules.append({"domain": json["domain"], "type": parts[2], "kind": parts[3], "comment": json.get("comment"),
+                                    "enabled": True, "date_added": int(now), "id": len(self._rules) + 10})
+                return 201, {"domains": []}
+            from urllib.parse import unquote
+            dom = unquote(parts[4])
+            self._rules = [r for r in self._rules if not (r["type"] == parts[2] and r["kind"] == parts[3] and r["domain"] == dom)]
+            return 204, None
+        if path in ("/history", "/history/database"):
+            since = float(p.get("from", now - 86400))
+            return 200, {"history": self._history(since, float(p.get("until", now)))}
+        if path in ("/stats/top_domains", "/stats/database/top_domains", "/stats/top_clients", "/stats/database/top_clients"):
+            since = float(p.get("from", now - 86400))
+            key = "domain" if "domains" in path else "ip"
+            rows = self._top(since, float(p.get("until", now)), p.get("blocked") == "true", key, int(p.get("count", 10)))
+            return 200, {"domains" if key == "domain" else "clients": rows}
+        if path == "/queries":
+            since = float(p.get("from", now - 600))
+            qs = self._queries(since, min(now, float(p.get("until", now))))
+            return 200, {"queries": qs[: int(p.get("length", 100))]}
+        return 404, {"error": {"message": "okänd sökväg i demoläget"}}

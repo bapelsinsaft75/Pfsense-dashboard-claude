@@ -52,6 +52,9 @@
   <Config Name="Plex 2: namn" Target="PLEX2_NAME" Default="Alex Plex" Mode="" Description="Visas i statusraden." Type="Variable" Display="always" Required="false" Mask="false">Alex Plex</Config>
   <Config Name="Plex 2: adress" Target="PLEX2_URL" Default="" Mode="" Description="T.ex. http://192.168.100.20:32400" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Plex 2: token" Target="PLEX2_TOKEN" Default="" Mode="" Description="X-Plex-Token för servern." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Pi-hole: adress" Target="PIHOLE_URL" Default="" Mode="" Description="Adressen till Pi-hole v6, t.ex. http://192.168.2.40. Lämna tomt om du inte har Pi-hole." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Pi-hole: app-lösenord" Target="PIHOLE_PASSWORD" Default="" Mode="" Description="Skapas i Pi-hole under Settings → Web interface / API → Configure app password. Lämna tomt om Pi-hole saknar lösenord." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Pi-hole: namn" Target="PIHOLE_NAME" Default="Pi-hole" Mode="" Description="Visas i statusraden." Type="Variable" Display="advanced" Required="false" Mask="false">Pi-hole</Config>
 
   <Config Name="Hemstad" Target="HOME_CITY" Default="Örebro" Mode="" Description="Namn vid hus-ikonen på kartan." Type="Variable" Display="advanced" Required="false" Mask="false">Örebro</Config>
   <Config Name="Hemstad latitud" Target="HOME_LAT" Default="59.2741" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">59.2741</Config>

@@ -34,11 +34,12 @@ ALERT_KINDS = {
     "unraid_watch": ("Övervakad container har stannat", True, True),
     "unraid_vm": ("Övervakad virtuell maskin har stannat", True, True),
     "plex_down": ("Plex-server svarar inte", True, True),
+    "pihole_down": ("Pi-hole svarar inte", True, True),
 }
 
 # Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
 CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_problem",
-                  "unraid_watch", "unraid_vm", "plex_down"}
+                  "unraid_watch", "unraid_vm", "plex_down", "pihole_down"}
 EMAIL_RE = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 
 # namn: (typ, min, max)

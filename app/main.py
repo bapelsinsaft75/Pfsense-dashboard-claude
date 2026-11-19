@@ -20,6 +20,7 @@ from .config import Config
 from .engine import Engine
 from .netflow import NetflowProtocol
 from .pfsense import PfSense, PfSenseError
+from .pihole import PiHoleError, clean_domain, rule_label
 from .syslog import SyslogProtocol
 from .unifi import UniFi, UniFiError
 
@@ -106,6 +107,16 @@ async def plex_loop(engine: Engine) -> None:
         await asyncio.sleep(engine.cfg.plex_poll)
 
 
+async def pihole_loop(engine: Engine) -> None:
+    while True:
+        await engine.pihole.poll()
+        try:
+            engine.check_pihole()
+        except Exception:  # noqa: BLE001
+            log.exception("Pi-hole-kontroll misslyckades")
+        await asyncio.sleep(min(engine.cfg.pihole_poll, engine.settings.get("confirm_interval")))
+
+
 async def unifi_loop(engine: Engine, uf: UniFi) -> None:
     while True:
         try:
@@ -157,6 +168,8 @@ async def lifespan(app: FastAPI):
     if cfg.demo:
         log.info("Startar i demoläge med exempeldata (PFSENSE_URL är inte satt).")
         demo.setup(engine)
+        if engine.pihole:
+            tasks.append(asyncio.create_task(pihole_loop(engine)))
     else:
         await engine.geo.ensure()
         tasks.append(asyncio.create_task(engine.geo.refresh_loop()))
@@ -171,6 +184,9 @@ async def lifespan(app: FastAPI):
         if engine.unraids:
             tasks.append(asyncio.create_task(unraid_loop(engine)))
             closers.extend(u.close for u in engine.unraids)
+        if engine.pihole:
+            tasks.append(asyncio.create_task(pihole_loop(engine)))
+            closers.append(engine.pihole.close)
         if engine.plex_servers:
             tasks.append(asyncio.create_task(plex_loop(engine)))
             closers.extend(s.close for s in engine.plex_servers)
@@ -280,6 +296,92 @@ async def plex_thumb(server: int, path: str = Query(..., max_length=300)):
     return Response(hit[0], media_type=hit[1], headers={"Cache-Control": "max-age=3600"})
 
 
+def _pihole():
+    engine: Engine = app.state.engine
+    if not engine.pihole:
+        raise HTTPException(404, "Pi-hole är inte konfigurerat (PIHOLE_URL).")
+    return engine, engine.pihole
+
+
+@app.get("/api/pihole")
+async def pihole_stats(period: str = Query("24h", pattern="^(live|24h|7d|30d)$")):
+    engine, ph = _pihole()
+    try:
+        data = dict(await ph.period(period))
+    except PiHoleError as exc:
+        return {"brief": ph.brief(), "error": str(exc), "rules": ph.rules}
+    data["clients"] = engine.pihole_named([dict(c) for c in data["clients"]])
+    data["clients"].sort(key=lambda c: c["total"], reverse=True)
+    return {"brief": ph.brief(), "data": data, "rules": ph.rules}
+
+
+@app.get("/api/pihole/queries")
+async def pihole_queries(n: int = Query(10, ge=1, le=50), show: str = Query("all", pattern="^(all|allowed|blocked)$")):
+    engine, ph = _pihole()
+    try:
+        qs = await ph.queries(n if show == "all" else 1000)
+    except PiHoleError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    if show != "all":
+        qs = [q for q in qs if q["blocked"] == (show == "blocked")]
+    return {"queries": engine.pihole_named(qs[:n])}
+
+
+@app.post("/api/pihole/blocking")
+async def pihole_blocking(body: dict = Body(...)):
+    engine, ph = _pihole()
+    enabled = bool(body.get("enabled"))
+    minutes = body.get("minutes")
+    seconds = None
+    if not enabled:
+        try:
+            seconds = int(round(float(minutes) * 60))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "Ange hur många minuter blockeringen ska pausas.") from exc
+        if not 1 <= seconds <= 7 * 86400:
+            raise HTTPException(400, "Pausen måste vara mellan 1 minut och 7 dagar.")
+    try:
+        state = await ph.set_blocking(enabled, seconds)
+    except PiHoleError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    m = seconds // 60 if seconds else 0
+    title = "Pi-hole: blockeringen påslagen igen" if enabled else f"Pi-hole: blockeringen pausad i {m} min"
+    engine.alerts.note("pihole_change", title, "Ändrat från dashboarden.")
+    return {"brief": ph.brief(), "blocking": state}
+
+
+@app.post("/api/pihole/domain")
+async def pihole_domain(body: dict = Body(...)):
+    engine, ph = _pihole()
+    action = body.get("action")
+    scope = body.get("scope") or "exact"
+    if action not in ("block", "unblock") or scope not in ("exact", "sub"):
+        raise HTTPException(400, "Okänd åtgärd.")
+    try:
+        domain = clean_domain(str(body.get("domain") or ""))
+    except PiHoleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        what = await ph.change_domain(action, domain, scope)
+    except PiHoleError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    verb = "blockerade" if action == "block" else "avblockerade"
+    engine.alerts.note("pihole_change", f"Pi-hole: {verb} {domain}", f"Från dashboarden: {what}.")
+    return {"done": what, "rules": ph.rules}
+
+
+@app.post("/api/pihole/rule/delete")
+async def pihole_rule_delete(body: dict = Body(...)):
+    engine, ph = _pihole()
+    try:
+        await ph.remove_rule(str(body.get("type")), str(body.get("kind")), str(body.get("domain") or ""))
+    except PiHoleError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    lst = "tillåtlistan" if body.get("type") == "allow" else "blocklistan"
+    engine.alerts.note("pihole_change", f"Pi-hole: {rule_label(str(body.get('domain') or ''))} borttagen ur {lst}", "Ändrat från dashboarden.")
+    return {"rules": ph.rules}
+
+
 @app.get("/api/top")
 async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: int = Query(10, ge=1, le=100),
               scope: str = Query("internet", pattern="^(internet|internal|all)$")):
@@ -335,6 +437,7 @@ async def get_settings():
                                                          "host": engine.mailer.host},
             "slack": {"enabled": engine.slack.enabled},
             "servers": {"plex": [p.name for p in engine.plex_servers],
+                        "pihole": [engine.pihole.name] if engine.pihole else [],
                         "unraid": [u.status.get("name") or u.url for u in engine.unraids]}}
 
 

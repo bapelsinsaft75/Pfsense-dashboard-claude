@@ -13,6 +13,7 @@ from .alerts import Alerts
 from .config import Config, is_public
 from .geoip import GeoIP
 from .history import RECENT_SLOT, History
+from .pihole import PiHole
 from .mailer import Mailer
 from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
@@ -71,6 +72,8 @@ class Engine:
         self.unraids = [Unraid(u["name"], u["url"], u["key"], cfg.unraid_verify_ssl) for u in cfg.unraid_servers]
         self.plex_servers = [PlexServer(i, p["name"], p["url"], p["token"], cfg.plex_verify_ssl)
                              for i, p in enumerate(cfg.plex_servers)]
+        self.pihole = (PiHole(cfg.pihole_name, cfg.pihole_url, cfg.pihole_password, cfg.pihole_verify_ssl)
+                       if cfg.pihole_url else None)
         self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
         self.gateways: dict[str, dict] = {}
         self.vpn_clients: dict[str, dict] = {}
@@ -574,6 +577,24 @@ class Engine:
         elif p.status["ok"]:
             self.alerts.resolve(key, f"{p.name} svarar igen.")
 
+    def check_pihole(self) -> None:
+        p = self.pihole
+        key = "pihole"
+        if self.confirm(key, not p.status["ok"]):
+            self.alerts.raise_(key, "critical", "pihole_down", f"{p.name} svarar inte",
+                               f"{p.status.get('error') or 'Pi-hole svarar inte.'}{self.confirm_note(key)}", source=p.name)
+        elif p.status["ok"]:
+            self.alerts.resolve(key, f"{p.name} svarar igen.")
+
+    def pihole_named(self, items: list[dict]) -> list[dict]:
+        """Lägg till dashboardens klient-id och namn på Pi-holes klienter (efter IP-adress)."""
+        for c in items:
+            cid = self.ip_to_cid.get(c.get("ip") or "")
+            c["cid"] = cid
+            c["name"] = self.display_name(cid) if cid else (c.pop("client_name", None) or c.get("name") or c.get("ip"))
+            c.pop("client_name", None)
+        return items
+
     def check_data_anomalies(self, now: float | None = None) -> None:
         """Larma när en klient har använt betydligt mer data senaste dygnet än den brukar."""
         now = now or time.time()
@@ -947,6 +968,7 @@ class Engine:
             "series": self.history.series(since, step, now),
             "series_step": step,
             "plex": self.plex_summary(),
+            "pihole": self.pihole.brief() if self.pihole else None,
             "unraids": [{"status": u.status, **u.data,
                          "watch": self.settings.get("watch").get(u.status.get("name") or "", {"containers": [], "vms": []})}
                         for u in self.unraids],

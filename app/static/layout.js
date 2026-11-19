@@ -28,19 +28,20 @@ const ICON = {
   plex: "M8 5l11 7l-11 7z",
   events: "M6 16V11a6 6 0 0 1 12 0v5l2 2H4z M10 20a2 2 0 0 0 4 0",
   internet: "M5 12a7 7 0 0 1 14 0 M8 12a4 4 0 0 1 8 0 M12 12v7",
+  pihole: "M3 4h18l-7 8v6l-4 2v-8z",
   vpn: "M6 11V8a6 6 0 0 1 12 0v3 M5 11h14v10H5z M12 15v2",
 };
 const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[k] || ICON.overview}"/></svg>`;
 
 // Delarna av sidan, i den ordning de har i Klassisk.
 const el = {};
-const ORDER = ["head", "demo", "problems", "kpis", "map", "chart", "security", "unifi", "clients", "unraid", "plex", "foot"];
+const ORDER = ["head", "demo", "problems", "kpis", "map", "chart", "pihole", "security", "unifi", "clients", "unraid", "plex", "foot"];
 function grab() {
   const wrap = document.querySelector(".wrap");
   Object.assign(el, {
     wrap, alerts: $("alerts"), head: wrap.querySelector(".head"), demo: $("demo"), problems: $("problems"),
     kpis: $("sec-kpis"), map: $("sec-map"), chart: $("sec-chart"), security: $("sec-security"),
-    unifi: $("unifi-card"), clients: $("clients-card"), unraid: $("unraid-cards"), plex: $("plex-card"),
+    unifi: $("unifi-card"), clients: $("clients-card"), unraid: $("unraid-cards"), plex: $("plex-card"), pihole: $("pihole-card"),
     foot: wrap.querySelector(".foot"),
   });
   el.store = document.createElement("div");
@@ -56,11 +57,12 @@ const SECTIONS = [
   { id: "klienter", title: "Klienter", icon: "clients", parts: ["clients"] },
   { id: "unifi", title: "UniFi", icon: "unifi", parts: ["unifi"] },
   { id: "sakerhet", title: "Säkerhet", icon: "security", parts: ["security"] },
+  { id: "pihole", title: "Pi-hole", icon: "pihole", parts: ["pihole"] },
   { id: "servrar", title: "Servrar", icon: "server", parts: ["unraid"] },
   { id: "plex", title: "Plex", icon: "plex", parts: ["plex"] },
 ];
 // Mål för statusmarkeringarnas klick (data-goto) och kortens id
-const GOTO = { "clients-card": "klienter", "plex-card": "plex", "unifi-card": "unifi" };
+const GOTO = { "clients-card": "klienter", "plex-card": "plex", "unifi-card": "unifi", "pihole-card": "pihole" };
 
 let layout = "klassisk";
 let page = "oversikt";        // sidomeny
@@ -75,6 +77,7 @@ function summary(d) {
   const crit = alerts.filter((a) => a.level === "critical").length;
   const unraids = d.unraids || [];
   const plex = d.plex || { servers: [], totals: {} };
+  const ph = d.pihole;
   const vpn = d.status.vpn || {};
   const urLevel = (u) => (!u.status.ok ? (u.status.error ? "err" : "off") : u.status.level === "ok" ? "ok" : u.status.level);
   const worst = (levels) => (levels.includes("err") ? "err" : levels.includes("warn") ? "warn" : levels.length ? "ok" : "off");
@@ -91,10 +94,14 @@ function summary(d) {
       unifi: { level: d.status.unifi.enabled ? (d.status.unifi.ok ? "ok" : "err") : "off", badge: d.devices.length || "", text: d.devices.length ? `${d.devices.length} enheter · ${d.devices.filter((x) => !x.online).length} offline` : "Inte konfigurerat" },
       sakerhet: { level: secLevel, badge: t.suricata || "", text: `${fmt(t.suricata || 0, 0)} Suricata-larm · ${fmt(t.pfblockerng || 0, 0)} pfBlockerNG-blockeringar senaste dygnet` },
       servrar: { level: worst(unraids.map(urLevel)), badge: unraids.length || "", text: unraids.length ? unraids.map((u) => `${u.status.name}: ${u.status.ok ? (u.status.level === "ok" ? "OK" : u.status.detail) : (u.status.error ? "svarar inte" : "väntar")}`).join(" · ") : "Inga Unraid-servrar" },
+      pihole: !ph ? { level: "off", badge: "", text: "Inte konfigurerat" }
+        : !ph.ok ? { level: "err", badge: "!", text: ph.error || "Väntar på svar" }
+        : ph.blocking !== "enabled" ? { level: "warn", badge: "paus", text: "Blockeringen är pausad" }
+        : { level: "ok", badge: ph.percent_blocked != null ? `${fmt(ph.percent_blocked, 0)} %` : "", text: `${fmt(ph.total_24h || 0, 0)} DNS-frågor · ${fmt(ph.percent_blocked || 0, 1)} % blockerade senaste dygnet` },
       plex: { level: plexLevel, badge: plex.servers.length ? (plex.totals.streams ?? 0) : "", text: plex.servers.length ? `${plex.totals.streams} strömmar · ${plex.totals.transcode} omkodning · ${fmt((plex.totals.bandwidth_kbps || 0) / 1000, 1)} Mbit/s` : "Inte konfigurerat" },
     },
     unraids: unraids.map((u, i) => ({ i, name: u.status.name || `Unraid ${i + 1}`, level: urLevel(u), u })),
-    vpn, mbit, countries, k, t, plex,
+    vpn, mbit, countries, k, t, plex, ph,
   };
 }
 
@@ -297,6 +304,7 @@ function renderTiles(S) {
       sub: u.u.status.ok ? (u.level === "ok" ? `${(u.u.containers || []).filter((c) => c.state === "running").length} av ${(u.u.containers || []).length} containrar körs` : u.u.status.detail) : (u.u.status.error || "väntar på svar") });
   }
   if (S.plex.servers.length) tiles.push({ tile: "plex", title: "Plex", icon: "plex", level: S.sections.plex.level, big: `${S.plex.totals.streams}<small>strömmar</small>`, sub: `${S.plex.totals.transcode} omkodning · ${S.plex.totals.remote} utanför hemmet` });
+  if (S.ph) tiles.push({ tile: "pihole", title: "Pi-hole", icon: "pihole", level: S.sections.pihole.level, big: S.sections.pihole.level === "ok" ? `${fmt(S.ph.percent_blocked || 0, 0)}<small>% blockerat</small>` : S.sections.pihole.level === "warn" ? "Pausad" : "Nere", sub: S.sections.pihole.text });
   if (S.sections.unifi.level !== "off") tiles.push({ tile: "unifi", title: "UniFi", icon: "unifi", level: S.sections.unifi.level, big: `${S.sections.unifi.badge || 0}<small>enheter</small>`, sub: S.sections.unifi.text });
   const rank = { err: 0, warn: 1, ok: 2, off: 3 };
   tiles.sort((a, b) => rank[a.level] - rank[b.level]);
@@ -325,6 +333,8 @@ function onRender(d) {
       const dot = document.querySelector(`[data-dot="${id}"]`);
       if (dot) dot.className = `ldot ${x.level === "ok" || x.level === "off" ? "" : x.level}`;
     }
+    const pr = $("rad-pihole"); if (pr) pr.hidden = !S.ph;
+    const tb = document.querySelector('.ltabs [data-sec="pihole"]'); if (tb) tb.hidden = !S.ph;
     const ib = $("rad-atgard");
     if (ib) {
       ib.hidden = !(d.alerts || []).length;
@@ -346,6 +356,7 @@ function onRender(d) {
         ${link("klienter", "Klienter", icon("clients"), sec.klienter)}
         ${sec.unifi.level !== "off" ? link("unifi", "UniFi", icon("unifi"), sec.unifi) : ""}
         ${link("sakerhet", "Säkerhet och VPN", icon("security"), sec.sakerhet)}
+        ${S.ph ? link("pihole", "Pi-hole", icon("pihole"), sec.pihole) : ""}
         ${S.unraids.length || S.plex.servers.length ? '<div class="lgrp">Servrar</div>' : ""}
         ${S.unraids.map((u) => link("servrar", u.name, `<span class="ldot ${u.level}"></span>`, { level: u.level, badge: u.level === "ok" ? "" : u.level === "err" ? "!" : "1" }, u.i)).join("")}
         ${S.plex.servers.length ? link("plex", "Plex", icon("plex"), sec.plex) : ""}`;

@@ -181,7 +181,7 @@ function renderSecurity(d) {
 
 function renderEvents(d) {
   const ev = d.events || [];
-  $("events").innerHTML = ev.length ? ev.map((e) => `<div class="ev ${e.level}"><i></i><span class="t">${esc(e.title)}${e.resolved ? ' <span class="ok">· löst</span>' : ""}</span><span class="w">${ago(e.updated)}</span><span class="m">${esc(e.message || "")}</span></div>`).join("")
+  $("events").innerHTML = ev.length ? ev.map((e) => `<div class="ev ${e.level}"><i></i><span class="t">${esc(e.title)}${e.resolved && e.level !== "info" ? ' <span class="ok">· löst</span>' : ""}</span><span class="w">${ago(e.updated)}</span><span class="m">${esc(e.message || "")}</span></div>`).join("")
     : `<div class="empty">Inga larm. Här visas allt som har hänt, även larm du har stängt.</div>`;
 }
 
@@ -479,7 +479,7 @@ async function openSettings() {
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
 
     mailConfigured = j.email.enabled;
-    serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" }))];
+    serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" })), ...(j.servers?.pihole || []).map((n) => ({ name: n, type: "Pi-hole" }))];
     recips = st.recipients ? st.recipients.map((r) => ({ ...r }))
       : j.email.to.map((email) => ({ email, name: "", kinds: alertKinds.filter((k) => k.critical || (st.email_warnings && st.alert_kinds[k.id])).map((k) => k.id) }));
     renderRecips();
@@ -564,7 +564,7 @@ function renderStatus(d) {
     return `<button type="button" class="chip unraid ${u.ok ? (u.level === "ok" ? "ok" : u.level) : (u.error ? "err" : "")}" data-goto="unraid-card-${i}" title="${esc(name + " · " + (u.ok ? u.detail : (u.error || "Väntar på svar")) + " · Klicka för detaljer")}">${esc(name)}</button>`;
   });
   const vpnAt = chips.findIndex((c) => c.includes(">VPN<"));
-  chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...unraidChip, ...plexChips);
+  chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...unraidChip, ...plexChips, phChip(d));
   if (d.quiet && d.quiet.active) chips.unshift(`<span class="chip quiet" title="Inga mejl eller Slack-meddelanden skickas under tysta tider. Larmen syns ändå här.">Tyst till ${esc(d.quiet.until)}</span>`);
   $("chips").innerHTML = chips.join("");
   $("problems").innerHTML = problems.map(([l, e]) => `<div class="problem"><b>${esc(l)}</b>${esc(e)}</div>`).join("");
@@ -947,21 +947,33 @@ function connHTML(c) {
   return `<span class="conn">${icon("cable")}<span>${esc(k.dev_name || "Kabel")}</span>${k.port ? `<small>port ${k.port}</small>` : ""}</span>`;
 }
 
+function phDns(cid) {
+  const cl = ph.resp && ph.resp.data ? ph.resp.data.clients : null;
+  if (!cl) return { total: -1, blocked: 0 };
+  if (!ph.byCid || ph.byCidFor !== cl) { ph.byCid = new Map(cl.filter((c) => c.cid).map((c) => [c.cid, c])); ph.byCidFor = cl; }
+  return ph.byCid.get(cid) || { total: 0, blocked: 0 };
+}
+function phCell(cid) {
+  const x = phDns(cid);
+  if (x.total < 0) return `<td class="r-right muted">…</td>`;
+  if (!x.total) return `<td class="r-right muted">–</td>`;
+  return `<td class="r-right num">${fmt(x.total, 0)} · <span class="blkt">${fmt(x.blocked, 0)} (${fmt(x.blocked / x.total * 100, 0)} %)</span></td>`;
+}
 function renderTable(d) {
   const editingInput = document.activeElement && document.activeElement.id === "rename-input";
   const caret = editingInput ? document.activeElement.selectionStart : null;
   const q = $("search").value.trim().toLowerCase();
   const ipn = (ip) => (ip && ip.includes(".") ? ip.split(".").reduce((a, x) => a * 256 + +x, 0) : 0);
   const val = (c) => state.sortKey === "conn" ? (c.conn ? (c.conn.kind === "wifi" ? "0" + (c.conn.band || "") + String(200 + (c.conn.rssi || 0)).padStart(3, "0") : "1" + (c.conn.dev_name || "") + String(c.conn.port || 0).padStart(3, "0")) : "2")
-    : state.sortKey === "now" ? c.down_bps + c.up_bps : state.sortKey === "ip" ? ipn(c.ip) : state.sortKey === "name" ? c.name.toLowerCase() : c.bytes;
+    : state.sortKey === "now" ? c.down_bps + c.up_bps : state.sortKey === "dns" ? phDns(c.id).total : state.sortKey === "ip" ? ipn(c.ip) : state.sortKey === "name" ? c.name.toLowerCase() : c.bytes;
   const dev = state.devF;
   const connOk = (c) => !state.connF || (state.connF === "unknown" ? !c.conn : c.conn && c.conn.kind === state.connF);
   const statusOk = (c) => !state.statusF || (state.statusF === "online" ? c.online : !c.online);
   const rows = d.clients.filter((c) => connOk(c) && statusOk(c) && (!dev || (c.conn && c.conn.dev === dev))
     && (!q || `${c.name} ${c.ip || ""} ${c.mac || ""}`.toLowerCase().includes(q)))
     .sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir; });
-  document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td></tr>`).join("")
-    : `<tr><td colspan="7" class="muted">Inga klienter matchar filtret.</td></tr>`;
+  document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td>${phEnabled() ? phCell(c.id) : ""}</tr>`).join("")
+    : `<tr><td colspan="${phEnabled() ? 8 : 7}" class="muted">Inga klienter matchar filtret.</td></tr>`;
   $("filter-count").textContent = rows.length === d.clients.length ? `${rows.length} klienter` : `${rows.length} av ${d.clients.length} klienter`;
   $("unknown-hint").hidden = state.connF !== "unknown";
   if (editingInput) { const i = $("rename-input"); if (i) { i.focus(); if (caret != null) i.setSelectionRange(caret, caret); } }
@@ -1042,6 +1054,7 @@ async function load() {
     loadTop();
     loadChart();
     loadMap();
+    loadPihole();
   } catch (e) {
     $("problems").innerHTML = `<div class="problem"><b>Dashboard</b>Får inget svar från servern (${esc(e.message)}). Försöker igen …</div>`;
   }
@@ -1089,6 +1102,250 @@ document.addEventListener("click", (e) => {
   const r = e.target.closest("[data-id]");
   if (r && (r.closest("#table") || r.closest("#topc"))) { state.mapFilter = state.mapFilter === r.dataset.id ? null : r.dataset.id; render(); }
 });
+
+/* ── Pi-hole: statistik, frågelogg och styrning ── */
+const PH_TWO = new Set(["co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.nz", "co.jp", "com.br", "com.cn", "com.tr", "co.za", "com.mx", "co.in", "com.sg", "com.hk"]);
+const phBase = (d) => { const p = d.toLowerCase().split("."); return p.length >= 3 && PH_TWO.has(p.slice(-2).join(".")) ? p.slice(-3).join(".") : p.slice(-2).join("."); };
+const phStore = (k, def) => { try { const v = localStorage.getItem(k); return v == null ? def : v; } catch (e) { return def; } };
+const phSave = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ingen lagring */ } };
+const ph = { resp: null, fetchedAt: 0, domTab: phStore("phDomTab", "blocked"), clTab: phStore("phClTab", "total"),
+  qn: +phStore("phQn", "10"), qf: phStore("phQf", "all"), frozen: false, hover: false, queries: null, qerr: null, dlg: null, busy: false };
+const phEnabled = () => !!(state.data && state.data.pihole);
+function phLeft() {
+  const b = ph.resp && ph.resp.brief;
+  if (!b || b.paused_left == null) return null;
+  return Math.max(0, Math.round(b.paused_left - (Date.now() - ph.fetchedAt) / 1000));
+}
+const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+function phChip(d) {
+  const b = d.pihole;
+  if (!b) return "";
+  let left = phLeft();
+  if (left == null && b.paused_left != null) left = b.paused_left;
+  const paused = b.ok && b.blocking !== "enabled";
+  const cls = !b.ok ? (b.error ? "err" : "") : paused ? "warn" : "ok";
+  const small = !b.ok ? "" : paused ? ` <small data-phleft>${left != null ? "pausad " + mmss(left) : "av"}</small>` : b.percent_blocked != null ? ` <small>${fmt(b.percent_blocked, 0)} %</small>` : "";
+  const tip = !b.ok ? (b.error || "Väntar på svar") : paused ? "Blockeringen är pausad" : `${fmt(b.percent_blocked, 1)} % av DNS-frågorna blockerade senaste 24 h`;
+  return `<button type="button" class="chip pihole ${cls}" data-goto="pihole-card" title="${esc(tip)} · Klicka för att se Pi-hole">${esc(b.name)}${small}</button>`;
+}
+async function loadPihole() {
+  const card = $("pihole-card");
+  card.hidden = !phEnabled();
+  document.querySelectorAll("#table .phcol").forEach((x) => { x.hidden = !phEnabled(); });
+  if (!phEnabled()) return;
+  try {
+    const r = await fetch(`api/pihole?period=${state.period}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    ph.resp = await r.json();
+    ph.fetchedAt = Date.now();
+  } catch (e) {
+    ph.resp = { brief: state.data.pihole, error: `Får inget svar från dashboarden (${e.message}).`, rules: ph.resp ? ph.resp.rules : [] };
+  }
+  renderPihole();
+  if (state.data) renderTable(state.data);
+  loadQueries();
+}
+async function loadQueries(force) {
+  if (!phEnabled() || (!force && (ph.frozen || ph.hover))) return;
+  try {
+    const r = await fetch(`api/pihole/queries?n=${ph.qn}&show=${ph.qf}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.status);
+    ph.queries = j.queries; ph.qerr = null;
+  } catch (e) { ph.qerr = String(e.message || e); }
+  if (!ph.hover || force) renderQueries();
+}
+function phStatusHTML(b) {
+  const left = phLeft();
+  const parts = [];
+  if (!b.ok) parts.push(`<span class="pill err">${b.error ? "Svarar inte" : "Väntar på svar"}</span>`);
+  else if (b.blocking === "enabled") {
+    parts.push(`<span class="pill">● Blockering på</span>`);
+  } else {
+    parts.push(`<span class="pill warn">❚❚ ${left != null ? `Pausad · <span data-phleft>${mmss(left)}</span> kvar` : "Blockering av"}</span>`);
+  }
+  if (b.version) parts.push(`<span class="muted">${esc(b.version)}</span>`);
+  if (b.update) parts.push(`<span class="pill warn" title="Ny version finns">uppdatering finns: ${esc(b.update)}</span>`);
+  if (b.ok && b.blocking === "enabled") {
+    parts.push(`<details class="phpause"><summary class="btn warn">❚❚ Pausa blockering ▾</summary><div class="phmenu">
+      <span class="h">Pausa all blockering i</span>
+      <span class="phgrid">${[1, 5, 15, 60].map((m) => `<button type="button" class="btn" data-pause="${m}">${m} min</button>`).join("")}</span>
+      <span class="h">Egen tid</span>
+      <span class="phinp"><input type="number" id="ph-custom" min="1" max="10080" step="1" value="90" aria-label="Antal minuter"><span class="muted">minuter</span><button type="button" class="btn warn" data-pause="custom">Pausa</button></span>
+      <span class="muted small">Blockeringen slås på igen automatiskt när tiden gått ut, även om dashboarden stängs.</span></div></details>`);
+  } else if (b.ok) {
+    parts.push(`<button type="button" class="btn okb" data-resume>▶ Slå på igen nu</button>`);
+  }
+  return parts.join("");
+}
+function renderPihole() {
+  const r = ph.resp;
+  if (!r) return;
+  const b = r.brief || {};
+  const live = state.period === "live";
+  $("per-ph").innerHTML = live ? `<i class="livedot"></i>just nu` : esc(PER_HEAD[state.period]);
+  $("per-ph").classList.toggle("now", live);
+  const open = document.querySelector(".phpause[open]");
+  const custom = $("ph-custom") ? $("ph-custom").value : null;
+  if (!open) $("ph-stat").innerHTML = phStatusHTML(b);
+  else if (custom != null) $("ph-custom").value = custom;
+  const err = r.error || (!b.ok && b.error);
+  $("ph-err").innerHTML = err ? `<div class="problem"><b>${esc(b.name || "Pi-hole")}</b>${esc(err)}</div>` : "";
+  const d = r.data;
+  if (!d) { $("ph-kp").innerHTML = ""; $("ph-chart").innerHTML = ""; $("ph-doms").innerHTML = ""; $("ph-cls").innerHTML = ""; renderRules(); return; }
+  const pct = d.total ? d.blocked / d.total * 100 : 0;
+  const upd = b.gravity_updated ? new Date(b.gravity_updated * 1000) : null;
+  $("ph-kp").innerHTML = `
+    <div><div class="l">DNS-frågor</div><div class="v num">${fmt(d.total, 0)}</div><div class="s">från ${fmt(d.clients_count, 0)} klienter${live ? " · senaste 10 min" : ""}</div></div>
+    <div class="blk"><div class="l">Blockerade</div><div class="v num">${fmt(d.blocked, 0)}<small>${fmt(pct, 1)} %</small></div><div class="s">av alla frågor</div></div>
+    <div><div class="l">Svar från cache</div><div class="v num">${fmt(d.total ? d.cached / d.total * 100 : 0, 0)}<small>%</small></div><div class="s">resten vidare till uppströms-DNS</div></div>
+    <div><div class="l">Blocklistan</div><div class="v num">${b.gravity_domains != null ? `${fmt(b.gravity_domains / 1e6, 2)}<small>milj. domäner</small>` : "–"}</div><div class="s">${upd ? "uppdaterad " + phDate(b.gravity_updated) : ""}</div></div>`;
+  renderPhChart(d);
+  renderPhLists(d);
+  renderRules();
+}
+function phDate(t) {
+  const dt = new Date(t * 1000), now = new Date();
+  const opt = { timeZone: "Europe/Stockholm" };
+  const day = (x) => x.toLocaleDateString("sv-SE", opt);
+  const hm = dt.toLocaleTimeString("sv-SE", { ...opt, hour: "2-digit", minute: "2-digit" });
+  if (day(dt) === day(now)) return `i dag ${hm}`;
+  if (day(dt) === day(new Date(now - 86400000))) return `i går ${hm}`;
+  return `${dt.toLocaleDateString("sv-SE", { ...opt, day: "numeric", month: "short" })} ${hm}`;
+}
+function renderPhChart(d) {
+  const h = d.history || [];
+  if (!h.length) { $("ph-chart").innerHTML = `<div class="empty">Ingen historik än.</div>`; return; }
+  const max = Math.max(1, ...h.map((x) => x.allowed + x.blocked));
+  const w = 1000 / h.length, gap = Math.min(2, w * 0.25);
+  const step = d.step;
+  const lbl = (t) => step >= 86400 ? new Date(t * 1000).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm", day: "numeric", month: "short" })
+    : new Date(t * 1000).toLocaleTimeString("sv-SE", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit" }) + (step >= 3600 ? " " + new Date(t * 1000).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm", day: "numeric", month: "short" }) : "");
+  const bars = h.map((x, i) => {
+    const ta = x.allowed / max * 110, tb = x.blocked / max * 110;
+    return `<g><title>${lbl(x.t)}: ${fmt(x.allowed + x.blocked, 0)} frågor, ${fmt(x.blocked, 0)} blockerade</title><rect class="a" x="${(i * w).toFixed(2)}" y="${(120 - ta - tb).toFixed(1)}" width="${(w - gap).toFixed(2)}" height="${ta.toFixed(1)}"/><rect class="b" x="${(i * w).toFixed(2)}" y="${(120 - tb).toFixed(1)}" width="${(w - gap).toFixed(2)}" height="${tb.toFixed(1)}"/></g>`;
+  }).join("");
+  const per = { 60: "en stapel per minut", 600: "en stapel per 10 minuter", 3600: "en stapel per timme", 86400: "en stapel per dag" }[step] || "";
+  $("ph-chart").innerHTML = `<svg viewBox="0 0 1000 120" preserveAspectRatio="none" role="img" aria-label="DNS-frågor över tid">${bars}</svg>
+    <div class="phlegend"><span><i class="a"></i>Tillåtna</span><span><i class="b"></i>Blockerade</span><span>· ${per} · ${step >= 86400 ? lbl(h[0].t) : step >= 600 ? phDate(h[0].t) : clock(h[0].t)} – ${step >= 86400 ? lbl(h[h.length - 1].t) : step >= 600 ? phDate(h[h.length - 1].t) : clock(h[h.length - 1].t)}</span></div>`;
+}
+function renderPhLists(d) {
+  const blockedTab = ph.domTab === "blocked";
+  const doms = blockedTab ? d.top_blocked : d.top_allowed;
+  const dmax = Math.max(1, ...doms.map((x) => x.count));
+  const act = (dom, blocked) => `<button type="button" class="btn sm ${blocked ? "okb" : "red"} rowact" data-phact="${blocked ? "unblock" : "block"}" data-dom="${esc(dom)}">${blocked ? "Avblockera" : "Blockera"}</button>`;
+  $("ph-doms").innerHTML = doms.length ? doms.map((x) => `<div class="phrow"><span class="n" title="${esc(x.domain)}">${esc(x.domain)}</span><span class="c num">${fmt(x.count, 0)}</span>${act(x.domain, blockedTab)}<div class="bar"><i class="${blockedTab ? "b" : "a"}" style="width:${x.count / dmax * 100}%"></i></div></div>`).join("")
+    : `<div class="empty">Inga ${blockedTab ? "blockerade" : "tillåtna"} domäner under perioden.</div>`;
+  const key = ph.clTab === "blocked" ? "blocked" : "total";
+  const cls = [...d.clients].sort((a, b) => b[key] - a[key]).filter((c) => c[key] > 0).slice(0, 8);
+  const cmax = Math.max(1, ...cls.map((c) => c.total));
+  $("ph-cls").innerHTML = cls.length ? cls.map((c) => `<div class="phrow cl"><span class="n">${esc(c.name || c.ip)} <span class="muted">· ${esc(c.ip)}</span></span><span class="c num">${fmt(c.total, 0)} <span class="blkt">· ${fmt(c.blocked, 0)}</span></span><div class="bar two"><i class="a" style="width:${(c.total - c.blocked) / cmax * 100}%"></i><i class="b" style="width:${c.blocked / cmax * 100}%"></i></div></div>`).join("")
+    : `<div class="empty">Inga klienter under perioden.</div>`;
+}
+function ruleName(r) {
+  const m = r.kind === "regex" && r.domain.match(/^\(\\\.\|\^\)(.+)\$$/);
+  return m ? "*." + m[1].replace(/\\\./g, ".") : r.domain;
+}
+function renderRules() {
+  const rules = (ph.resp && ph.resp.rules) || [];
+  document.querySelector("#ph-rules tbody").innerHTML = rules.length ? rules.map((r) => `<tr><td class="wrapcell">${esc(ruleName(r))}${r.enabled ? "" : ' <small class="muted">(avstängd)</small>'}</td><td><span class="kind ${r.type === "allow" ? "allow" : "deny"}">${r.type === "allow" ? "tillåten" : "blockerad"}${r.kind === "regex" ? " · regex" : ""}</span></td><td class="muted">${r.added ? phDate(r.added) : "–"}${r.comment === "Från nätverksdashboarden" ? " · från dashboarden" : ""}</td><td class="r-right"><button type="button" class="btn sm" data-rmrule data-type="${esc(r.type)}" data-kind="${esc(r.kind)}" data-dom="${esc(r.domain)}">Ta bort</button></td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">Inga egna regler i Pi-hole.</td></tr>`;
+}
+function renderQueries() {
+  const tb = document.querySelector("#ph-q tbody");
+  $("ph-qstate").innerHTML = ph.frozen ? "fryst" : `<i class="livedot"></i>uppdateras var 5:e sekund`;
+  $("ph-qstate").classList.toggle("now", !ph.frozen);
+  $("ph-freeze").textContent = ph.frozen ? "▶ Fortsätt" : "❚❚ Frys listan";
+  $("ph-freeze").setAttribute("aria-pressed", ph.frozen);
+  if (ph.qerr && !ph.queries) { tb.innerHTML = `<tr><td colspan="7" class="muted">${esc(ph.qerr)}</td></tr>`; return; }
+  const qs = ph.queries || [];
+  tb.innerHTML = qs.length ? qs.map((q) => `<tr class="${q.blocked ? "blk" : ""}"><td class="muted num">${clock(q.time)}</td><td class="dom wrapcell">${esc(q.domain)}</td><td>${esc(q.name || q.ip)}</td><td class="muted">${esc(q.type)}</td><td><span class="st ${q.blocked ? "b" : q.cached ? "c" : "f"}">${q.blocked ? "Blockerad" : "Tillåten"} · ${esc(q.why)}</span></td><td class="r-right num muted">${q.reply_ms != null ? fmt(q.reply_ms, q.reply_ms < 1 ? 1 : 0) + " ms" : "–"}</td><td class="r-right"><button type="button" class="btn sm ${q.blocked ? "okb" : "red"} rowact" data-phact="${q.blocked ? "unblock" : "block"}" data-dom="${esc(q.domain)}">${q.blocked ? "Avblockera" : "Blockera"}</button></td></tr>`).join("")
+    : `<tr><td colspan="7" class="muted">Inga frågor att visa.</td></tr>`;
+}
+function phOpen(action, domain) {
+  domain = (domain || "").trim().toLowerCase();
+  if (!domain) { $("ph-domain").focus(); return; }
+  ph.dlg = { action, domain };
+  const un = action === "unblock";
+  $("ph-dlg-title").textContent = `${un ? "Avblockera" : "Blockera"} ${domain}?`;
+  $("ph-dlg-exact").textContent = `${domain} ${un ? "läggs till i Pi-holes tillåtlista (eller tas bort ur din egen blocklista)" : "läggs till i Pi-holes blocklista"}`;
+  $("ph-dlg-sub").textContent = `*.${phBase(domain)} – som regex-regel`;
+  document.querySelector('#ph-dlg input[value="exact"]').checked = true;
+  $("ph-dlg-ok").textContent = un ? "Avblockera" : "Blockera";
+  $("ph-dlg-ok").className = `btn ${un ? "okb" : "red"}`;
+  $("ph-dlg-err").hidden = true;
+  const dlg = $("ph-dlg");
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+}
+async function phPost(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || `fel ${r.status}`);
+  return j;
+}
+$("ph-dlg-cancel").addEventListener("click", () => $("ph-dlg").close());
+$("ph-dlg-ok").addEventListener("click", async () => {
+  if (!ph.dlg || ph.busy) return;
+  ph.busy = true;
+  const scope = document.querySelector('#ph-dlg input[name="phscope"]:checked').value;
+  try {
+    await phPost("api/pihole/domain", { action: ph.dlg.action, domain: ph.dlg.domain, scope });
+    $("ph-dlg").close();
+    $("ph-domain").value = "";
+    load();
+  } catch (e) {
+    $("ph-dlg-err").textContent = e.message; $("ph-dlg-err").hidden = false;
+  } finally { ph.busy = false; }
+});
+$("pihole-card").addEventListener("click", async (e) => {
+  const t = e.target;
+  const a = t.closest("[data-phact]");
+  if (a) { phOpen(a.dataset.phact, a.dataset.dom); return; }
+  const add = t.closest("#ph-add [data-act]");
+  if (add) { phOpen(add.dataset.act, $("ph-domain").value); return; }
+  const p = t.closest("[data-pause]");
+  if (p) {
+    const min = p.dataset.pause === "custom" ? +$("ph-custom").value : +p.dataset.pause;
+    if (!(min >= 1)) { $("ph-custom").focus(); return; }
+    try { await phPost("api/pihole/blocking", { enabled: false, minutes: min }); } catch (err) { $("ph-err").innerHTML = `<div class="problem"><b>Pi-hole</b>${esc(err.message)}</div>`; return; }
+    const det = t.closest("details"); if (det) det.open = false;
+    load(); return;
+  }
+  if (t.closest("[data-resume]")) {
+    try { await phPost("api/pihole/blocking", { enabled: true }); } catch (err) { $("ph-err").innerHTML = `<div class="problem"><b>Pi-hole</b>${esc(err.message)}</div>`; return; }
+    load(); return;
+  }
+  const rm = t.closest("[data-rmrule]");
+  if (rm) {
+    if (!confirm(`Ta bort ${rm.closest("tr").cells[0].textContent} ur Pi-holes ${rm.dataset.type === "allow" ? "tillåtlista" : "blocklista"}?`)) return;
+    try { await phPost("api/pihole/rule/delete", { type: rm.dataset.type, kind: rm.dataset.kind, domain: rm.dataset.dom }); } catch (err) { $("ph-err").innerHTML = `<div class="problem"><b>Pi-hole</b>${esc(err.message)}</div>`; return; }
+    load(); return;
+  }
+  const seg = t.closest("#ph-domtab button, #ph-cltab button, #ph-qn button, #ph-qf button");
+  if (seg) {
+    const g = seg.parentElement.id, v = seg.dataset.v;
+    setPressed(seg.parentElement, seg);
+    if (g === "ph-domtab") { ph.domTab = v; phSave("phDomTab", v); renderPihole(); }
+    if (g === "ph-cltab") { ph.clTab = v; phSave("phClTab", v); renderPihole(); }
+    if (g === "ph-qn") { ph.qn = +v; phSave("phQn", v); loadQueries(true); }
+    if (g === "ph-qf") { ph.qf = v; phSave("phQf", v); loadQueries(true); }
+    return;
+  }
+  if (t.closest("#ph-freeze")) { ph.frozen = !ph.frozen; renderQueries(); if (!ph.frozen) loadQueries(true); }
+});
+$("ph-add").addEventListener("submit", (e) => { e.preventDefault(); phOpen("block", $("ph-domain").value); });
+const phq = $("ph-q");
+phq.addEventListener("mouseenter", () => { ph.hover = true; });
+phq.addEventListener("mouseleave", () => { ph.hover = false; if (!ph.frozen) loadQueries(); });
+for (const [id, v] of [["ph-domtab", ph.domTab], ["ph-cltab", ph.clTab], ["ph-qn", String(ph.qn)], ["ph-qf", ph.qf]]) {
+  const b = $(id).querySelector(`[data-v="${v}"]`); if (b) setPressed($(id), b);
+}
+setInterval(() => {
+  const left = phLeft();
+  if (left == null) return;
+  document.querySelectorAll("[data-phleft]").forEach((x) => { x.textContent = x.closest(".chip") ? "pausad " + mmss(left) : mmss(left); });
+  if (left === 0 && Date.now() - ph.fetchedAt > 3000) load();
+}, 1000);
 
 const map = new MapView(document.querySelector("#map svg"));
 Promise.all([fetch("countries-110m.json").then((r) => r.json()), fetch("country-coords.json").then((r) => r.json())])

@@ -96,7 +96,7 @@
     <p class="hint" id="unknown-hint" hidden>Okänd betyder att pfSense ser klienten men att UniFi inte känner till den. Vanliga orsaker: enheten sitter direkt i pfSense eller i en switch som inte är UniFi, det är en container på Unraid med egen IP-adress på br0, eller den nås via VPN. Kontrollera också att UniFi-markeringen är grön.</p>
     <div class="tablebox"><table id="table"><thead><tr>
       <th><button type="button" data-sort="name">Namn</button></th><th><button type="button" data-sort="ip">IP-adress</button></th><th><button type="button" data-sort="conn">Anslutning</button></th><th>MAC</th><th>Status</th>
-      <th class="r-right"><button type="button" data-sort="now">Nu</button></th><th class="r-right"><button type="button" data-sort="bytes">Data ↓</button></th></tr></thead><tbody></tbody></table></div>
+      <th class="r-right"><button type="button" data-sort="now">Nu</button></th><th class="r-right"><button type="button" data-sort="bytes">Data ↓</button></th><th class="r-right phcol" hidden><button type="button" data-sort="dns" title="DNS-frågor och blockerade enligt Pi-hole, för vald period">DNS · blockerade</button></th></tr></thead><tbody></tbody></table></div>
   </section>
   <div class="urcards" id="unraid-cards"></div>
 
@@ -105,6 +105,32 @@
     <div class="plexsum" id="plex-sum"></div>
     <div class="problems" id="plex-err"></div>
     <div class="streams" id="plex-streams"></div>
+  </section>
+  <section class="card phcard" id="pihole-card" hidden>
+    <h2><span class="ttl">Pi-hole · <span class="per" id="per-ph"></span></span><span class="phstat" id="ph-stat"></span></h2>
+    <div class="problems" id="ph-err"></div>
+    <div class="phkp" id="ph-kp"></div>
+    <div class="phchart" id="ph-chart"></div>
+    <div class="phcols">
+      <div class="phbox">
+        <h3>Toppdomäner <span class="seg small" role="group" aria-label="Toppdomäner" id="ph-domtab"><button type="button" data-v="allowed" aria-pressed="false">Tillåtna</button><button type="button" data-v="blocked" aria-pressed="true">Blockerade</button></span></h3>
+        <div class="phlist" id="ph-doms"></div>
+        <form class="phadd" id="ph-add"><input type="text" id="ph-domain" placeholder="Domän, t.ex. example.com" aria-label="Domän att blockera eller avblockera" autocomplete="off" spellcheck="false"><button type="button" class="btn red" data-act="block">Blockera</button><button type="button" class="btn okb" data-act="unblock">Avblockera</button></form>
+      </div>
+      <div class="phbox">
+        <h3>Klienter <span class="seg small" role="group" aria-label="Klienter" id="ph-cltab"><button type="button" data-v="total" aria-pressed="true">Flest frågor</button><button type="button" data-v="blocked" aria-pressed="false">Flest blockerade</button></span></h3>
+        <div class="phlist" id="ph-cls"></div>
+      </div>
+    </div>
+    <div class="phbox">
+      <h3><span class="ttl">Frågelogg <span class="per now" id="ph-qstate"><i class="livedot"></i>uppdateras var 5:e sekund</span></span>
+        <span class="phtools"><span class="seg small" role="group" aria-label="Antal frågor" id="ph-qn"><button type="button" data-v="10" aria-pressed="true">10</button><button type="button" data-v="30" aria-pressed="false">30</button><button type="button" data-v="50" aria-pressed="false">50</button></span><span class="seg small" role="group" aria-label="Visa" id="ph-qf"><button type="button" data-v="all" aria-pressed="true">Alla</button><button type="button" data-v="allowed" aria-pressed="false">Tillåtna</button><button type="button" data-v="blocked" aria-pressed="false">Blockerade</button></span><button type="button" class="btn" id="ph-freeze" aria-pressed="false">❚❚ Frys listan</button></span></h3>
+      <div class="tablebox"><table class="phq" id="ph-q"><thead><tr><th>Tid</th><th>Domän</th><th>Klient</th><th>Typ</th><th>Status</th><th class="r-right">Svarstid</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="phbox">
+      <h3>Egna regler <small>tillåt- och blocklista i Pi-hole</small></h3>
+      <div class="tablebox"><table class="phrules" id="ph-rules"><thead><tr><th>Domän</th><th>Typ</th><th>Tillagd</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
   </section>
   <p class="foot">Kartdata: Natural Earth via world-atlas. Landsuppslag: <span id="geo-src">DB-IP Lite (CC BY 4.0)</span>. Version {{VERSION}}.</p>
 </div>
@@ -118,6 +144,18 @@
     <div class="tablebox" id="cd-remotes"></div>
     <p class="hint">Värdnamn kommer från omvänt DNS-uppslag och organisation från DB-IP Lite. Porten är tjänsten som användes, t.ex. 443 för HTTPS. En grön prick betyder att anslutningen är aktiv just nu.</p>
   </div>
+</dialog>
+<dialog id="ph-dlg">
+  <form method="dialog" class="phdlg" id="ph-dlg-form">
+    <h2 id="ph-dlg-title">Avblockera?</h2>
+    <div class="radio" id="ph-dlg-scope">
+      <label><input type="radio" name="phscope" value="exact" checked><span><b>Bara den här domänen</b><small id="ph-dlg-exact"></small></span></label>
+      <label><input type="radio" name="phscope" value="sub"><span><b>Även alla underdomäner</b><small id="ph-dlg-sub"></small></span></label>
+    </div>
+    <p class="hint">Gäller alla klienter. Ändringen syns under Händelser och kan ångras under Egna regler.</p>
+    <p class="problem" id="ph-dlg-err" hidden></p>
+    <div class="dlgbtns"><button type="button" class="btn" id="ph-dlg-cancel">Avbryt</button><button type="button" class="btn" id="ph-dlg-ok">OK</button></div>
+  </form>
 </dialog>
 <dialog id="settings">
   <form method="dialog" id="settings-form" class="sform">

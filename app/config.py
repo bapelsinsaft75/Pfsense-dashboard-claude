@@ -135,6 +135,13 @@ class Config:
         self.plex_verify_ssl = env_bool("PLEX_VERIFY_SSL", False)
         self.plex_poll = max(5, env_int("PLEX_POLL_SECONDS", 10))
 
+        # Pi-hole v6: adress och app-lösenord (Settings → Web interface / API → Configure app password)
+        self.pihole_url = _base_url(env("PIHOLE_URL", "") or "", "http") if env("PIHOLE_URL", "") else ""
+        self.pihole_password = env("PIHOLE_PASSWORD", "") or ""
+        self.pihole_name = env("PIHOLE_NAME", "Pi-hole") or "Pi-hole"
+        self.pihole_verify_ssl = env_bool("PIHOLE_VERIFY_SSL", False)
+        self.pihole_poll = max(5, env_int("PIHOLE_POLL_SECONDS", 10))
+
         # Unraid (GraphQL-API, Settings → Management Access → API Keys)
         # Server 1: UNRAID_URL/UNRAID_API_KEY/UNRAID_NAME (eller UNRAID1_...). Fler: UNRAID2_..., upp till fyra.
         self.unraid_servers = []

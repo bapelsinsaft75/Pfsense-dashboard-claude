@@ -22,6 +22,9 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
 - Status för Unraid-servern: array, diskar med temperatur, processor, minne, Docker-containrar och
   virtuella maskiner (med filter för körs/stoppade).
 - Status för en eller flera Plex-servrar, och vilka som strömmar just nu och vad.
+- **Pi-hole v6**: DNS-frågor och blockerade över tid, toppdomäner, frågor per klient (även som kolumn i
+  klientlistan), frågelogg med de senaste 10/30/50 frågorna, pausa blockeringen (1/5/15/60 min eller egen tid),
+  blockera/avblockera domäner och en lista över egna regler. Larm om Pi-hole slutar svara.
 - Periodvalet överst: **Just nu** · 24 timmar · 7 dagar · 30 dagar. Just nu visar bara anslutningar som har
   trafik i detta ögonblick (i Mbit/s). Varje ruta visar vald period efter rubriken; Bandbredd är alltid just nu.
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
@@ -143,6 +146,18 @@ värdet efter `X-Plex-Token=` i adressfältet. Strömmarna från alla servrar vi
 och varje server får en egen statusmarkering. Omslagsbilderna hämtas via dashboarden, så webbläsaren behöver
 inte nå Plex-servrarna själv.
 
+## 5b. Pi-hole (valfritt)
+
+Fungerar med Pi-hole v6. Fyll i `PIHOLE_URL` (t.ex. `http://192.168.2.40`) och `PIHOLE_PASSWORD`.
+Skapa ett app-lösenord i Pi-hole under *Settings → Web interface / API → Configure app password* (växla till
+*Expert* uppe till höger om alternativet inte syns), och klistra in det i Unraid-mallen. Har Pi-hole inget
+lösenord lämnar du fältet tomt.
+
+Med knapparna i Pi-hole-delen kan du pausa blockeringen, blockera och avblockera domäner och ta bort egna
+regler. Dashboarden har ingen inloggning, så alla som når sidan kan använda dem. Varje ändring syns under
+*Händelser*. Om Pi-hole svarar 403 när du ändrar något, slå på `webserver.api.app_sudo` i Pi-hole
+(*Settings → All settings → Webserver and API*).
+
 ## 6. Unraid-status (valfritt)
 
 1. Skapa en API-nyckel med läsbehörighet under *Settings → Management Access → API Keys*.
@@ -209,6 +224,8 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `UNRAID2_URL`, `UNRAID2_API_KEY`, `UNRAID2_NAME` | `http://192.168.2.11`, …, `Tower` | Nästa Unraid-server (upp till `UNRAID4_...`) |
 | `PLEX1_NAME`, `PLEX1_URL`, `PLEX1_TOKEN` | `Peters Plex`, `http://192.168.2.56:32400` | Plex-server 1 (upp till `PLEX4_...`) |
 | `PLEX_VERIFY_SSL` | `false` | `false` för Plex egna certifikat |
+| `PIHOLE_URL`, `PIHOLE_PASSWORD`, `PIHOLE_NAME` | –, –, `Pi-hole` | Pi-hole v6 och dess app-lösenord |
+| `PIHOLE_VERIFY_SSL`, `PIHOLE_POLL_SECONDS` | `false`, `10` | Certifikatkontroll och hur ofta Pi-hole läses av |
 | `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |
 | `PFBLOCKER_TRACKER_PREFIX` | `177` | Hur pfBlockerNG-regler känns igen i brandväggsloggen |
 | `PFSENSE_VERIFY_SSL`, `UNIFI_VERIFY_SSL` | `false` | `false` för självsignerade certifikat |

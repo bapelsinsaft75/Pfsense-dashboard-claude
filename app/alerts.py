@@ -220,6 +220,16 @@ class Alerts:
         return self._rows("acked IS NULL AND (resolved IS NULL OR (level='critical' AND resolved>?))",
                           (int(now - RESOLVED_VISIBLE),), 20)
 
+    def note(self, kind: str, title: str, message: str, now: float | None = None) -> None:
+        """En händelse som bara visas under Händelser (ingen banner, inget mejl)."""
+        now = int(now or time.time())
+        with self.h.lock:
+            self.h.db.execute(
+                "INSERT INTO alerts(key, level, kind, title, message, created, updated, resolved, acked) VALUES(?,?,?,?,?,?,?,?,?)",
+                (f"note:{kind}:{now}", "info", kind, title, message, now, now, now, now))
+            self.h.db.commit()
+        log.info("Händelse: %s – %s", title, message)
+
     def recent(self, limit: int = 30) -> list[dict]:
         with self.h.lock:
             cols = ("id", "level", "kind", "title", "message", "created", "updated", "resolved", "count")
