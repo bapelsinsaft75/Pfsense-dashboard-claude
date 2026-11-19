@@ -128,13 +128,12 @@ def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
     engine.gateways = {
         "WAN_DHCP": {"name": "WAN_DHCP", "state": "up", "status": "online", "loss": "0.0%", "delay": "4.1ms",
                      "monitor": "1.1.1.1", "vpn": False},
-        "PROTONVPN_WG": {"name": "PROTONVPN_WG", "state": "up", "status": "online", "loss": "0.0%", "delay": "18.7ms",
-                         "monitor": "10.2.0.1", "vpn": True},
     }
+    engine.vpn_clients = {"ProtonVPN": {"name": "ProtonVPN", "up": True, "status": "up, connected", "remote": "185.159.157.1"}}
     a = engine.alerts
-    vpn = a.raise_("gw:PROTONVPN_WG", "critical", "vpn_down", "VPN-anslutningen PROTONVPN_WG är nere",
-                   "pfSense rapporterar att PROTONVPN_WG är nere (status: down, förlust 100%).", now=now - 47 * 60)
-    a.resolve("gw:PROTONVPN_WG", "PROTONVPN_WG är uppe igen.", now=now - 39 * 60)
+    vpn = a.raise_("ovpn:ProtonVPN", "critical", "vpn_down", "VPN-anslutningen ProtonVPN är nere",
+                   'OpenVPN-klienten ProtonVPN har status "down, reconnecting".', now=now - 47 * 60)
+    a.resolve("ovpn:ProtonVPN", "ProtonVPN är ansluten igen.", now=now - 39 * 60)
     a.raise_("data:bc:33:29:7a:01:f2", "warning", "data_anomaly", "PS5 använder ovanligt mycket data",
              "PS5 har använt 48,2 GB de senaste 24 timmarna. Normalt är 11,6 GB per dygn (4 gånger mer än vanligt).",
              now=now - 25 * 60)

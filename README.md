@@ -24,14 +24,14 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
 | Bandbredd på WAN | pfSense REST API: gränssnittsstatus |
 | Land för en IP-adress | Lokal GeoIP-databas (DB-IP Lite laddas ner automatiskt varje månad) |
 | Trådlöst/kabel, switchport, Wi-Fi | UniFi Network Application |
-| Gateways och VPN (WAN, WireGuard, OpenVPN) | pfSense REST API: gateway-status och OpenVPN-status |
+| OpenVPN-klienter och gateways (WAN) | pfSense REST API: OpenVPN-status och gateway-status |
 | Suricata-larm, pfBlockerNG och brandväggsblockeringar | Syslog från pfSense till containern (UDP 5514) |
 
 ## Larm
 
 | Larm | Nivå | Mejlas |
 | --- | --- | --- |
-| VPN-anslutning eller gateway nere (två kontroller i rad, var 30:e sekund) | Kritiskt | Ja, och när den är uppe igen |
+| OpenVPN-klient inte ansluten, eller gateway nere (två kontroller i rad, var 30:e sekund) | Kritiskt | Ja, och när den är uppe igen |
 | pfSense svarar inte på 5 minuter | Kritiskt | Ja, och när det fungerar igen |
 | Suricata-larm med prioritet 1 (nivån går att ändra) | Kritiskt | Ja |
 | En klient har använt minst 3 gånger mer data än normalt senaste 24 timmarna, och minst 2 GB | Varning | Om du valt det |
@@ -66,10 +66,10 @@ Stängda larm syns kvar under *Händelser*.
    IP-listorna (standard). Dashboarden känner igen pfBlockerNG-regler på att deras tracker-ID börjar med `177`
    (ändras med `PFBLOCKER_TRACKER_PREFIX` om dina ser annorlunda ut). DNSBL-blockeringar syns inte i
    brandväggsloggen och räknas därför inte.
-6. **VPN**: dashboarden läser alla gateways i pfSense, så en VPN-tunnel som är en gateway (t.ex. WireGuard
-   eller OpenVPN mot Proton VPN) övervakas automatiskt. Gateways vars namn innehåller t.ex. `VPN`, `WG`,
-   `PROTON` eller `OVPN` visas som VPN. Se till att gatewayen har *Gateway Monitoring* påslaget i
-   *System → Routing → Gateways*, annars kan pfSense inte avgöra om den är nere.
+6. **VPN**: OpenVPN-klienter (*VPN → OpenVPN → Clients*) övervakas automatiskt var 30:e sekund via REST API,
+   även om de inte är en gateway. Om klienten inte är ansluten (t.ex. `RECONNECTING` eller `down`) två kontroller
+   i rad blir det ett kritiskt larm och ett mejl, och ett nytt mejl när den är ansluten igen.
+   Gateways (t.ex. WAN) övervakas också, om *Gateway Monitoring* är påslaget i *System → Routing → Gateways*.
 
 ## 2. Förbered UniFi (valfritt)
 

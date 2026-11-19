@@ -91,6 +91,12 @@ def test_openvpn(engine):
     assert engine.alerts.is_active("ovpn:Proton")
     engine.update_openvpn([{"name": "Proton", "status": "up"}])
     assert not engine.alerts.is_active("ovpn:Proton")
+    # tillståndet från OpenVPN går före: en klient som återansluter räknas som nere
+    engine.update_openvpn([{"name": "Proton", "status": "up", "state": "RECONNECTING"}])
+    engine.update_openvpn([{"name": "Proton", "status": "up", "state": "RECONNECTING"}])
+    assert engine.alerts.is_active("ovpn:Proton")
+    engine.update_openvpn([{"name": "Proton", "status": "up", "state": "CONNECTED", "connect_time": "2026-11-19 12:00"}])
+    assert not engine.alerts.is_active("ovpn:Proton")
 
 
 def test_suricata_and_pfblocker(engine):

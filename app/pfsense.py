@@ -316,8 +316,14 @@ def parse_openvpn_client(row: dict) -> dict | None:
         name = f"OpenVPN-klient {vpnid}" if vpnid is not None else None
     if not name:
         return None
-    status = str(pick(row, "status", "state", default="")).lower()
-    if not status:
+    status = str(pick(row, "status", default="")).lower()
+    state = str(pick(row, "state", "state_detail", default="")).lower()
+    if not status and not state:
         return None
-    up = status in ("up", "connected", "established") or status.startswith("connected")
+    if state:
+        # OpenVPN-tillstånd: CONNECTED, RECONNECTING, WAIT, AUTH, GET_CONFIG, ASSIGN_IP, EXITING ...
+        up = state.startswith("connected") or (state in ("", "none") and status in ("up", "connected"))
+    else:
+        up = status in ("up", "connected", "established") or status.startswith("connected")
+    status = ", ".join(x for x in (status, state) if x)
     return {"name": str(name), "up": up, "status": status, "remote": pick(row, "remote_host", "remote")}
