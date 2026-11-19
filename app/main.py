@@ -67,21 +67,28 @@ async def vpn_loop(engine: Engine, pf: PfSense) -> None:
                     openvpn_supported = False
             except Exception:  # noqa: BLE001
                 log.exception("Kunde inte läsa OpenVPN-status")
-        await asyncio.sleep(engine.cfg.vpn_poll)
+        await asyncio.sleep(min(engine.cfg.vpn_poll, engine.settings.get("confirm_interval")))
 
 
 async def unraid_loop(engine: Engine) -> None:
     while True:
         try:
             await asyncio.gather(*(u.poll() for u in engine.unraids), return_exceptions=True)
+            for u in engine.unraids:
+                engine.check_unraid(u)
         except Exception:  # noqa: BLE001
             log.exception("Unraid-insamling misslyckades")
-        await asyncio.sleep(engine.cfg.unraid_poll)
+        await asyncio.sleep(min(engine.cfg.unraid_poll, engine.settings.get("confirm_interval")))
 
 
 async def plex_loop(engine: Engine) -> None:
     while True:
         await asyncio.gather(*(s.poll() for s in engine.plex_servers), return_exceptions=True)
+        for s in engine.plex_servers:
+            try:
+                engine.check_plex(s)
+            except Exception:  # noqa: BLE001
+                log.exception("Plex-kontroll misslyckades")
         await asyncio.sleep(engine.cfg.plex_poll)
 
 
@@ -113,6 +120,7 @@ async def ticker(engine: Engine) -> None:
         if not engine.cfg.demo and now - last_check >= 30:
             engine.check_sources(now)
             last_check = now
+        engine.alerts.flush_quiet_digest()
         if not engine.cfg.demo and now - last_anomaly >= 3600:
             await asyncio.to_thread(engine.check_data_anomalies, now)
             last_anomaly = now
@@ -318,6 +326,23 @@ async def test_email():
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"ok": True, "to": engine.mailer.to}
+
+
+@app.put("/api/unraid/watch")
+async def set_watch(body: dict = Body(...)):
+    engine: Engine = app.state.engine
+    try:
+        watch = engine.settings.set_watch(str(body.get("server")), str(body.get("kind")), str(body.get("name")),
+                                          bool(body.get("on")))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"watch": watch}
+
+
+@app.get("/api/alert-kinds")
+async def alert_kinds():
+    from .settings import ALERT_KINDS
+    return [{"id": k, "label": v[0], "default": v[1], "confirmed": v[2]} for k, v in ALERT_KINDS.items()]
 
 
 @app.post("/api/test-slack")

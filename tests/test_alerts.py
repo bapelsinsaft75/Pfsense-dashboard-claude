@@ -8,6 +8,17 @@ from app.engine import Engine
 from app.syslog import parse_filterlog, parse_suricata
 
 
+def _fast_confirm(e):
+    """Låt varje kontroll i testerna räknas som en ny kontroll, utan att vänta på intervallet."""
+    orig = e.confirm
+    clock = {"t": time.time()}
+
+    def confirm(key, bad, now=None):
+        clock["t"] += 60
+        return orig(key, bad, clock["t"])
+    e.confirm = confirm
+
+
 class FakeSMTP:
     sent: list = []
 
@@ -48,6 +59,8 @@ def engine(tmp_path, monkeypatch):
     monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
     FakeSMTP.sent = []
     e = Engine(Config())
+    e.settings.update({"confirm_count": 2, "confirm_interval": 10})
+    _fast_confirm(e)
     # skicka e-post synkront i testerna
     e.mailer.send_background = lambda s, b: e.mailer.send(s, b)
     e.geo.country = lambda ip: {"45.148.10.5": "NL", "47.88.0.12": "CN"}.get(ip)
@@ -141,9 +154,8 @@ def test_data_anomaly(engine):
 
 def test_source_down_and_retention(engine):
     engine.mark("pfsense", False, "timeout")
-    engine.check_sources(time.time() + 10)
-    assert not engine.alerts.is_active("source:pfsense")
-    engine.check_sources(time.time() + 400)
+    assert not engine.alerts.is_active("source:pfsense")  # första misslyckade kontrollen räcker inte
+    engine.mark("pfsense", False, "timeout")
     assert engine.alerts.is_active("source:pfsense")
     engine.mark("pfsense", True)
     assert not engine.alerts.is_active("source:pfsense")
@@ -203,6 +215,8 @@ def test_slack(tmp_path, monkeypatch):
     import app.slack as slackmod
     monkeypatch.setattr(slackmod.httpx, "post", lambda url, json, timeout: posts.append((url, json)) or Resp())
     e = Engine(Config())
+    e.settings.update({"confirm_count": 2, "confirm_interval": 10})
+    _fast_confirm(e)
     e.slack.send_background = lambda *a: e.slack.send(*a)
     # kritiskt: skickas, och löst skickas också
     e.update_openvpn([{"name": "Littorin VPN UDP4", "status": "down"}])
@@ -224,3 +238,68 @@ def test_slack(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Webhooken finns inte"):
         e.slack.send("info", "t", "m", "nu")
     assert e.status["slack"]["error"]
+
+
+
+def test_confirm_counts_once_per_interval(engine):
+    e = engine
+    e.confirm = Engine.confirm.__get__(e)  # den riktiga, utan testgenvägen
+    e.settings.update({"confirm_interval": 60, "confirm_count": 3})
+    t = 1_000_000.0
+    assert not e.confirm("k", True, t)
+    assert not e.confirm("k", True, t + 10)   # för tätt: räknas inte
+    assert not e.confirm("k", True, t + 60)   # andra
+    assert e.confirm("k", True, t + 120)      # tredje: larm
+    assert "3 kontroller under 2 min" in e.confirm_note("k")
+    assert not e.confirm("k", False, t + 130)  # lyckad kontroll nollställer
+    assert not e.confirm("k", True, t + 140)
+
+
+def test_quiet_hours_and_digest(engine, monkeypatch):
+    import datetime as dt
+    from app.settings import TZ
+    s = engine.settings
+    s.update({"quiet_enabled": True, "quiet_start": "22:00", "quiet_end": "07:00", "quiet_days": [4]})  # fredag
+    fri_late = dt.datetime(2026, 11, 20, 23, 30, tzinfo=TZ)   # fredag
+    sat_early = dt.datetime(2026, 11, 21, 6, 59, tzinfo=TZ)   # natten mot lördag hör till fredag
+    sat_late = dt.datetime(2026, 11, 21, 23, 0, tzinfo=TZ)    # lördag: inte vald
+    assert s.quiet_now(fri_late) == (True, "07:00")
+    assert s.quiet_now(sat_early)[0] and not s.quiet_now(sat_late)[0]
+    with pytest.raises(ValueError):
+        s.update({"quiet_start": "25:00"})
+
+    quiet = {"on": True}
+    monkeypatch.setattr(s, "quiet_now", lambda now=None: (quiet["on"], "07:00" if quiet["on"] else None))
+    engine.alerts.raise_("gw:X", "critical", "gateway_down", "Gatewayen X är nere", "nere")
+    assert FakeSMTP.sent == [] and engine.alerts.banner()  # tyst: inget mejl, men syns i bannern
+    s.update({"quiet_allow_critical": True})
+    engine.alerts.raise_("gw:Y", "critical", "gateway_down", "Gatewayen Y är nere", "nere")
+    assert len(FakeSMTP.sent) == 1  # kritiska släpps igenom när det är valt
+    s.update({"quiet_allow_critical": False})
+    assert not engine.alerts.flush_quiet_digest()  # fortfarande tyst
+    quiet["on"] = False
+    assert engine.alerts.flush_quiet_digest()
+    assert FakeSMTP.sent[-1]["Subject"].endswith("Sammanfattning av tysta tiden: 1 larm")
+    assert "Gatewayen X är nere" in FakeSMTP.sent[-1].get_content()
+
+
+def test_disabled_kind_and_watch(engine):
+    from app.unraid import Unraid
+    engine.settings.update({"alert_kinds": {"new_device": False}})
+    assert engine.alerts.raise_("n", "warning", "new_device", "Ny", "x") is None
+    u = Unraid("LillaNasen", "http://u.test", "k", False)
+    u.status.update(ok=True, level="ok", name="LillaNasen", detail="ok")
+    u.data = {"containers": [{"name": "plex", "state": "running"}, {"name": "qbit", "state": "bad"}],
+              "vms": [{"name": "Win", "running": False, "state": "shutoff"}]}
+    engine.settings.set_watch("LillaNasen", "containers", "qbit", True)
+    engine.settings.set_watch("LillaNasen", "vms", "Win", True)
+    engine.check_unraid(u)
+    engine.check_unraid(u)
+    titles = sorted(a["title"] for a in engine.alerts.banner())
+    assert titles == ["Containern qbit på LillaNasen har stannat", "Den virtuella maskinen Win på LillaNasen har stannat"]
+    engine.settings.set_watch("LillaNasen", "vms", "Win", False)
+    engine.check_unraid(u)
+    assert not engine.alerts.is_active("watch:LillaNasen:vms:Win")
+    u.data["containers"][1]["state"] = "running"
+    engine.check_unraid(u)
+    assert not engine.alerts.is_active("watch:LillaNasen:containers:qbit")

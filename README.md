@@ -48,6 +48,17 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
 | En UniFi-switch eller accesspunkt är offline, eller UniFi svarar inte | Varning | Om du valt det |
 | Ny enhet ansluter till nätverket | Varning | Om du valt det |
 
+Under *Inställningar* (kugghjulet):
+
+- **Larm → Bekräfta innan larm:** hur ofta en kontroll görs och hur många misslyckade kontroller i rad som krävs
+  innan det larmar, t.ex. var 60:e sekund och 3 gånger. Gäller larm märkta ↻ (VPN, gateway, pfSense, UniFi,
+  Unraid, Plex och övervakade containrar/VM).
+- **Larm → Larmtyper:** slå av och på varje typ av larm. Larmen för Unraid-server och Plex är avstängda från början.
+- **Aviseringar → Tysta tider:** inga mejl eller Slack-meddelanden mellan två klockslag på valda veckodagar.
+  Larmen syns ändå i bannern. Valfritt: släpp igenom kritiska larm, och få en sammanfattning när tiden är slut.
+- **Övervaka containrar och virtuella maskiner:** klicka på klockan vid en container eller VM i Unraid-sektionen.
+  Stannar den blir det ett kritiskt larm (efter bekräftelsen ovan).
+
 "Normalt" är medianen av klientens dataförbrukning per dygn de senaste två veckorna, och kräver minst 4 dygns historik.
 Gränserna ändras under *Inställningar* (kugghjulet). Samma larm mejlas inte igen förrän det har lösts.
 Stängda larm syns kvar under *Händelser*.

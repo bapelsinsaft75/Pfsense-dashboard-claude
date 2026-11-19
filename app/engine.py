@@ -29,8 +29,6 @@ log = logging.getLogger("engine")
 PERIODS = {"24h": (86400, 1800), "7d": (7 * 86400, 7200), "30d": (30 * 86400, 43200)}
 PROTOS = {1: "icmp", 6: "tcp", 17: "udp", 58: "icmpv6"}
 NETFLOW_WINDOW = 60
-SOURCE_DOWN_AFTER = 300  # sekunder innan "pfSense svarar inte" larmar
-DOWN_STREAK = 2  # antal kontroller i rad innan en gateway räknas som nere
 PFB_WINDOW = 600
 
 TYPE_RULES = [
@@ -75,8 +73,7 @@ class Engine:
         self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
         self.gateways: dict[str, dict] = {}
         self.vpn_clients: dict[str, dict] = {}
-        self._gw_streak: dict[str, int] = defaultdict(int)
-        self._fail_since: dict[str, float] = {}
+        self._confirm: dict[str, dict] = {}
         self._clients_polled = False
         self._pfb_hits: dict[str, deque] = defaultdict(deque)
         self.syslog_lines = 0
@@ -127,17 +124,46 @@ class Engine:
             return self.cfg.traffic_source
         return "netflow" if time.time() - self.nf_last < 180 else "states"
 
+    def confirm(self, key: str, bad: bool, now: float | None = None) -> bool:
+        """Bekräfta ett fel med upprepade kontroller innan det larmar.
+
+        Ett fel räknas en gång per kontrollintervall. När det har setts confirm_count gånger i rad är det bekräftat.
+        En lyckad kontroll nollställer räkningen.
+        """
+        now = now or time.time()
+        if not bad:
+            self._confirm.pop(key, None)
+            return False
+        interval = self.settings.get("confirm_interval")
+        st = self._confirm.get(key)
+        if st is None:
+            st = self._confirm[key] = {"first": now, "last": now, "n": 1}
+        elif now - st["last"] >= interval * 0.9:
+            st["n"] += 1
+            st["last"] = now
+        return st["n"] >= self.settings.get("confirm_count")
+
+    def confirm_note(self, key: str) -> str:
+        st = self._confirm.get(key)
+        if not st:
+            return ""
+        mins = max(1, round((st["last"] - st["first"]) / 60)) if st["n"] > 1 else 0
+        return f" Bekräftat efter {st['n']} kontroller" + (f" under {mins} min." if mins else ".")
+
     def mark(self, name: str, ok: bool, error: str | None = None) -> None:
         st = self.status[name]
         st["ok"], st["error"] = ok, error
         now = time.time()
+        key = f"source:{name}"
         if ok:
             st["last"] = now
-            if name in self._fail_since:
-                del self._fail_since[name]
-                self.alerts.resolve(f"source:{name}", "Kontakten är återställd.")
-        else:
-            self._fail_since.setdefault(name, now)
+            if key in self._confirm:
+                self.confirm(key, False)
+            self.alerts.resolve(key, "Kontakten är återställd.")
+        elif name in ("pfsense", "unifi") and self.confirm(key, True, now):
+            what = "pfSense" if name == "pfsense" else "UniFi"
+            self.alerts.raise_(key, "critical" if name == "pfsense" else "warning", "source_down", f"{what} svarar inte",
+                               f"Dashboarden får inte svar från {what}. Senaste fel: {error}.{self.confirm_note(key)}")
 
     # ── pfSense ──
     def update_clients(self, leases: list[dict], arp: list[dict]) -> None:
@@ -359,10 +385,11 @@ class Engine:
         self._rebuild_ip_map()
         for d in devices.values():
             key = f"unifi:{d['id']}"
-            if not d["online"]:
+            if self.confirm(key, not d["online"]):
                 self.alerts.raise_(key, "warning", "unifi_offline", f"{d['name']} är offline",
-                                   f"UniFi-enheten {d['name']} ({d['model']}) svarar inte. Klienter som är anslutna via den kan sakna nätverk.")
-            else:
+                                   f"UniFi-enheten {d['name']} ({d['model']}) svarar inte. Klienter som är anslutna via den kan sakna nätverk."
+                                   + self.confirm_note(key))
+            elif d["online"]:
                 self.alerts.resolve(key, f"{d['name']} är online igen.")
 
     # ── gateways och VPN ──
@@ -376,14 +403,11 @@ class Engine:
         for name, g in seen.items():
             what = "VPN-anslutningen" if g["vpn"] else "Gatewayen"
             key = f"gw:{name}"
-            if g["state"] == "down":
-                self._gw_streak[name] += 1
-                if self._gw_streak[name] >= DOWN_STREAK:
-                    self.alerts.raise_(key, "critical", "vpn_down" if g["vpn"] else "gateway_down", f"{what} {name} är nere",
-                                       f"pfSense rapporterar att {name} är nere (status: {g['status']}"
-                                       f"{', förlust ' + g['loss'] if g['loss'] else ''}).")
-            else:
-                self._gw_streak[name] = 0
+            if self.confirm(key, g["state"] == "down"):
+                self.alerts.raise_(key, "critical", "vpn_down" if g["vpn"] else "gateway_down", f"{what} {name} är nere",
+                                   f"pfSense rapporterar att {name} är nere (status: {g['status']}"
+                                   f"{', förlust ' + g['loss'] if g['loss'] else ''}).{self.confirm_note(key)}")
+            elif g["state"] != "down":
                 self.alerts.resolve(key, f"{name} är uppe igen.")
             dkey = f"gwdeg:{name}"
             if g["state"] == "degraded":
@@ -402,13 +426,10 @@ class Engine:
                 seen[v["name"]] = v
         for name, v in seen.items():
             key = f"ovpn:{name}"
-            if not v["up"]:
-                self._gw_streak[key] += 1
-                if self._gw_streak[key] >= DOWN_STREAK:
-                    self.alerts.raise_(key, "critical", "vpn_down", f"VPN-anslutningen {name} är nere",
-                                       f"OpenVPN-klienten {name} har status \"{v['status']}\".")
-            else:
-                self._gw_streak[key] = 0
+            if self.confirm(key, not v["up"]):
+                self.alerts.raise_(key, "critical", "vpn_down", f"VPN-anslutningen {name} är nere",
+                                   f"OpenVPN-klienten {name} har status \"{v['status']}\".{self.confirm_note(key)}")
+            elif v["up"]:
                 self.alerts.resolve(key, f"{name} är ansluten igen.")
         self.vpn_clients = seen
         self._update_vpn_status()
@@ -486,14 +507,58 @@ class Engine:
         self.alerts.expire(("suricata", "pfblocker"), 3600, now)
         if self.status["syslog"]["enabled"] and self.syslog_last and now - self.syslog_last > 1800:
             self.status["syslog"].update(ok=False, error="Ingen syslog från pfSense på över 30 minuter.")
-        for name, since in list(self._fail_since.items()):
-            if name == "pfsense" and now - since >= SOURCE_DOWN_AFTER:
-                self.alerts.raise_("source:pfsense", "critical", "source_down", "pfSense svarar inte",
-                                   f"Dashboarden har inte fått svar från pfSense sedan "
-                                   f"{time.strftime('%H:%M', time.localtime(since))}. Senaste fel: {self.status['pfsense']['error']}")
-            elif name == "unifi" and now - since >= SOURCE_DOWN_AFTER:
-                self.alerts.raise_("source:unifi", "warning", "source_down", "UniFi svarar inte",
-                                   f"Senaste fel: {self.status['unifi']['error']}")
+
+    # ── Unraid och Plex ──
+    def check_unraid(self, u) -> None:
+        name = u.status.get("name") or "Unraid"
+        key = f"unraid:{u.url}"
+        if self.confirm(key, not u.status["ok"]):
+            self.alerts.raise_(key, "critical", "unraid_down", f"{name} svarar inte",
+                               f"Dashboarden får inte svar från Unraid-servern {name}. {u.status.get('error') or ''}"
+                               + self.confirm_note(key))
+            return
+        if not u.status["ok"]:
+            return
+        self.alerts.resolve(key, f"{name} svarar igen.")
+        level = u.status.get("level")
+        pkey = f"unraidp:{u.url}"
+        if self.confirm(pkey, level in ("err", "warn")):
+            self.alerts.raise_(pkey, "critical" if level == "err" else "warning", "unraid_problem",
+                               f"{name}: {'fel' if level == 'err' else 'varning'}",
+                               f"{u.status.get('detail')}.{self.confirm_note(pkey)}")
+        elif level == "ok":
+            self.alerts.resolve(pkey, f"{name}: allt ser bra ut igen.")
+        # övervakade containrar och virtuella maskiner
+        running = {c["name"]: c for c in u.data.get("containers", [])}
+        vms = {v["name"]: v for v in u.data.get("vms", [])}
+        for kind, items, label in (("containers", running, "Containern"), ("vms", vms, "Den virtuella maskinen")):
+            if kind == "vms" and "vms" not in u.data:
+                continue
+            for item in self.settings.watched(name, kind):
+                obj = items.get(item)
+                up = bool(obj) and (obj.get("state") == "running" if kind == "containers" else obj.get("running"))
+                wkey = f"watch:{name}:{kind}:{item}"
+                if self.confirm(wkey, not up):
+                    why = "finns inte längre" if not obj else (obj.get("status") or obj.get("state") or "har stannat")
+                    self.alerts.raise_(wkey, "critical", "unraid_watch", f"{label} {item} på {name} har stannat",
+                                       f"{label} {item} på {name} är inte igång ({why}).{self.confirm_note(wkey)}")
+                elif up:
+                    self.alerts.resolve(wkey, f"{item} på {name} är igång igen.")
+        # sluta larma för sådant som inte längre övervakas
+        prefix = f"watch:{name}:"
+        for k in [k for k in self._confirm if k.startswith(prefix)]:
+            _, _, kind, item = k.split(":", 3)
+            if item not in self.settings.watched(name, kind):
+                self.confirm(k, False)
+                self.alerts.resolve(k, "Övervakningen är avstängd.")
+
+    def check_plex(self, p) -> None:
+        key = f"plex:{p.url}"
+        if self.confirm(key, not p.status["ok"]):
+            self.alerts.raise_(key, "critical", "plex_down", f"{p.name} svarar inte",
+                               f"{p.status.get('error') or 'Plex-servern svarar inte.'}{self.confirm_note(key)}")
+        elif p.status["ok"]:
+            self.alerts.resolve(key, f"{p.name} svarar igen.")
 
     def check_data_anomalies(self, now: float | None = None) -> None:
         """Larma när en klient har använt betydligt mer data senaste dygnet än den brukar."""
@@ -729,7 +794,10 @@ class Engine:
             "series": self.history.series(since, step, now),
             "series_step": step,
             "plex": self.plex_summary(),
-            "unraids": [{"status": u.status, **u.data} for u in self.unraids],
+            "unraids": [{"status": u.status, **u.data,
+                         "watch": self.settings.get("watch").get(u.status.get("name") or "", {"containers": [], "vms": []})}
+                        for u in self.unraids],
+            "quiet": dict(zip(("active", "until"), self.settings.quiet_now())),
             "alerts": self.alerts.banner(now),
             "events": self.alerts.recent(25),
             "security": self.security(int(now - 86400)),

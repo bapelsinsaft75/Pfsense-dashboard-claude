@@ -16,6 +16,7 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--fg)}
 body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
 .wrap{max-width:1440px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;display:grid;gap:16px}
@@ -333,3 +334,34 @@ td.hot{color:var(--accent)}
 .ctr small{color:var(--muted);white-space:nowrap}
 .ctr small.bad{color:var(--err)}
 @media (max-width:1000px){.urgrid{grid-template-columns:1fr}.urtop{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* inställningar med flikar */
+.stabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.stabs button{all:unset;cursor:pointer;padding:6px 14px;font-family:var(--cond);font-weight:600;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent}
+.stabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.stabs button:focus-visible{outline:2px solid var(--accent)}
+.spane{display:grid;gap:10px}
+.sform fieldset{border:1px solid var(--line);padding:10px 12px;margin:0;display:grid;gap:6px;min-width:0}
+.sform legend{padding:0 6px;font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.sform input[type=time]{font:inherit;background:var(--track);color:var(--fg);border:1px solid var(--line);padding:5px 8px}
+.sform .inline input[type=number]{width:80px}
+.kinds{display:grid;gap:2px}
+.days{display:flex;flex-wrap:wrap;gap:6px}
+.day{display:inline-flex}
+.day input{position:absolute;opacity:0;width:1px;height:1px}
+.day span{cursor:pointer;padding:3px 10px;border:1px solid var(--line);color:var(--muted)}
+.day input:checked+span{border-color:var(--accent);color:var(--accent);background:rgba(255,181,71,.08)}
+.day input:focus-visible+span{outline:2px solid var(--accent)}
+dialog#settings{max-width:min(640px,calc(100vw - 32px))}
+.sform{max-height:calc(100vh - 80px);overflow:auto}
+
+/* övervakning och tyst läge */
+.ctr{grid-template-columns:10px minmax(0,1fr) auto auto}
+.bell{all:unset;cursor:pointer;display:inline-flex;color:var(--muted);opacity:.35;padding:2px}
+.ctr:hover .bell,.bell:focus-visible{opacity:1}
+.bell.on{color:var(--accent);opacity:1}
+.bell:focus-visible{outline:2px solid var(--accent)}
+.bell .ico{width:15px;height:15px}
+@media (hover:none){.bell{opacity:.7}}
+.chip.quiet{color:var(--fg);border-color:#3a4a8a}
+.chip.quiet::before{background:#8a9cff;box-shadow:none;border-radius:50% 50% 50% 0}

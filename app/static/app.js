@@ -208,8 +208,11 @@ const cpuHistory = {};
 const VM_STATE = { running: "körs", idle: "körs", paused: "pausad", shutoff: "avstängd", shutdown: "stängs av", crashed: "kraschad", pmsuspended: "viloläge" };
 const segF = (kind, value) => `<span class="seg small" role="group" aria-label="Filtrera">${[["", "Alla"], ["running", "Körs"], ["stopped", "Stoppade"]].map(([v, l]) => `<button type="button" data-kind="${kind}" data-f="${v}" aria-pressed="${v === value}">${l}</button>`).join("")}</span>`;
 
+const BELL = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z M10 20a2 2 0 0 0 4 0"/></svg>';
+const bell = (kind, item, watched) => `<button type="button" class="bell${watched ? " on" : ""}" data-watch="${kind}" data-item="${esc(item)}" aria-pressed="${watched}" title="${watched ? "Övervakas: larmar om den stannar. Klicka för att sluta övervaka." : "Klicka för att övervaka och få larm om den stannar"}">${BELL}</button>`;
 function unraidCard(u, i) {
   const st = u.status, name = st.name || u.hostname || `Unraid ${i + 1}`, f = urF(name);
+  const w = u.watch || { containers: [], vms: [] };
   const sub = [u.version ? `Unraid ${u.version}` : null, u.uptime != null ? `drifttid ${fmtUptime(u.uptime)}` : null, "uppdateras var 30:e sekund"].filter(Boolean).join(" · ");
   const err = !st.ok && st.error ? `<div class="problem"><b>${esc(name)}</b>${esc(st.error)}</div>` : "";
   if (!st.ok && !u.disks) {
@@ -230,12 +233,12 @@ function unraidCard(u, i) {
   }).join("") || `<tr><td colspan="6" class="muted">Inga diskar i svaret från Unraid.</td></tr>`;
   const cs = u.containers || [];
   const cf = cs.filter((c) => !f.docker || (f.docker === "running" ? c.state === "running" : c.state !== "running"));
-  const ctrs = cf.length ? cf.map((c) => `<div class="ctr"><i class="${c.state}"></i><span title="${esc(c.image || "")}">${esc(c.name)}</span><small class="${c.state === "bad" ? "bad" : ""}">${esc(dockerStatus(c))}</small></div>`).join("")
+  const ctrs = cf.length ? cf.map((c) => `<div class="ctr"><i class="${c.state}"></i><span title="${esc(c.image || "")}">${esc(c.name)}</span><small class="${c.state === "bad" ? "bad" : ""}">${esc(dockerStatus(c))}</small>${bell("containers", c.name, w.containers.includes(c.name))}</div>`).join("")
     : `<div class="empty">${cs.length ? "Inga containrar matchar filtret." : "Inga containrar i svaret från Unraid."}</div>`;
   const vms = u.vms || [];
   const vf = vms.filter((v) => !f.vm || (f.vm === "running" ? v.running : !v.running));
-  const vmHtml = !vms.length ? "" : `<div class="urhead vmhead"><h3>Virtuella maskiner · ${vms.filter((v) => v.running).length} av ${vms.length} körs</h3>${segF("vm", f.vm)}</div>
-    <div class="ctrs">${vf.length ? vf.map((v) => `<div class="ctr"><i class="${v.running ? "running" : v.state === "crashed" ? "bad" : "stopped"}"></i><span>${esc(v.name)}</span><small>${esc(VM_STATE[v.state] || v.state || "")}</small></div>`).join("") : '<div class="empty">Inga virtuella maskiner matchar filtret.</div>'}</div>`;
+  const vmHtml = !vms.length ? "" : `<div class="urhead vmhead"><h3>Virtuella maskiner · ${vms.filter((v) => v.running).length} av ${vms.length} körs${w.vms.length ? ` · ${w.vms.length} övervakas` : ""}</h3>${segF("vm", f.vm)}</div>
+    <div class="ctrs">${vf.length ? vf.map((v) => `<div class="ctr"><i class="${v.running ? "running" : v.state === "crashed" ? "bad" : "stopped"}"></i><span>${esc(v.name)}</span><small>${esc(VM_STATE[v.state] || v.state || "")}</small>${bell("vms", v.name, w.vms.includes(v.name))}</div>`).join("") : '<div class="empty">Inga virtuella maskiner matchar filtret.</div>'}</div>`;
   return `<section class="card urcard" id="unraid-card-${i}" data-name="${esc(name)}">
     <h2>Unraid · ${esc(name)} <small>${esc(sub)}</small></h2>${err}
     <div class="urtop">
@@ -246,14 +249,26 @@ function unraidCard(u, i) {
     </div>
     <div class="urgrid">
       <div class="urcol"><h3>Diskar</h3><div class="tablebox"><table><thead><tr><th>Disk</th><th>Enhet</th><th>Status</th><th>Använt</th><th class="r-right">Storlek</th><th class="r-right">Temp</th></tr></thead><tbody>${disks}</tbody></table></div></div>
-      <div class="urcol"><div class="urhead"><h3>Docker · ${cs.filter((c) => c.state === "running").length} av ${cs.length} körs</h3>${segF("docker", f.docker)}</div><div class="ctrs">${ctrs}</div>${vmHtml}</div>
+      <div class="urcol"><div class="urhead"><h3>Docker · ${cs.filter((c) => c.state === "running").length} av ${cs.length} körs${w.containers.length ? ` · ${w.containers.length} övervakas` : ""}</h3>${segF("docker", f.docker)}</div><div class="ctrs">${ctrs}</div>${vmHtml}</div>
     </div></section>`;
 }
 function renderUnraids(d) {
   const list = d.unraids || [];
   $("unraid-cards").innerHTML = list.map(unraidCard).join("");
 }
-$("unraid-cards").addEventListener("click", (e) => {
+$("unraid-cards").addEventListener("click", async (e) => {
+  const wb = e.target.closest("[data-watch]");
+  if (wb) {
+    const server = wb.closest(".urcard").dataset.name, on = wb.getAttribute("aria-pressed") !== "true";
+    wb.disabled = true;
+    try {
+      const r = await fetch("api/unraid/watch", { method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ server, kind: wb.dataset.watch, name: wb.dataset.item, on }) });
+      if (!r.ok) throw new Error(r.status);
+    } catch (err) { $("problems").innerHTML = `<div class="problem"><b>Övervakning</b>Kunde inte spara (${esc(err.message)}).</div>`; }
+    load();
+    return;
+  }
   const b = e.target.closest("[data-kind]"); if (!b) return;
   const name = b.closest(".urcard").dataset.name;
   urF(name)[b.dataset.kind] = b.dataset.f;
@@ -341,17 +356,37 @@ $("cd-clients").addEventListener("click", (e) => {
 });
 
 /* ── inställningar ── */
+const DAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
+let alertKinds = [];
+function confirmHint() {
+  const i = +$("s-interval").value || 0, n = +$("s-count").value || 0;
+  const total = Math.max(0, (n - 1) * i);
+  $("s-confirm-hint").textContent = n <= 1 ? "Larmar direkt vid första misslyckade kontrollen."
+    : `Ett fel måste bestå i ungefär ${total >= 60 ? fmt(total / 60, 1) + " min" : total + " s"} (${n} kontroller med ${i} s mellanrum) innan det larmar. En lyckad kontroll börjar om räkningen.`;
+}
+$("s-interval").addEventListener("input", confirmHint);
+$("s-count").addEventListener("input", confirmHint);
+document.querySelector(".stabs").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-tab]"); if (!b) return;
+  document.querySelectorAll(".stabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll(".spane").forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+});
 async function openSettings() {
   const dlg = $("settings");
   $("s-msg").textContent = ""; $("s-msg").className = "formmsg";
   try {
-    const r = await fetch("api/settings", { cache: "no-store" });
+    const [r, rk] = await Promise.all([fetch("api/settings", { cache: "no-store" }), fetch("api/alert-kinds", { cache: "no-store" })]);
     const j = await r.json();
+    alertKinds = await rk.json();
     const st = j.settings;
     $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
-    $("s-newdev").checked = !!st.new_device_alerts; $("s-mailwarn").checked = !!st.email_warnings;
-    $("s-slackwarn").checked = !!st.slack_warnings;
+    $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
+    $("s-kinds").innerHTML = alertKinds.map((k) => `<label class="check"><input type="checkbox" data-kind="${k.id}" ${st.alert_kinds[k.id] ? "checked" : ""}> ${esc(k.label)}${k.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}</label>`).join("");
+    $("s-quiet").checked = !!st.quiet_enabled; $("s-qstart").value = st.quiet_start; $("s-qend").value = st.quiet_end;
+    $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
+    $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
+    $("s-mailwarn").checked = !!st.email_warnings; $("s-slackwarn").checked = !!st.slack_warnings;
     $("s-slack").innerHTML = j.slack.enabled ? "Larm skickas till Slack via webhooken i Unraid-mallen."
       : "Slack är inte konfigurerat. Fyll i SLACK_WEBHOOK_URL i Unraid-mallen.";
     $("s-test-slack").disabled = !j.slack.enabled;
@@ -365,11 +400,16 @@ $("open-settings").addEventListener("click", openSettings);
 $("s-cancel").addEventListener("click", () => $("settings").close());
 $("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const kinds = {};
+  $("s-kinds").querySelectorAll("[data-kind]").forEach((c) => { kinds[c.dataset.kind] = c.checked; });
   const body = {
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
-    new_device_alerts: $("s-newdev").checked, email_warnings: $("s-mailwarn").checked,
-    slack_warnings: $("s-slackwarn").checked,
+    confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: kinds,
+    quiet_enabled: $("s-quiet").checked, quiet_start: $("s-qstart").value, quiet_end: $("s-qend").value,
+    quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
+    quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
+    email_warnings: $("s-mailwarn").checked, slack_warnings: $("s-slackwarn").checked,
   };
   try {
     const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -436,6 +476,7 @@ function renderStatus(d) {
   });
   const vpnAt = chips.findIndex((c) => c.includes(">VPN<"));
   chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...unraidChip, ...plexChips);
+  if (d.quiet && d.quiet.active) chips.unshift(`<span class="chip quiet" title="Inga mejl eller Slack-meddelanden skickas under tysta tider. Larmen syns ändå här.">Tyst till ${esc(d.quiet.until)}</span>`);
   $("chips").innerHTML = chips.join("");
   $("problems").innerHTML = problems.map(([l, e]) => `<div class="problem"><b>${esc(l)}</b>${esc(e)}</div>`).join("");
   $("demo").hidden = d.mode !== "demo";

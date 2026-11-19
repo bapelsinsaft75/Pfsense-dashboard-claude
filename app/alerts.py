@@ -31,6 +31,37 @@ class Alerts:
         self.settings = settings
         self._last_mail: dict[str, float] = {}
         self._last_slack: dict[str, float] = {}
+        self.quiet_queue: list[tuple[str, str, str, str, float]] = []  # (händelse, nivå, titel, text, tid)
+
+    def _quiet_blocks(self, level: str) -> bool:
+        quiet, _ = self.settings.quiet_now()
+        return quiet and not (level == "critical" and self.settings.get("quiet_allow_critical"))
+
+    def flush_quiet_digest(self) -> bool:
+        """Skicka en sammanfattning av det som hände under den tysta tiden, när den är slut."""
+        if not self.quiet_queue or self.settings.quiet_now()[0]:
+            return False
+        items, self.quiet_queue = self.quiet_queue, []
+        if not self.settings.get("quiet_digest"):
+            return False
+        raised = [i for i in items if i[0] == "raised"]
+        still = [i for i in raised if self.is_active_title(i[2])]
+        lines = [f"{_when(t)}  {'Löst: ' if ev == 'resolved' else ''}{LEVEL_LABEL.get(lv, lv)}: {title}"
+                 for ev, lv, title, _m, t in items]
+        head = (f"Under den tysta tiden kom {len(raised)} larm"
+                + (f", varav {len(still)} fortfarande aktiva." if still else ", alla är lösta nu." if raised else "."))
+        body = head + "\n\n" + "\n".join(lines) + "\n"
+        subject = f"Sammanfattning av tysta tiden: {len(raised)} larm"
+        if self.mailer.enabled:
+            self.mailer.send_background(subject, body)
+        if self.slack and self.slack.enabled:
+            level = "critical" if any(i[1] == "critical" for i in still) else "warning" if still else "info"
+            self.slack.send_background(level, subject, head + "\n" + "\n".join(lines[:25]), _when(time.time()))
+        return True
+
+    def is_active_title(self, title: str) -> bool:
+        with self.h.lock:
+            return self.h.db.execute("SELECT 1 FROM alerts WHERE title=? AND resolved IS NULL", (title,)).fetchone() is not None
 
     def _should_mail(self, level: str) -> bool:
         return level == "critical" or (level == "warning" and self.settings.get("email_warnings"))
@@ -58,8 +89,10 @@ class Alerts:
         self.mailer.send_background(subject, body)
         return True
 
-    def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None) -> int:
-        """Skapa ett larm, eller uppdatera det om samma larm redan är aktivt."""
+    def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None) -> int | None:
+        """Skapa ett larm, eller uppdatera det om samma larm redan är aktivt. Avstängda larmtyper ignoreras."""
+        if not self.settings.kind_enabled(kind):
+            return None
         now = now or time.time()
         with self.h.lock:
             row = self.h.db.execute("SELECT id, level FROM alerts WHERE key=? AND resolved IS NULL", (key,)).fetchone()
@@ -75,6 +108,9 @@ class Alerts:
             self.h.db.commit()
             alert_id = cur.lastrowid
         log.info("Larm (%s): %s – %s", level, title, message)
+        if self._quiet_blocks(level) and (self._should_mail(level) or self._should_slack(level)):
+            self.quiet_queue.append(("raised", level, title, message, now))
+            return alert_id
         if self._should_mail(level):
             body = f"{LEVEL_LABEL.get(level, level)}: {title}\n\n{message}\n\nTid: {_when(now)}\n"
             if self.slack and self.slack.dashboard_url:
@@ -103,6 +139,9 @@ class Alerts:
         for _id, level, title, created, emailed, slacked in rows:
             log.info("Löst: %s", title)
             mins = max(1, int((now - created) / 60))
+            if (slacked or emailed) and level == "critical" and self._quiet_blocks(level):
+                self.quiet_queue.append(("resolved", level, title, message or "", now))
+                continue
             if slacked and level == "critical":
                 self._post_slack(key + ":resolved", "resolved", f"Löst: {title}",
                                  f"{message or 'Problemet är inte längre aktivt.'} Varade i cirka {mins} minuter.",
