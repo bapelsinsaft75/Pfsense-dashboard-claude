@@ -183,7 +183,6 @@ class FlowParser:
                 flows.append(flow)
         return flows
 
-    @staticmethod
     def stats(self) -> dict:
         return {"received": self.received, "parsed": self.packets, "errors": self.errors, "flows": self.flows,
                 "versions": {str(k): v for k, v in self.versions.items()}, "templates": len(self.templates),
