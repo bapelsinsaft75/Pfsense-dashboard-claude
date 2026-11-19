@@ -348,7 +348,7 @@ function renderStatus(d) {
   const plexChips = ((d.plex || {}).servers || []).map((p) => {
     const cls = p.ok ? "ok" : p.error ? "err" : "";
     const tip = p.ok ? `${p.name}${p.version ? " · v" + p.version : ""} · ${p.streams} ${p.streams === 1 ? "ström" : "strömmar"}` : (p.error || "Väntar på svar");
-    return `<span class="chip plex ${cls}" title="${esc(tip)}">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</span>`;
+    return `<button type="button" class="chip plex ${cls}" data-goto="plex-card" title="${esc(tip)} · Klicka för att se strömmarna">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</button>`;
   });
   const vpnAt = chips.findIndex((c) => c.includes(">VPN<"));
   chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...plexChips);
@@ -571,13 +571,20 @@ $("period").addEventListener("click", (e) => { const b = e.target.closest("butto
 $("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPressed(e.currentTarget, b); map.zoom = b.dataset.z; map.makeProj(); map.render(); });
 $("connf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.connF = b.dataset.c; setPressed(e.currentTarget, b); render(); });
 $("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });
+function scrollToCard(id) {
+  const el = $(id);
+  if (!el || el.hidden) return;
+  const top = el.getBoundingClientRect().top + window.scrollY - $("alerts").offsetHeight - 12;
+  window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+}
+$("chips").addEventListener("click", (e) => { const b = e.target.closest("[data-goto]"); if (b) scrollToCard(b.dataset.goto); });
 function setClientFilter(status, conn) {
   state.statusF = status; state.connF = conn; state.devF = null;
   setPressed($("statusf"), $("statusf").querySelector(`[data-s="${status}"]`));
   setPressed($("connf"), $("connf").querySelector(`[data-c="${conn}"]`));
   render();
-  const top = $("clients-card").getBoundingClientRect().top + window.scrollY - $("alerts").offsetHeight - 12;
-  window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  scrollToCard("clients-card");
 }
 $("k-cl-s").addEventListener("click", (e) => { const b = e.target.closest(".kpilink"); if (b) setClientFilter(b.dataset.status, b.dataset.conn); });
 $("devs").addEventListener("click", (e) => { const b = e.target.closest("[data-dev]"); if (!b) return; state.devF = state.devF === b.dataset.dev ? null : b.dataset.dev; render(); });

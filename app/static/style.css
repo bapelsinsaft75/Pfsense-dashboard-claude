@@ -285,3 +285,11 @@ tr:hover .who .edit,.who .edit:focus-visible{opacity:1}
 .bar em{position:absolute;inset:0 auto 0 0;background:rgba(229,160,13,.25)}
 .state.play{color:var(--ok-fg)}
 @media (max-width:520px){.streams{grid-template-columns:1fr}.stream{grid-template-columns:52px minmax(0,1fr)}.poster{width:52px;height:78px}}
+
+/* klickbara statusmarkeringar och markering av målet */
+button.chip{font:inherit;font-size:11px;cursor:pointer}
+button.chip:hover{border-color:var(--plex);background:#151f2b}
+button.chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.card.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 2px var(--plex)}100%{box-shadow:0 0 0 2px transparent}}
+@media (prefers-reduced-motion:reduce){.card.flash{animation:none}}
