@@ -416,9 +416,25 @@ async def debug_raw(name: str):
     return JSONResponse({"name": name, "sample": engine.raw.get(name, [])})
 
 
+def _version() -> str:
+    """Versionen från bygget (git-commit), annars ändringstiden för webbsidans filer."""
+    v = os.environ.get("APP_VERSION", "").strip()
+    if v:
+        return v[:12]
+    newest = max(os.path.getmtime(os.path.join(STATIC, f)) for f in ("index.html", "app.js", "style.css"))
+    return datetime.fromtimestamp(newest, STOCKHOLM).strftime("%Y%m%d-%H%M")
+
+
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
+    """Sidan med versionsnummer på CSS och JavaScript, så att webbläsaren hämtar nya filer efter en uppdatering."""
+    v = _version()
+    with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    html = (html.replace('href="style.css"', f'href="style.css?v={v}"')
+                .replace('src="app.js"', f'src="app.js?v={v}"')
+                .replace("{{VERSION}}", v))
+    return Response(html, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/", StaticFiles(directory=STATIC), name="static")

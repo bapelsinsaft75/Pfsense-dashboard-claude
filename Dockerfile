@@ -16,6 +16,8 @@ WORKDIR /opt/dashboard
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+ARG VERSION=""
+ENV APP_VERSION=$VERSION
 
 VOLUME ["/data"]
 EXPOSE 8080/tcp 2055/udp 5514/udp
