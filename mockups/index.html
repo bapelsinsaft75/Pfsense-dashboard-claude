@@ -1,0 +1,643 @@
+<meta charset="utf-8">
+<title>pfSense Nätverkskarta</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700&family=Sora:wght@300;400;600&display=swap">
+<style>
+/* Layout: sidhuvud med tre flikar; varje förslag visas i en egen "skärm"-ram med fast, eget utseende. */
+:root{
+  --bg:#eceff2; --fg:#151a21; --muted:#5a6370; --line:#d3d8df; --chip:#ffffff; --accent:#2c6a5a;
+  --font-ui:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --font-cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-sora:"Sora",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1115; --fg:#e6e9ee; --muted:#96a0ad; --line:#272d36; --chip:#171c23; --accent:#7cc4ad; color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1115; --fg:#e6e9ee; --muted:#96a0ad; --line:#272d36; --chip:#171c23; --accent:#7cc4ad; color-scheme:dark}
+
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--font-ui);font-size:14px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px;display:flex;flex-direction:column;gap:20px}
+.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px}
+.top h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.legend-shell{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend-shell span{display:inline-flex;align-items:center;gap:8px}
+.legend-shell i{width:22px;height:3px;border-radius:2px;display:inline-block}
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tab{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--chip);color:var(--fg)}
+.tab b{font-size:15px}
+.tab small{color:var(--muted);font-size:12.5px;line-height:1.35}
+.tab .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tab[aria-selected="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tab[aria-selected="true"] .k{color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.about{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;color:var(--muted);font-size:13.5px}
+.about h2{margin:0 0 4px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg)}
+.about ul{margin:0;padding-left:18px}
+.screen{border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:0 20px 50px -30px rgba(0,0,0,.45)}
+.foot{color:var(--muted);font-size:12.5px}
+@media (max-width:760px){.tabs{grid-template-columns:1fr}.about{grid-template-columns:1fr}}
+
+/* ── gemensamt ───────────────────────────── */
+.map svg{display:block;width:100%;height:auto}
+.flow{fill:none;stroke-linecap:round}
+.flow.dash{stroke-dasharray:2 8;animation:flowdash 1.1s linear infinite}
+@keyframes flowdash{to{stroke-dashoffset:-10}}
+.flow,.endpoint{transition:opacity .25s}
+.dim{opacity:.07!important}
+.home-pulse{transform-box:fill-box;transform-origin:center;animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.8}100%{transform:scale(2.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.flow.dash,.home-pulse{animation:none}}
+.num{font-variant-numeric:tabular-nums}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.tablebox{overflow-x:auto}
+table{border-collapse:collapse;width:100%;color:inherit}
+.pickable{cursor:pointer}
+
+/* ── A: Kontrollrum ───────────────────────── */
+.pa{--a-bg:#0a1017;--a-panel:#0f1822;--a-line:#1c2937;--a-fg:#d4e0ec;--a-muted:#6d8195;--a-land:#172433;--a-amber:#ffb547;--out:#3ddc84;--in:#b46cff;
+  background:var(--a-bg);color:var(--a-fg);font-family:var(--font-mono);font-size:12.5px;padding:16px;display:grid;gap:12px;color-scheme:dark}
+.pa .bar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center;font-size:11.5px;color:var(--a-muted);letter-spacing:.06em;text-transform:uppercase}
+.pa .bar b{color:var(--a-fg);font-family:var(--font-cond);font-size:22px;letter-spacing:.04em;font-weight:600}
+.pa .live{display:inline-flex;align-items:center;gap:6px;color:var(--out)}
+.pa .live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--out);box-shadow:0 0 8px var(--out)}
+.pa .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.pa .kpi{background:var(--a-panel);border:1px solid var(--a-line);padding:10px 12px}
+.pa .kpi .l{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--a-muted)}
+.pa .kpi .v{font-family:var(--font-cond);font-size:34px;font-weight:600;line-height:1.05;color:var(--a-fg)}
+.pa .kpi .v small{font-size:15px;color:var(--a-muted);margin-left:4px;font-weight:500}
+.pa .kpi.hl .v{color:var(--a-amber)}
+.pa .grid{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:12px}
+.pa .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.1fr);gap:12px}
+.pa .panel{background:var(--a-panel);border:1px solid var(--a-line);padding:12px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.pa h3{margin:0;font-family:var(--font-cond);font-weight:600;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--a-muted);display:flex;justify-content:space-between;gap:8px}
+.pa h3 em{font-style:normal;color:var(--a-fg);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;text-transform:none}
+.pa .map{position:relative;background:radial-gradient(ellipse at 55% 30%,#102033,var(--a-panel) 70%)}
+.pa .sphere{fill:none}
+.pa .grat{fill:none;stroke:#152232;stroke-width:.5}
+.pa .land{fill:var(--a-land);stroke:var(--a-bg);stroke-width:.5}
+.pa .land.hot{fill:#1f3347}
+.pa .home path.house{fill:var(--a-amber)}
+.pa .home circle{fill:none;stroke:var(--a-amber);stroke-width:1.2}
+.pa .home text{fill:var(--a-amber);font-family:var(--font-cond);font-size:13px;letter-spacing:.08em}
+.pa .endpoint text{fill:var(--a-muted);font-size:9.5px;font-family:var(--font-mono)}
+.pa .maplegend{position:absolute;left:12px;bottom:10px;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--a-muted);background:rgba(10,16,23,.75);padding:6px 8px}
+.pa .maplegend span{display:flex;align-items:center;gap:8px}
+.pa .maplegend i{width:18px;height:2px;display:inline-block}
+.pa .filterpill{position:absolute;right:12px;top:10px;background:rgba(10,16,23,.85);border:1px solid var(--a-line);padding:4px 8px;font-size:11px;color:var(--a-fg)}
+.pa .filterpill button{all:unset;cursor:pointer;color:var(--a-amber);margin-left:8px}
+.pa .bw{display:grid;gap:8px}
+.pa .bwrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}
+.pa .bwrow .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pa .bwrow .r{color:var(--a-amber)}
+.pa .meter{grid-column:1/-1;height:6px;background:#0b131c;display:flex}
+.pa .meter .d{background:var(--a-amber)}
+.pa .meter .u{background:#5aa9ff}
+.pa .meterkey{font-size:10.5px;color:var(--a-muted);display:flex;gap:12px}
+.pa .meterkey i{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:-1px}
+.pa .vol{display:grid;gap:6px}
+.pa .volrow{display:grid;grid-template-columns:92px minmax(0,1fr) 54px;gap:8px;align-items:center}
+.pa .volrow .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--a-fg)}
+.pa .volrow .t{height:12px;background:#0b131c}
+.pa .volrow .t div{height:100%;background:linear-gradient(90deg,#3a5874,#7fb0d8)}
+.pa .volrow .g{text-align:right}
+.pa table{font-size:12px}
+.pa th{font-weight:400;color:var(--a-muted);text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;border-bottom:1px solid var(--a-line)}
+.pa td{padding:5px 8px;border-bottom:1px solid #131e2a;white-space:nowrap}
+.pa tr.pickable:hover td{background:#132131}
+.pa tr.sel td{background:#1a2c40}
+.pa .st{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--out);margin-right:6px}
+.pa .st.idle{background:#4a5a6a}
+.pa .ip{color:#8fc7ff}
+@media (max-width:980px){.pa .grid,.pa .grid2{grid-template-columns:1fr}.pa .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ── B: Översikt ──────────────────────────── */
+.pb{--b-bg:#f5f6f8;--b-card:#ffffff;--b-fg:#1a2130;--b-muted:#667085;--b-line:#e3e6eb;--b-land:#dfe4eb;--b-accent:#1f4f8f;--out:#16935a;--in:#7a3fe0;
+  background:var(--b-bg);color:var(--b-fg);font-family:var(--font-ui);padding:20px;display:grid;gap:16px;color-scheme:light}
+.pb .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
+.pb .head h2{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.pb .head p{margin:0;color:var(--b-muted);font-size:13px}
+.pb .seg{display:inline-flex;background:#e9ecf1;border-radius:8px;padding:3px;gap:2px}
+.pb .seg button{all:unset;cursor:pointer;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:500;color:var(--b-muted)}
+.pb .seg button[aria-pressed="true"]{background:var(--b-card);color:var(--b-fg);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.pb .seg button:focus-visible{outline:2px solid var(--b-accent)}
+.pb .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.pb .kpi{background:var(--b-card);border:1px solid var(--b-line);border-radius:10px;padding:14px 16px}
+.pb .kpi .l{font-size:12.5px;color:var(--b-muted);font-weight:500}
+.pb .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
+.pb .kpi .v small{font-size:14px;color:var(--b-muted);font-weight:500;margin-left:3px}
+.pb .kpi .s{font-size:12px;color:var(--b-muted)}
+.pb .row{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:16px}
+.pb .card{background:var(--b-card);border:1px solid var(--b-line);border-radius:10px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.pb .card h3{margin:0;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.pb .card h3 small{font-weight:400;color:var(--b-muted);font-size:12.5px}
+.pb .sphere{fill:#f3f6fa;stroke:var(--b-line)}
+.pb .grat{fill:none;stroke:#e8ecf2;stroke-width:.5}
+.pb .land{fill:var(--b-land);stroke:#fff;stroke-width:.6}
+.pb .home path.house{fill:var(--b-fg)}
+.pb .home circle{fill:none;stroke:var(--b-fg);stroke-width:1}
+.pb .home text{fill:var(--b-fg);font-size:12px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3px}
+.pb .endpoint text{fill:var(--b-muted);font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:3px}
+.pb .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--b-muted)}
+.pb .legend span{display:inline-flex;align-items:center;gap:6px}
+.pb .legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
+.pb .clist{display:grid;gap:10px}
+.pb .crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:13px}
+.pb .crow .f{font-weight:600}
+.pb .crow .m{color:var(--b-muted);font-size:12px}
+.pb .split{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:#eef1f5}
+.pb .split .o{background:var(--out)}
+.pb .split .i{background:var(--in)}
+.pb .chart text{fill:var(--b-muted);font-size:10.5px}
+.pb .chart .gl{stroke:#eef1f5}
+.pb .topc{display:grid;gap:9px}
+.pb .topc .r{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 10px;align-items:center;font-size:13px}
+.pb .topc .r .ico{color:var(--b-muted)}
+.pb .topc .r .t{grid-column:2/-1;height:8px;border-radius:4px;background:#eef1f5;overflow:hidden}
+.pb .topc .r .t div{height:100%;background:var(--b-accent);border-radius:4px}
+.pb .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pb input[type=search]{font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--b-line);border-radius:8px;min-width:0;width:240px;max-width:100%;background:#fff;color:var(--b-fg)}
+.pb input[type=search]:focus-visible{outline:2px solid var(--b-accent);outline-offset:1px}
+.pb table{font-size:13px}
+.pb th{text-align:left;font-weight:500;color:var(--b-muted);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--b-line);white-space:nowrap}
+.pb th button{all:unset;cursor:pointer}
+.pb th button:focus-visible{outline:2px solid var(--b-accent)}
+.pb td{padding:8px 10px;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+.pb td.mono{font-family:var(--font-mono);font-size:12px}
+.pb .who{display:flex;align-items:center;gap:10px;font-weight:500}
+.pb .who .ico{color:var(--b-muted)}
+.pb .pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:#ecfdf3;color:#067647;font-weight:500}
+.pb .pill.idle{background:#f2f4f7;color:#475467}
+.pb .r-right{text-align:right}
+@media (max-width:980px){.pb .row{grid-template-columns:1fr}.pb .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ── C: Glob ──────────────────────────────── */
+.pc{--c-fg:#e9edff;--c-muted:#8b94bb;--c-glass:rgba(17,24,48,.62);--c-line:rgba(140,160,230,.18);--out:#4ef0a0;--in:#c48bff;--c-gold:#ffd27a;
+  background:radial-gradient(ellipse at 50% 45%,#121a36 0%,#070a16 62%);color:var(--c-fg);font-family:var(--font-sora);position:relative;min-height:660px;padding:18px;display:grid;grid-template-columns:260px minmax(0,1fr) 260px;grid-template-rows:auto minmax(0,1fr) auto;gap:14px;color-scheme:dark}
+.pc .brand{grid-column:1/-1;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline}
+.pc .brand b{font-weight:600;font-size:18px;letter-spacing:.01em}
+.pc .brand span{color:var(--c-muted);font-size:12.5px;font-weight:300}
+.pc .glass{background:var(--c-glass);border:1px solid var(--c-line);border-radius:16px;padding:14px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);min-width:0;display:flex;flex-direction:column;gap:10px;align-self:start}
+.pc h3{margin:0;font-size:11px;font-weight:400;letter-spacing:.14em;text-transform:uppercase;color:var(--c-muted)}
+.pc .big{font-size:30px;font-weight:300;line-height:1.1}
+.pc .big small{font-size:13px;color:var(--c-muted);margin-left:4px}
+.pc .t5{display:grid;gap:8px;font-size:13px}
+.pc .t5 .r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px}
+.pc .t5 .r .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .t5 .r .v{color:var(--c-gold);font-variant-numeric:tabular-nums}
+.pc .t5 .r .t{grid-column:1/-1;height:3px;border-radius:2px;background:rgba(255,255,255,.07)}
+.pc .t5 .r .t div{height:100%;border-radius:2px;background:linear-gradient(90deg,#6b7cff,var(--c-gold))}
+.pc .globe{grid-row:2;grid-column:2;display:flex;align-items:center;justify-content:center;position:relative;min-width:0}
+.pc .globe svg{width:100%;max-width:600px;height:auto;cursor:grab;touch-action:none}
+.pc .globe svg:active{cursor:grabbing}
+.pc .ocean{fill:url(#c-ocean)}
+.pc .halo{fill:none;stroke:rgba(120,150,255,.25);stroke-width:8;filter:blur(6px)}
+.pc .grat{fill:none;stroke:rgba(140,160,230,.10);stroke-width:.6}
+.pc .land{fill:#1d2b4f;stroke:#0b1330;stroke-width:.5}
+.pc .home path.house{fill:var(--c-gold)}
+.pc .home circle{fill:none;stroke:var(--c-gold);stroke-width:1.2}
+.pc .home text{fill:var(--c-gold);font-size:12px;font-weight:600}
+.pc .endpoint text{fill:var(--c-fg);font-size:10px;font-weight:300;opacity:.85}
+.pc .recenter{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);all:unset;cursor:pointer}
+.pc .gbtn{position:absolute;bottom:0;left:50%;transform:translateX(-50%);font:inherit;font-size:12px;color:var(--c-fg);background:var(--c-glass);border:1px solid var(--c-line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.pc .gbtn:focus-visible{outline:2px solid var(--c-gold)}
+.pc .ctry{display:grid;gap:6px;font-size:13px;max-height:330px;overflow:auto}
+.pc .ctry .r{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.pc .ctry .o{color:var(--out);font-variant-numeric:tabular-nums;font-size:12px}
+.pc .ctry .i{color:var(--in);font-variant-numeric:tabular-nums;font-size:12px}
+.pc .clegend{display:grid;gap:4px;font-size:11.5px;color:var(--c-muted)}
+.pc .clegend span{display:flex;align-items:center;gap:8px}
+.pc .clegend i{width:16px;height:2px;display:inline-block}
+.pc .dock{grid-column:1/-1;grid-row:3}
+.pc .dock .head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pc .dock .hint{font-size:11.5px;color:var(--c-muted)}
+.pc .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:8px}
+.pc .chipc{all:unset;cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 10px;align-items:center;padding:8px 10px;border-radius:12px;border:1px solid var(--c-line);background:rgba(255,255,255,.03)}
+.pc .chipc .ico{grid-row:1/3;color:var(--c-muted)}
+.pc .chipc b{font-weight:400;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .chipc span{font-size:11.5px;color:var(--c-muted);font-family:var(--font-mono)}
+.pc .chipc:hover{background:rgba(255,255,255,.07)}
+.pc .chipc[aria-pressed="true"]{border-color:var(--c-gold);background:rgba(255,210,122,.08)}
+.pc .chipc[aria-pressed="true"] .ico{color:var(--c-gold)}
+.pc .chipc:focus-visible{outline:2px solid var(--c-gold)}
+@media (max-width:1050px){.pc{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pc .globe{grid-column:1/-1;grid-row:2}.pc .left{grid-row:3;grid-column:1}.pc .right{grid-row:3;grid-column:2}.pc .dock{grid-row:4}}
+@media (max-width:640px){.pc{grid-template-columns:minmax(0,1fr)}.pc .left,.pc .right{grid-column:1}.pc .right{grid-row:4}.pc .dock{grid-row:5}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>pfSense Nätverkskarta</h1>
+      <p>Tre visuella förslag för samma dashboard. Allt du ser är exempeldata. Klicka på en klient i något av förslagen för att bara se dess trafik på kartan.</p>
+    </div>
+    <div class="legend-shell" aria-label="Färgförklaring">
+      <span><i style="background:#2fbf71"></i>Startad inifrån nätverket</span>
+      <span><i style="background:#9b5cf0"></i>Startad utifrån</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Förslag">
+    <button class="tab" role="tab" id="tab-kontrollrum" data-view="kontrollrum"><span class="k">Förslag A</span><b>Kontrollrum</b><small>Mörk driftvy med allt på en skärm. Passar en väggskärm eller en flik som alltid är öppen.</small></button>
+    <button class="tab" role="tab" id="tab-oversikt" data-view="oversikt"><span class="k">Förslag B</span><b>Översikt</b><small>Ljus och luftig rapportvy med tidsperioder, sökbar klientlista och 24-timmarsgraf.</small></button>
+    <button class="tab" role="tab" id="tab-glob" data-view="glob"><span class="k">Förslag C</span><b>Glob</b><small>Snurrbar jordglob med Örebro i mitten. Mest visuellt, mindre detaljer per vy.</small></button>
+  </nav>
+
+  <!-- ═════════════ A ═════════════ -->
+  <section class="screen" id="view-kontrollrum" role="tabpanel" aria-labelledby="tab-kontrollrum">
+    <div class="pa">
+      <div class="bar"><b>PFSENSE · HEMMA</b><span>WAN igb0 · 1000/1000 Mbit/s · Örebro, SE</span><span class="live" id="a-clock">--:--:--</span></div>
+      <div class="kpis">
+        <div class="kpi hl"><div class="l">Ned just nu</div><div class="v num" id="a-down">0<small>Mbit/s</small></div></div>
+        <div class="kpi"><div class="l">Upp just nu</div><div class="v num" id="a-up">0<small>Mbit/s</small></div></div>
+        <div class="kpi"><div class="l">Data idag</div><div class="v num" id="a-total">0<small>GB</small></div></div>
+        <div class="kpi"><div class="l">Klienter online</div><div class="v num" id="a-clients">0</div></div>
+      </div>
+      <div class="grid">
+        <div class="panel">
+          <h3>Trafik per land <em id="a-flowcount"></em></h3>
+          <div class="map" id="a-map">
+            <svg viewBox="0 0 960 470" role="img" aria-label="Världskarta med trafiklinjer från Örebro"></svg>
+            <div class="maplegend"><span><i style="background:var(--out)"></i>Startad inifrån</span><span><i style="background:var(--in)"></i>Startad utifrån</span></div>
+            <div class="filterpill" id="a-filter" hidden></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Mest bandbredd <em>live · 2 s</em></h3>
+          <div class="meterkey"><span><i style="background:var(--a-amber)"></i>ned</span><span><i style="background:#5aa9ff"></i>upp</span></div>
+          <div class="bw" id="a-bw"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>Mest data <em>senaste 24 h</em></h3>
+          <div class="vol" id="a-vol"></div>
+        </div>
+        <div class="panel">
+          <h3>Anslutna klienter <em>DHCP + ARP</em></h3>
+          <div class="tablebox"><table id="a-table"><thead><tr><th>Klient</th><th>IP</th><th>MAC</th><th>Ned</th><th>Upp</th><th>24 h</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ B ═════════════ -->
+  <section class="screen" id="view-oversikt" role="tabpanel" aria-labelledby="tab-oversikt" hidden>
+    <div class="pb">
+      <div class="head">
+        <div><h2>Nätverket hemma</h2><p id="b-sub">pfSense · Örebro · uppdaterad nyss</p></div>
+        <div class="seg" role="group" aria-label="Period" id="b-period">
+          <button aria-pressed="true" data-p="1">24 timmar</button><button aria-pressed="false" data-p="6.4">7 dagar</button><button aria-pressed="false" data-p="27.5">30 dagar</button>
+        </div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Total data</div><div class="v num" id="b-total"></div><div class="s" id="b-total-s"></div></div>
+        <div class="kpi"><div class="l">Bandbredd just nu</div><div class="v num" id="b-now"></div><div class="s">ned + upp, hela WAN</div></div>
+        <div class="kpi"><div class="l">Anslutna klienter</div><div class="v num" id="b-cl"></div><div class="s" id="b-cl-s"></div></div>
+        <div class="kpi"><div class="l">Länder</div><div class="v num" id="b-ctry"></div><div class="s" id="b-ctry-s"></div></div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <h3>Vart trafiken går <span class="seg" role="group" aria-label="Kartutsnitt" id="b-zoom"><button aria-pressed="true" data-z="world">Världen</button><button aria-pressed="false" data-z="europe">Europa</button></span></h3>
+          <div class="map" id="b-map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från Örebro"></svg></div>
+          <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån (klient → internet)</span><span><i style="background:var(--in)"></i>Startad utifrån (internet → klient)</span><span id="b-filter"></span></div>
+        </div>
+        <div class="card">
+          <h3>Länder <small>andel av data</small></h3>
+          <div class="clist" id="b-ctrylist"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <h3>Bandbredd över dygnet <small>Mbit/s, hela WAN</small></h3>
+          <div class="chart" id="b-chart"></div>
+          <div class="legend"><span><i style="background:var(--b-accent)"></i>Nedladdning</span><span><i style="background:#f59e0b"></i>Uppladdning</span></div>
+        </div>
+        <div class="card">
+          <h3>Mest data <small id="b-topc-s">24 timmar</small></h3>
+          <div class="topc" id="b-topc"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Klienter <span class="tools"><input type="search" id="b-search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient"></span></h3>
+        <div class="tablebox"><table id="b-table"><thead><tr>
+          <th><button data-sort="name">Namn</button></th><th><button data-sort="ip">IP-adress</button></th><th>MAC</th><th>Status</th>
+          <th class="r-right"><button data-sort="now">Nu ↓</button></th><th class="r-right"><button data-sort="gb">Data</button></th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════ C ═════════════ -->
+  <section class="screen" id="view-glob" role="tabpanel" aria-labelledby="tab-glob" hidden>
+    <div class="pc">
+      <div class="brand"><b>Hemma · Örebro</b><span>Dra i globen för att snurra den</span></div>
+      <div class="glass left">
+        <h3>Just nu</h3>
+        <div class="big num" id="c-now">0<small>Mbit/s</small></div>
+        <div class="t5" id="c-top"></div>
+      </div>
+      <div class="globe" id="c-map">
+        <svg viewBox="0 0 600 600" role="img" aria-label="Jordglob med trafiklinjer från Örebro">
+          <defs><radialGradient id="c-ocean" cx="42%" cy="38%" r="70%"><stop offset="0" stop-color="#16244d"/><stop offset="1" stop-color="#080e24"/></radialGradient></defs>
+        </svg>
+        <button class="gbtn" id="c-center" type="button">Centrera på Örebro</button>
+      </div>
+      <div class="glass right">
+        <h3>Länder</h3>
+        <div class="clegend"><span><i style="background:var(--out)"></i>Startad inifrån</span><span><i style="background:var(--in)"></i>Startad utifrån</span></div>
+        <div class="ctry" id="c-ctry"></div>
+      </div>
+      <div class="glass dock">
+        <div class="head"><h3>Klienter · <span id="c-count"></span></h3><span class="hint">Välj en klient för att se dess linjer</span></div>
+        <div class="chips" id="c-chips"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="about" aria-label="Om förslagen">
+    <div>
+      <h2>Samma data i alla tre</h2>
+      <ul>
+        <li>Klienter, IP och MAC hämtas från pfSense DHCP-leases och ARP-tabellen.</li>
+        <li>Bandbredd och datamängd per klient kommer från trafikräkning per IP (t.ex. NetFlow eller ntopng).</li>
+        <li>Land slås upp lokalt med en GeoIP-databas. Riktning avgörs av vem som skickade första paketet i anslutningen.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Körs på Unraid</h2>
+      <ul>
+        <li>En container med webbserver och insamlare, port 8080 i webbläsaren.</li>
+        <li>Inställningar via miljövariabler i Unraid-mallen: pfSense-adress, API-nyckel, LAN-nät.</li>
+        <li>Historik sparas i en volym under <code>/mnt/user/appdata</code>.</li>
+      </ul>
+    </div>
+  </section>
+  <p class="foot">Kartdata: Natural Earth via world-atlas. Siffror, klientnamn och anslutningar är påhittade exempel.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+(function(){
+"use strict";
+const HOME={name:"Örebro",lon:15.2066,lat:59.2741};
+
+/* ── exempeldata ── */
+const CLIENTS=[
+ {id:"ps5",name:"PS5",ip:"192.168.1.41",mac:"BC:33:29:7A:01:F2",type:"console",down:182,up:3.2,gb:48.2},
+ {id:"tv",name:"Vardagsrum-TV",ip:"192.168.1.40",mac:"A8:23:FE:10:9C:44",type:"tv",down:24.5,up:.6,gb:31.7},
+ {id:"unraid",name:"Unraid",ip:"192.168.1.10",mac:"D0:50:99:3A:11:0C",type:"server",down:6.1,up:41.8,gb:22.4},
+ {id:"kontor",name:"Kontor-PC",ip:"192.168.1.22",mac:"04:42:1A:C3:7E:90",type:"desktop",down:14.2,up:8.9,gb:12.9},
+ {id:"macbook",name:"MacBook-Pro",ip:"192.168.1.21",mac:"F4:D4:88:5B:2E:17",type:"laptop",down:9.7,up:2.4,gb:9.8},
+ {id:"appletv",name:"Apple-TV",ip:"192.168.1.42",mac:"90:DD:5D:21:B8:03",type:"tv",down:0,up:0,gb:7.1,idle:true},
+ {id:"ipad",name:"iPad",ip:"192.168.1.35",mac:"6C:4A:85:E0:33:9B",type:"tablet",down:3.8,up:.4,gb:4.3},
+ {id:"iphone",name:"iPhone-15",ip:"192.168.1.34",mac:"3A:91:0F:6E:D2:55",type:"phone",down:2.1,up:.9,gb:3.9},
+ {id:"galaxy",name:"Galaxy-S24",ip:"192.168.1.36",mac:"8E:12:C7:40:AA:61",type:"phone",down:1.3,up:.3,gb:2.7},
+ {id:"sonos",name:"Sonos-Kök",ip:"192.168.1.50",mac:"48:A6:B8:0D:5F:2E",type:"speaker",down:.32,up:.02,gb:1.2},
+ {id:"ha",name:"Home-Assistant",ip:"192.168.1.60",mac:"DC:A6:32:9F:14:B7",type:"server",down:.12,up:.21,gb:.62},
+ {id:"robo",name:"Roborock",ip:"192.168.1.62",mac:"64:90:C1:2B:7D:08",type:"robot",down:.01,up:.02,gb:.15},
+ {id:"hue",name:"Hue-Bridge",ip:"192.168.1.61",mac:"00:17:88:6C:41:D9",type:"iot",down:0,up:.01,gb:.04},
+ {id:"hp",name:"Skrivare-HP",ip:"192.168.1.70",mac:"30:24:A9:8E:12:7C",type:"printer",down:0,up:0,gb:.01,idle:true}
+];
+const FLOWS=[
+ {country:"Sverige",lon:18.07,lat:59.33,dir:"out",gb:14.6,conns:412,clients:["tv","macbook","iphone","ipad","kontor","galaxy","sonos"]},
+ {country:"Irland",lon:-6.26,lat:53.35,dir:"out",gb:11.2,conns:288,clients:["macbook","kontor","iphone","ipad","galaxy"]},
+ {country:"Nederländerna",lon:4.9,lat:52.37,dir:"out",gb:27.9,conns:164,clients:["tv","appletv","kontor","unraid"]},
+ {country:"Tyskland",lon:8.68,lat:50.11,dir:"out",gb:41.3,conns:203,clients:["ps5","unraid","kontor","ha","robo"]},
+ {country:"USA",lon:-77.49,lat:39.04,dir:"out",gb:18.7,conns:356,clients:["macbook","iphone","kontor","appletv","hue","sonos","ps5"]},
+ {country:"Storbritannien",lon:-.12,lat:51.5,dir:"out",gb:4.4,conns:58,clients:["tv","ipad"]},
+ {country:"Finland",lon:24.94,lat:60.17,dir:"out",gb:2.1,conns:31,clients:["unraid","galaxy"]},
+ {country:"Danmark",lon:12.57,lat:55.68,dir:"out",gb:1.4,conns:22,clients:["sonos","ha"]},
+ {country:"Norge",lon:10.75,lat:59.91,dir:"out",gb:.8,conns:12,clients:["iphone"]},
+ {country:"Frankrike",lon:2.35,lat:48.86,dir:"out",gb:1.9,conns:40,clients:["kontor","macbook"]},
+ {country:"Japan",lon:139.69,lat:35.69,dir:"out",gb:6.2,conns:18,clients:["ps5"]},
+ {country:"Singapore",lon:103.82,lat:1.35,dir:"out",gb:.6,conns:9,clients:["robo"]},
+ {country:"USA",lon:-77.49,lat:39.04,dir:"in",gb:6.8,conns:14,clients:["unraid"]},
+ {country:"Nederländerna",lon:4.9,lat:52.37,dir:"in",gb:.4,conns:96,clients:["unraid","ha"]},
+ {country:"Kina",lon:116.4,lat:39.9,dir:"in",gb:.05,conns:211,clients:["unraid"]},
+ {country:"Ryssland",lon:37.62,lat:55.75,dir:"in",gb:.03,conns:148,clients:["ha"]},
+ {country:"Brasilien",lon:-46.63,lat:-23.55,dir:"in",gb:.02,conns:37,clients:["unraid"]},
+ {country:"Indien",lon:77.21,lat:28.61,dir:"in",gb:.01,conns:52,clients:["unraid"]}
+];
+const ICONS={
+ laptop:"M4 6h16v10H4z M2 19h20",phone:"M8 3h8v18H8z M11 18h2",tablet:"M6 3h12v18H6z M11 18h2",
+ tv:"M3 5h18v12H3z M8 21h8",server:"M4 4h16v6H4z M4 14h16v6H4z M8 7h.01 M8 17h.01",
+ console:"M7 8h10a4 4 0 0 1 0 9l-2-2H9l-2 2a4 4 0 0 1 0-9z M9 11v3 M7.5 12.5h3 M15.5 12h.01",
+ speaker:"M7 3h10v18H7z M9 14a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M12 7h.01",
+ iot:"M12 3a6 6 0 0 1 3.5 10.9V17h-7v-3.1A6 6 0 0 1 12 3z M9.5 20h5",
+ robot:"M4 12a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0",
+ printer:"M7 8V3h10v5 M4 8h16v8H4z M7 13h10v8H7z",desktop:"M3 4h18v12H3z M9 20h6 M12 16v4"
+};
+const icon=t=>`<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[t]||ICONS.iot}"/></svg>`;
+const fmt=(n,d=1)=>n.toLocaleString("sv-SE",{maximumFractionDigits:d,minimumFractionDigits:0});
+const fmtGB=gb=>gb>=1?fmt(gb,1)+" GB":fmt(gb*1024,0)+" MB";
+const fmtRate=m=>m>=10?fmt(m,0):m>=1?fmt(m,1):fmt(m,2);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const byId=Object.fromEntries(CLIENTS.map(c=>[c.id,c]));
+const live=CLIENTS.map(c=>({...c}));
+const HOUSE="M0-8.5-8-1.5h2.3V7h4.2V2.2h3V7h4.2V-1.5H8z";
+
+/* ── karta ── */
+class MapView{
+  constructor(svgEl,o){this.svg=d3.select(svgEl);this.o=o;this.filter=null;
+    const vb=svgEl.viewBox.baseVal;this.w=vb.width;this.h=vb.height;
+    const s=this.svg;this.gS=s.append("path").attr("class","sphere");this.gG=s.append("path").attr("class","grat");
+    this.gL=s.append("g");this.gB=s.append("g");this.gF=s.append("g");this.gE=s.append("g");this.gH=s.append("g").attr("class","home");
+    if(o.globe){this.gHalo=s.insert("circle",":first-child").attr("class","halo");}
+    this.makeProj("world");
+  }
+  makeProj(zoom){
+    const o=this.o,sphere={type:"Sphere"};
+    if(o.globe){this.p=d3.geoOrthographic().rotate([-HOME.lon,-42]).fitExtent([[24,24],[this.w-24,this.h-24]],sphere).clipAngle(90);}
+    else{this.p=(o.proj==="equal"?d3.geoEqualEarth():d3.geoNaturalEarth1());
+      if(zoom==="europe"){this.p.fitExtent([[10,10],[this.w-10,this.h-10]],{type:"MultiPoint",coordinates:[[-11,36],[34,71],[30,36],[-11,66]]});}
+      else{this.p.fitExtent([[6,6],[this.w-6,this.h+(o.cropBottom||0)]],sphere);}}
+    this.path=d3.geoPath(this.p);
+  }
+  setWorld(world){this.countries=topojson.feature(world,world.objects.countries).features;
+    this.gL.selectAll("path").data(this.countries).join("path").attr("class","land");this.render();}
+  visible(ll){if(!this.o.globe)return true;const r=this.p.rotate();return d3.geoDistance(ll,[-r[0],-r[1]])<Math.PI/2-.02;}
+  arc(f){const a=[HOME.lon,HOME.lat],b=[f.lon,f.lat],[s,t]=f.dir==="out"?[a,b]:[b,a];
+    if(this.o.globe)return this.path({type:"LineString",coordinates:[s,t]});
+    const p0=this.p(s),p1=this.p(t),dx=p1[0]-p0[0],dy=p1[1]-p0[1],d=Math.hypot(dx,dy)||1;
+    let k=(Math.min(.32,14/d+.14))*(f.dir==="in"?.6:1),nx=-dy/d,ny=dx/d,mx=(p0[0]+p1[0])/2,my=(p0[1]+p1[1])/2;
+    let cx=mx+nx*d*k,cy=my+ny*d*k;if(cy>my){cx=mx-nx*d*k;cy=my-ny*d*k;}
+    return `M${p0[0]},${p0[1]}Q${cx},${cy} ${p1[0]},${p1[1]}`;}
+  render(){
+    const P=this.path,o=this.o;
+    this.gS.attr("d",P({type:"Sphere"}));this.gG.attr("d",P(d3.geoGraticule10()));
+    if(this.gHalo){const c=this.p.translate();this.gHalo.attr("cx",c[0]).attr("cy",c[1]).attr("r",this.p.scale());}
+    const hot=new Set(FLOWS.map(f=>f.country));
+    this.gL.selectAll("path").attr("d",P);
+    const flows=FLOWS.slice().sort((a,b)=>b.gb-a.gb);
+    const sw=f=>Math.max(1,Math.min(4.2,.9+Math.sqrt(f.gb)*.55))*(o.sw||1);
+    const show=f=>!this.filter||f.clients.includes(this.filter);
+    const col=f=>f.dir==="out"?"var(--out)":"var(--in)";
+    const tip=f=>`${f.country} · ${f.dir==="out"?"startad inifrån":"startad utifrån"}\n${fmtGB(f.gb)} · ${f.conns} anslutningar\n${f.clients.map(c=>byId[c].name).join(", ")}`;
+    this.gB.selectAll("path").data(flows).join("path").attr("class",f=>"flow"+(show(f)?"":" dim")).attr("d",f=>this.arc(f)).attr("stroke",col).attr("stroke-width",sw).attr("opacity",.28);
+    this.gF.selectAll("path").data(flows).join(en=>en.append("path").call(p=>p.append("title")))
+      .attr("class",f=>"flow dash"+(show(f)?"":" dim")).attr("d",f=>this.arc(f)).attr("stroke",col).attr("stroke-width",sw)
+      .select("title").text(tip);
+    const pts=d3.groups(flows,f=>f.country).map(([c,fs])=>({country:c,lon:fs[0].lon,lat:fs[0].lat,fs}));
+    const ep=this.gE.selectAll("g").data(pts,d=>d.country).join(en=>{const g=en.append("g").attr("class","endpoint");g.append("circle");g.append("text");g.append("title");return g;});
+    ep.each((d,i,n)=>{const g=d3.select(n[i]),v=this.visible([d.lon,d.lat]);g.attr("display",v?null:"none");if(!v)return;
+      const [x,y]=this.p([d.lon,d.lat]),any=d.fs.some(show),both=d.fs.length>1,hasOut=d.fs.some(f=>f.dir==="out");
+      g.attr("transform",`translate(${x},${y})`).classed("dim",!any);
+      g.select("circle").attr("r",o.dot||3).attr("fill",hasOut?"var(--out)":"var(--in)").attr("stroke",both?"var(--in)":"none").attr("stroke-width",both?1.6:0);
+      g.select("text").attr("x",6).attr("y",3).text(o.labels&&d.country!=="Sverige"?d.country:"");
+      g.select("title").text(d.fs.map(tip).join("\n\n"));});
+    const hv=this.visible([HOME.lon,HOME.lat]);this.gH.attr("display",hv?null:"none");
+    if(hv){const [x,y]=this.p([HOME.lon,HOME.lat]);
+      if(this.gH.selectAll("*").empty()){this.gH.append("circle").attr("class","home-pulse").attr("r",9);this.gH.append("path").attr("class","house");this.gH.append("text");}
+      const sc=o.house||1;this.gH.attr("transform",`translate(${x},${y})`);this.gH.select("path").attr("d",HOUSE).attr("transform",`scale(${sc})`);
+      this.gH.select("text").attr("x",-12*sc).attr("y",-12*sc).attr("text-anchor","end").text(HOME.name);}
+  }
+  setFilter(id){this.filter=id;this.render();}
+}
+
+/* ── live-simulering ── */
+function tick(){live.forEach((c,i)=>{const b=CLIENTS[i];if(b.idle)return;const j=()=>.78+Math.random()*.44;c.down=b.down*j();c.up=b.up*j();});}
+const totDown=()=>live.reduce((s,c)=>s+c.down,0),totUp=()=>live.reduce((s,c)=>s+c.up,0);
+const online=()=>CLIENTS.filter(c=>!c.idle).length;
+
+/* ═════ A ═════ */
+let mapA;
+function renderA(){
+  document.getElementById("a-down").innerHTML=fmt(totDown(),0)+"<small>Mbit/s</small>";
+  document.getElementById("a-up").innerHTML=fmt(totUp(),0)+"<small>Mbit/s</small>";
+  const top=live.slice().sort((a,b)=>(b.down+b.up)-(a.down+a.up)).slice(0,8),mx=Math.max(...top.map(c=>c.down+c.up));
+  document.getElementById("a-bw").innerHTML=top.map(c=>`<div class="bwrow pickable" data-id="${c.id}"><span class="n">${esc(c.name)}</span><span class="r num">${fmtRate(c.down+c.up)} Mbit/s</span><div class="meter"><div class="d" style="width:${c.down/mx*100}%"></div><div class="u" style="width:${c.up/mx*100}%"></div></div></div>`).join("");
+  const tb=document.querySelector("#a-table tbody");
+  tb.innerHTML=live.map(c=>`<tr class="pickable${mapA&&mapA.filter===c.id?" sel":""}" data-id="${c.id}"><td><span class="st${c.idle?" idle":""}"></span>${esc(c.name)}</td><td class="ip">${c.ip}</td><td>${c.mac}</td><td class="num">${fmtRate(c.down)}</td><td class="num">${fmtRate(c.up)}</td><td class="num">${fmtGB(c.gb)}</td></tr>`).join("");
+}
+function initA(){
+  const tot=CLIENTS.reduce((s,c)=>s+c.gb,0);
+  document.getElementById("a-total").innerHTML=fmt(tot,1)+"<small>GB</small>";
+  document.getElementById("a-clients").textContent=online()+" / "+CLIENTS.length;
+  const o=FLOWS.filter(f=>f.dir==="out").length,i=FLOWS.filter(f=>f.dir==="in").length;
+  document.getElementById("a-flowcount").textContent=`${o} ut · ${i} in`;
+  const mx=CLIENTS[0].gb;
+  document.getElementById("a-vol").innerHTML=CLIENTS.slice(0,9).map(c=>`<div class="volrow pickable" data-id="${c.id}"><span class="n">${esc(c.name)}</span><div class="t"><div style="width:${c.gb/mx*100}%"></div></div><span class="g num">${fmtGB(c.gb)}</span></div>`).join("");
+  document.getElementById("view-kontrollrum").addEventListener("click",e=>{
+    const r=e.target.closest("[data-id]");if(r){const id=r.dataset.id;setA(mapA.filter===id?null:id);}
+    if(e.target.closest("#a-filter button"))setA(null);});
+  renderA();
+}
+function setA(id){if(!mapA)return;mapA.setFilter(id);const p=document.getElementById("a-filter");p.hidden=!id;
+  if(id)p.innerHTML=`Visar: ${esc(byId[id].name)} <button type="button">Visa alla</button>`;renderA();}
+setInterval(()=>{const t=new Date().toLocaleTimeString("sv-SE",{timeZone:"Europe/Stockholm"});document.getElementById("a-clock").textContent="LIVE "+t;},1000);
+
+/* ═════ B ═════ */
+let mapB,period=1,sortKey="gb",sortDir=-1;
+function rng(seed){return()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646;};}
+function initB(){
+  document.getElementById("b-cl").textContent=online();
+  document.getElementById("b-cl-s").textContent=`${CLIENTS.length-online()} inaktiva av ${CLIENTS.length}`;
+  const cs=new Set(FLOWS.map(f=>f.country));
+  document.getElementById("b-ctry").textContent=cs.size;
+  document.getElementById("b-ctry-s").textContent=`${new Set(FLOWS.filter(f=>f.dir==="in").map(f=>f.country)).size} med inkommande trafik`;
+  drawChartB();
+  document.getElementById("b-period").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;period=+b.dataset.p;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",x===b));renderB();});
+  document.getElementById("b-zoom").addEventListener("click",e=>{const b=e.target.closest("button");if(!b||!mapB)return;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",x===b));mapB.o.labels=b.dataset.z==="europe";mapB.makeProj(b.dataset.z);mapB.render();});
+  document.getElementById("b-search").addEventListener("input",renderBTable);
+  document.querySelector("#b-table thead").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const k=b.dataset.sort;
+    sortDir=sortKey===k?-sortDir:(k==="name"||k==="ip"?1:-1);sortKey=k;renderBTable();});
+  document.getElementById("view-oversikt").addEventListener("click",e=>{const r=e.target.closest("[data-id]");if(!r||!mapB)return;
+    const id=mapB.filter===r.dataset.id?null:r.dataset.id;mapB.setFilter(id);
+    document.getElementById("b-filter").innerHTML=id?`<b style="color:var(--b-fg)">Visar endast ${esc(byId[id].name)}</b> · klicka igen för alla`:"";renderBTable();});
+  renderB();
+}
+function renderB(){
+  const lbl={1:"senaste 24 timmarna",6.4:"senaste 7 dagarna",27.5:"senaste 30 dagarna"}[period];
+  const tot=CLIENTS.reduce((s,c)=>s+c.gb,0)*period;
+  document.getElementById("b-total").innerHTML=(tot>=1000?fmt(tot/1024,2)+"<small>TB</small>":fmt(tot,1)+"<small>GB</small>");
+  document.getElementById("b-total-s").textContent=lbl;
+  document.getElementById("b-topc-s").textContent=lbl;
+  const byC=d3.rollups(FLOWS,v=>({o:d3.sum(v.filter(f=>f.dir==="out"),f=>f.gb),i:d3.sum(v.filter(f=>f.dir==="in"),f=>f.gb),n:d3.sum(v,f=>f.conns)}),f=>f.country).sort((a,b)=>(b[1].o+b[1].i)-(a[1].o+a[1].i));
+  const all=d3.sum(byC,d=>d[1].o+d[1].i);
+  document.getElementById("b-ctrylist").innerHTML=byC.slice(0,8).map(([c,v])=>{const t=v.o+v.i;
+    return `<div class="crow"><span class="f">${c}</span><span class="num">${fmtGB(t*period)}</span><div class="split" title="${fmt(v.o/t*100,0)} % inifrån"><div class="o" style="width:${t/all*100*(v.o/t)}%"></div><div class="i" style="width:${Math.max(v.i>0?1.2:0,t/all*100*(v.i/t))}%"></div></div><span class="m">${v.n} anslutningar${v.i>0?" · varav inkommande":""}</span><span class="m num">${fmt(t/all*100,0)} %</span></div>`;}).join("");
+  const mx=CLIENTS[0].gb;
+  document.getElementById("b-topc").innerHTML=CLIENTS.slice(0,7).map(c=>`<div class="r pickable" data-id="${c.id}">${icon(c.type)}<span>${esc(c.name)}</span><span class="num">${fmtGB(c.gb*period)}</span><div class="t"><div style="width:${c.gb/mx*100}%"></div></div></div>`).join("");
+  renderBNow();renderBTable();
+}
+function renderBNow(){document.getElementById("b-now").innerHTML=fmt(totDown()+totUp(),0)+"<small>Mbit/s</small>";}
+function renderBTable(){
+  const q=document.getElementById("b-search").value.trim().toLowerCase();
+  const ipn=ip=>ip.split(".").reduce((a,x)=>a*256+ +x,0);
+  const val=c=>sortKey==="now"?c.down+c.up:sortKey==="ip"?ipn(c.ip):sortKey==="name"?c.name.toLowerCase():c.gb;
+  const rows=live.filter(c=>!q||(c.name+" "+c.ip+" "+c.mac).toLowerCase().includes(q)).sort((a,b)=>{const x=val(a),y=val(b);return(x>y?1:x<y?-1:0)*sortDir;});
+  document.querySelector("#b-table tbody").innerHTML=rows.length?rows.map(c=>`<tr class="pickable" data-id="${c.id}" ${mapB&&mapB.filter===c.id?'style="background:#f0f6ff"':""}><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="mono">${c.ip}</td><td class="mono">${c.mac}</td><td><span class="pill${c.idle?" idle":""}">${c.idle?"Inaktiv":"Online"}</span></td><td class="r-right num">${c.idle?"–":fmtRate(c.down+c.up)+" Mbit/s"}</td><td class="r-right num">${fmtGB(c.gb*period)}</td></tr>`).join(""):`<tr><td colspan="6" style="color:var(--b-muted)">Ingen klient matchar "${esc(q)}".</td></tr>`;
+}
+function drawChartB(){
+  const r=rng(42),W=760,H=220,m={l:36,r:8,t:10,b:24};
+  const data=d3.range(0,24.01,.5).map(h=>{const ev=Math.exp(-Math.pow((h-21)/2.4,2)),day=Math.exp(-Math.pow((h-13)/4,2));
+    return{h,d:18+ev*230+day*70+r()*40+(h>2.5&&h<3.5?120:0),u:6+ev*30+day*22+r()*14+(h>19&&h<23?28:0)};});
+  const x=d3.scaleLinear([0,24],[m.l,W-m.r]),y=d3.scaleLinear([0,400],[H-m.b,m.t]);
+  const s=d3.select("#b-chart").append("svg").attr("viewBox",`0 0 ${W} ${H}`).attr("role","img").attr("aria-label","Bandbredd över dygnet").style("width","100%").style("height","auto").style("display","block");
+  s.append("g").selectAll("line").data([0,100,200,300,400]).join("line").attr("class","gl").attr("x1",m.l).attr("x2",W-m.r).attr("y1",y).attr("y2",y);
+  s.append("g").selectAll("text").data([0,100,200,300,400]).join("text").attr("x",m.l-6).attr("y",d=>y(d)+3.5).attr("text-anchor","end").text(d=>d);
+  s.append("g").selectAll("text").data([0,3,6,9,12,15,18,21,24]).join("text").attr("x",x).attr("y",H-6).attr("text-anchor","middle").text(d=>String(d%24).padStart(2,"0")+":00");
+  const cv=d3.curveMonotoneX;
+  s.append("path").attr("d",d3.area().x(d=>x(d.h)).y0(y(0)).y1(d=>y(d.d)).curve(cv)(data)).attr("fill","var(--b-accent)").attr("fill-opacity",.12);
+  s.append("path").attr("d",d3.line().x(d=>x(d.h)).y(d=>y(d.d)).curve(cv)(data)).attr("fill","none").attr("stroke","var(--b-accent)").attr("stroke-width",2);
+  s.append("path").attr("d",d3.line().x(d=>x(d.h)).y(d=>y(d.u)).curve(cv)(data)).attr("fill","none").attr("stroke","#f59e0b").attr("stroke-width",1.6);
+  const pk=data.reduce((a,b)=>b.d>a.d?b:a);
+  s.append("circle").attr("cx",x(pk.h)).attr("cy",y(pk.d)).attr("r",4).attr("fill","var(--b-accent)").attr("stroke","#fff").attr("stroke-width",2);
+  s.append("text").attr("x",x(pk.h)-8).attr("y",y(pk.d)-8).attr("text-anchor","end").attr("style","fill:var(--b-fg);font-weight:600;font-size:11px").text(`Topp ${fmt(pk.d,0)} Mbit/s kl ${String(Math.floor(pk.h)).padStart(2,"0")}:${pk.h%1?"30":"00"}`);
+  const n3=data.find(d=>d.h===3);
+  s.append("text").attr("x",x(3)+8).attr("y",y(n3.d)-4).attr("style","font-size:10.5px").text("PS5 hämtar uppdatering");
+}
+
+/* ═════ C ═════ */
+let mapC;
+function initC(){
+  document.getElementById("c-count").textContent=`${online()} online`;
+  const byC=d3.rollups(FLOWS,v=>({o:d3.sum(v.filter(f=>f.dir==="out"),f=>f.conns),i:d3.sum(v.filter(f=>f.dir==="in"),f=>f.conns)}),f=>f.country).sort((a,b)=>(b[1].o+b[1].i)-(a[1].o+a[1].i));
+  document.getElementById("c-ctry").innerHTML=byC.map(([c,v])=>`<div class="r"><span>${c}</span><span class="o" title="anslutningar startade inifrån">${v.o?"↗ "+v.o:""}</span><span class="i" title="anslutningar startade utifrån">${v.i?"↙ "+v.i:""}</span></div>`).join("");
+  document.getElementById("c-chips").innerHTML=CLIENTS.map(c=>`<button class="chipc" type="button" aria-pressed="false" data-id="${c.id}">${icon(c.type)}<b>${esc(c.name)}</b><span>${c.ip}</span></button>`).join("");
+  document.getElementById("c-chips").addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(!b||!mapC)return;
+    const id=mapC.filter===b.dataset.id?null:b.dataset.id;mapC.setFilter(id);
+    document.querySelectorAll("#c-chips .chipc").forEach(x=>x.setAttribute("aria-pressed",x.dataset.id===id));});
+  renderC();
+}
+function renderC(){
+  document.getElementById("c-now").innerHTML=fmt(totDown()+totUp(),0)+"<small>Mbit/s</small>";
+  const top=live.slice().sort((a,b)=>(b.down+b.up)-(a.down+a.up)).slice(0,5),mx=top[0].down+top[0].up;
+  document.getElementById("c-top").innerHTML=top.map(c=>`<div class="r"><span class="n">${esc(c.name)}</span><span class="v">${fmtRate(c.down+c.up)}</span><div class="t"><div style="width:${(c.down+c.up)/mx*100}%"></div></div></div>`).join("");
+}
+function globeInteract(){
+  const svg=d3.select("#c-map svg");let spin=null;
+  svg.call(d3.drag().on("start",()=>{if(spin){cancelAnimationFrame(spin);spin=null;}}).on("drag",e=>{
+    const r=mapC.p.rotate(),k=.32;mapC.p.rotate([r[0]+e.dx*k,Math.max(-85,Math.min(85,r[1]-e.dy*k)),r[2]]);mapC.render();}));
+  document.getElementById("c-center").addEventListener("click",()=>{
+    const from=mapC.p.rotate(),to=[-HOME.lon,-42,0],it=d3.interpolate(from,to),t0=performance.now(),dur=reduce?0:900;
+    const step=now=>{const t=dur?Math.min(1,(now-t0)/dur):1;mapC.p.rotate(it(d3.easeCubicInOut(t)));mapC.render();if(t<1)spin=requestAnimationFrame(step);};
+    spin=requestAnimationFrame(step);});
+}
+
+/* ── vyer (#kontrollrum, #oversikt, #glob) ── */
+const VIEWS=["kontrollrum","oversikt","glob"];
+function show(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):"kontrollrum";
+  VIEWS.forEach(n=>{document.getElementById("view-"+n).hidden=n!==v;document.getElementById("tab-"+n).setAttribute("aria-selected",n===v);});}
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(!b)return;
+  if(location.hash==="#"+b.dataset.view)show();else location.hash=b.dataset.view;});
+window.addEventListener("hashchange",show);show();
+
+initA();initB();initC();
+setInterval(()=>{tick();renderA();renderBNow();renderC();},2000);
+
+mapA=new MapView(document.querySelector("#a-map svg"),{proj:"natural",labels:true,dot:3,house:1.1,cropBottom:90});
+mapB=new MapView(document.querySelector("#b-map svg"),{proj:"equal",labels:false,dot:3.2,house:1.1,sw:.9});
+mapC=new MapView(document.querySelector("#c-map svg"),{globe:true,labels:true,dot:3.2,house:1.2,sw:1.1});
+globeInteract();
+fetch("countries-110m.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+  .then(w=>{[mapA,mapB,mapC].forEach(m=>m.setWorld(w));})
+  .catch(()=>{[mapA,mapB,mapC].forEach(m=>{m.render();m.svg.append("text").attr("x",m.w/2).attr("y",28).attr("text-anchor","middle").attr("fill","currentColor").attr("font-size",13).text("Kartdata kunde inte laddas. Öppna sidan via en webbserver.");});});
+})();
+</script>
