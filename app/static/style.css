@@ -220,3 +220,29 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .actions .spacer{flex:1}
 .foot{color:var(--muted);font-size:11px}
 @media (max-width:1000px){.row{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* landdetaljer */
+dialog.wide{max-width:min(1180px,calc(100vw - 32px))}
+.cdlg{display:grid;gap:8px;padding:20px}
+.cdhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.cdhead h2{margin:0;font-family:var(--cond);font-size:22px;letter-spacing:.08em;text-transform:uppercase}
+.cdhead p{margin:2px 0 0}
+.cdlg h3{margin:12px 0 0;font-family:var(--cond);font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.cdlg .hint{margin:0;color:var(--muted);font-size:11.5px}
+.cdlg .tablebox{max-height:46vh;overflow:auto}
+.cdlg td.wrapcell{white-space:normal;max-width:260px;overflow-wrap:anywhere}
+.dirpill{display:inline-block;font-size:11px;padding:0 7px;border-radius:999px;border:1px solid var(--out);color:var(--out)}
+.dirpill.in{border-color:var(--in);color:var(--in)}
+.live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok-fg);box-shadow:0 0 6px var(--ok-fg);vertical-align:1px}
+.crow.pickable:hover .f{color:var(--accent)}
+
+/* byt namn */
+.who .edit{all:unset;cursor:pointer;opacity:0;color:var(--muted);display:inline-flex;padding:2px}
+tr:hover .who .edit,.who .edit:focus-visible{opacity:1}
+.who .edit:hover{color:var(--accent)}
+.who .edit:focus-visible{outline:2px solid var(--accent)}
+.who .edit .ico{width:14px;height:14px}
+@media (hover:none){.who .edit{opacity:.6}}
+.rename{display:inline-flex;gap:6px;align-items:center}
+.rename input{font:inherit;background:var(--track);color:var(--fg);border:1px solid var(--accent);padding:4px 8px;width:200px;max-width:50vw}
+.rename .btn{padding:3px 10px}

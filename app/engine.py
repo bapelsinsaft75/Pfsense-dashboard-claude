@@ -15,7 +15,7 @@ from .geoip import GeoIP
 from .history import History
 from .mailer import Mailer
 from .netflow import Flow, FlowParser
-from .pfsense import (Conn, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
+from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
                       parse_state, wan_counters)
 from .settings import Settings
 from .syslog import parse_filterlog, parse_suricata
@@ -73,6 +73,7 @@ class Engine:
         self._clients_polled = False
         self._pfb_hits: dict[str, deque] = defaultdict(deque)
         self.syslog_lines = 0
+        self.aliases: dict[str, str] = self.history.aliases()
         self.syslog_last = 0.0
 
         self.clients: dict[str, dict] = {}  # cid (mac) → info från pfSense
@@ -80,7 +81,8 @@ class Engine:
         self.unifi_clients: dict[str, dict] = {}
         self.devices: dict[str, dict] = {}
 
-        self.rates: dict[str, tuple[float, float]] = {}
+        self.rates: dict[str, tuple[float, float]] = {}  # används av webbsidan
+        self.state_rates: dict[str, tuple[float, float]] = {}
         self.wan_rate: tuple[float, float] | None = None
         self._wan_prev: tuple[float, int, int] | None = None
         self.wan_ips: set[str] = set()
@@ -100,6 +102,7 @@ class Engine:
             "pfsense": {"enabled": bool(cfg.pfsense_url), "ok": False, "error": None, "last": None},
             "unifi": {"enabled": cfg.unifi_enabled, "ok": False, "error": None, "last": None},
             "netflow": {"enabled": cfg.netflow_port > 0, "ok": False, "error": None, "last": None},
+            "vpn": {"enabled": False, "ok": False, "error": None, "last": None, "label": "VPN", "detail": None},
             "syslog": {"enabled": cfg.syslog_port > 0, "ok": False, "error": None, "last": None},
             "geoip": self.geo.status,
             "email": self.mailer.status,
@@ -235,12 +238,15 @@ class Engine:
                 cid, cc, c.initiated,
                 d_up if record_bytes else 0, d_down if record_bytes else 0,
                 conns=1 if (is_new and not first_poll) or first_poll else 0, ts=now,
+                remote=c.remote_ip, port=c.remote_port if c.initiated == "out" else c.lan_port,
             )
         self._prev_bytes = new_bytes
         self._prev_states_ts = now
         self.conns = conns
         if self.state_bytes and dt > 0:
-            self.rates = {cid: (v[0] * 8 / dt, v[1] * 8 / dt) for cid, v in per_cid.items()}
+            self.state_rates = {cid: (v[0] * 8 / dt, v[1] * 8 / dt) for cid, v in per_cid.items()}
+            if not self._netflow_live():
+                self.rates = self.state_rates
         for k, t in list(self.inbound_ports.items()):
             if now - t > 3600:
                 del self.inbound_ports[k]
@@ -266,7 +272,8 @@ class Engine:
             self.nf_window.append((now, cid, up, down))
             if record:
                 self.history.add(cid, self.geo.country(rem) or "", direction, up, down,
-                                 conns=1 if up else 0, ts=now)
+                                 conns=1 if up else 0, ts=now, remote=rem,
+                                 port=rport if direction == "out" else lport)
 
     def _flow_direction(self, proto: str, lan: str, lport: int, rem: str, rport: int) -> str:
         c = self.conns.get((proto, lan, lport, rem, rport))
@@ -274,9 +281,7 @@ class Engine:
             return c.initiated
         if (lan, lport, proto) in self.inbound_ports:
             return "in"
-        if lport and rport and lport < 1024 <= rport:
-            return "in"
-        return "out"
+        return guess_initiator(lport or None, rport or None, "out")
 
     def tick(self) -> None:
         """Körs varannan sekund: räkna live-bandbredd från NetFlow om tillståndstabellen saknar bytes."""
@@ -305,12 +310,18 @@ class Engine:
                 err = "Inga flöden på över 5 minuter."
             self.status["netflow"]["ok"] = False
             self.status["netflow"]["error"] = err
-        if not self.state_bytes and self.nf_window:
+        if self._netflow_live():
             agg: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
             for _, cid, up, down in self.nf_window:
                 agg[cid][0] += down
                 agg[cid][1] += up
             self.rates = {cid: (v[0] * 8 / NETFLOW_WINDOW, v[1] * 8 / NETFLOW_WINDOW) for cid, v in agg.items()}
+        elif self.state_bytes:
+            self.rates = self.state_rates
+
+    def _netflow_live(self) -> bool:
+        """NetFlow ger bandbredden när det tas emot flöden, annars räknarna i tillståndstabellen."""
+        return self.cfg.traffic_source != "states" and time.time() - self.nf_last < 180
 
     # ── UniFi ──
     def update_unifi(self, sta: list[dict], dev: list[dict]) -> None:
@@ -381,6 +392,24 @@ class Engine:
                 self._gw_streak[key] = 0
                 self.alerts.resolve(key, f"{name} är ansluten igen.")
         self.vpn_clients = seen
+        self._update_vpn_status()
+
+    def _update_vpn_status(self) -> None:
+        st = self.status["vpn"]
+        clients = list(self.vpn_clients.values())
+        if not clients:
+            st.update(enabled=False, ok=False, error=None, detail=None, label="VPN")
+            return
+        down = [c for c in clients if not c["up"]]
+        st["enabled"] = True
+        st["label"] = clients[0]["name"] if len(clients) == 1 else "VPN"
+        parts = [f"{c['name']}: {'ansluten' if c['up'] else 'inte ansluten'} ({c['status']})"
+                 + (f", server {c['remote']}" if c.get("remote") else "") for c in clients]
+        st["detail"] = "; ".join(parts)
+        if down:
+            st.update(ok=False, error="; ".join(p for p, c in zip(parts, clients) if not c["up"]))
+        else:
+            st.update(ok=True, error=None, last=time.time())
 
     # ── syslog: Suricata och pfBlockerNG ──
     def on_syslog(self, line: str) -> None:
@@ -476,6 +505,61 @@ class Engine:
             elif self.alerts.is_active(key) and last < factor * max(typical, 1) * 0.8:
                 self.alerts.resolve(key, f"{name} är tillbaka på normal nivå.")
 
+    def country_detail(self, cc: str, period: str, ptr: dict[str, str | None] | None = None) -> dict:
+        span, _ = PERIODS.get(period, PERIODS["24h"])
+        now = time.time()
+        d = self.history.country_detail(cc, int(now - span))
+
+        def client_info(cid: str) -> dict:
+            c = self.clients.get(cid, {})
+            u = self.unifi_clients.get(cid, {})
+            ip = c.get("ip") or u.get("ip") or (cid[3:] if cid.startswith("ip-") else None)
+            return {"id": cid, "name": self.display_name(cid), "ip": ip}
+
+        # aktiva anslutningar just nu
+        active: dict[tuple, dict] = {}
+        for c in self.conns.values():
+            if self.geo.country(c.remote_ip) != cc:
+                continue
+            key = (c.remote_ip, c.initiated)
+            a = active.setdefault(key, {"conns": 0, "ports": set(), "cids": set()})
+            a["conns"] += 1
+            a["ports"].add(c.remote_port if c.initiated == "out" else c.lan_port)
+            a["cids"].add(self.cid_for_ip(c.lan_ip))
+
+        clients: dict[str, dict] = {}
+        for row in d["clients"]:
+            ci = clients.setdefault(row["cid"], {**client_info(row["cid"]), "out": 0, "in": 0, "bytes": 0, "conns": 0})
+            ci[row["dir"]] += row["up"] + row["down"]
+            ci["bytes"] += row["up"] + row["down"]
+            ci["conns"] += row["conns"]
+
+        remotes = []
+        seen = set()
+        for r in d["remotes"]:
+            key = (r["ip"], r["dir"])
+            seen.add(key)
+            a = active.get(key)
+            ports = set(r["ports"]) | (a["ports"] if a else set())
+            cids = [x for x in r["cids"] if x] + ([x for x in a["cids"] if x not in r["cids"]] if a else [])
+            remotes.append({"ip": r["ip"], "dir": r["dir"], "ports": sorted(p for p in ports if p)[:8],
+                            "bytes": r["up"] + r["down"], "up": r["up"], "down": r["down"], "conns": r["conns"],
+                            "active": a["conns"] if a else 0, "last": now if a else r["last"], "cids": cids})
+        for (ip, direction), a in active.items():
+            if (ip, direction) not in seen:
+                remotes.append({"ip": ip, "dir": direction, "ports": sorted(p for p in a["ports"] if p)[:8], "bytes": 0,
+                                "up": 0, "down": 0, "conns": a["conns"], "active": a["conns"], "last": now,
+                                "cids": sorted(a["cids"])})
+        for cid in {c for r in remotes for c in r["cids"]}:
+            clients.setdefault(cid, {**client_info(cid), "out": 0, "in": 0, "bytes": 0, "conns": 0})
+        for r in remotes:
+            r["org"] = self.geo.org(r["ip"])
+            r["host"] = (ptr or {}).get(r["ip"])
+            r["clients"] = [{"id": c, "name": self.display_name(c)} for c in r.pop("cids")]
+        remotes.sort(key=lambda r: (r["bytes"], r["active"], r["conns"]), reverse=True)
+        return {"cc": cc, "period": period, "clients": sorted(clients.values(), key=lambda c: c["bytes"], reverse=True),
+                "remotes": remotes}
+
     def security(self, since: int) -> dict:
         sec = self.history.security_summary(since)
         for item in sec["pfb_clients"]:
@@ -485,7 +569,17 @@ class Engine:
         return sec
 
     # ── svar till webbsidan ──
-    def display_name(self, cid: str, known: dict | None = None) -> str:
+    def set_alias(self, cid: str, name: str | None) -> None:
+        name = (name or "").strip()[:64] or None
+        self.history.set_alias(cid, name)
+        if name:
+            self.aliases[cid] = name
+        else:
+            self.aliases.pop(cid, None)
+
+    def display_name(self, cid: str, known: dict | None = None, use_alias: bool = True) -> str:
+        if use_alias and cid in self.aliases:
+            return self.aliases[cid]
         c = self.clients.get(cid, {})
         u = self.unifi_clients.get(cid, {})
         for v in (u.get("alias"), c.get("descr"), c.get("dhcp_hostname"), u.get("hostname"), c.get("arp_hostname"),
@@ -518,6 +612,8 @@ class Engine:
             item = {
                 "id": cid,
                 "name": name,
+                "custom_name": cid in self.aliases,
+                "default_name": self.display_name(cid, k, use_alias=False),
                 "ip": ip,
                 "mac": cid if not cid.startswith("ip-") else None,
                 "online": online,

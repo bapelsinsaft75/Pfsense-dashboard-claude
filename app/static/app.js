@@ -109,7 +109,8 @@ class MapView {
         g.attr("transform", `translate(${x},${y})`).classed("dim", !any);
         g.select("circle").attr("r", 3.2).attr("fill", hasOut ? "var(--out)" : "var(--in)").attr("stroke", both ? "var(--in)" : "none").attr("stroke-width", both ? 1.6 : 0);
         g.select("text").attr("x", 6).attr("y", 3).text(labels && d.cc !== "SE" ? countryName(d.cc) : "");
-        g.select("title").text(d.fs.map(tip).join("\n\n"));
+        g.select("title").text(d.fs.map(tip).join("\n\n") + "\n\nKlicka för detaljer");
+        g.attr("data-cc", d.cc).style("cursor", "pointer");
       });
     const [hx, hy] = this.p([this.home.lon, this.home.lat]);
     if (this.gH.selectAll("*").empty()) {
@@ -181,6 +182,38 @@ function renderEvents(d) {
     : `<div class="empty">Inga larm. Här visas allt som har hänt, även larm du har stängt.</div>`;
 }
 
+/* ── land: vilka adresser och klienter ── */
+async function openCountry(cc) {
+  const dlg = $("country");
+  $("cd-title").textContent = countryName(cc);
+  $("cd-sub").textContent = `Hämtar ${PERIOD_LABEL[state.period]} …`;
+  $("cd-clients").innerHTML = ""; $("cd-remotes").innerHTML = "";
+  if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute("open", "");
+  try {
+    const r = await fetch(`api/country/${encodeURIComponent(cc)}?period=${state.period}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const active = d.remotes.reduce((n, x) => n + x.active, 0);
+    $("cd-sub").textContent = `${d.remotes.length} adresser · ${d.clients.length} klienter · ${active} aktiva anslutningar just nu · ${PERIOD_LABEL[d.period]}`;
+    const dirPill = (dir) => `<span class="dirpill ${dir}">${dir === "out" ? "inifrån" : "utifrån"}</span>`;
+    $("cd-clients").innerHTML = d.clients.length ? `<table><thead><tr><th>Klient</th><th>IP-adress</th><th class="r-right">Startad inifrån</th><th class="r-right">Startad utifrån</th><th class="r-right">Anslutningar</th></tr></thead><tbody>${
+      d.clients.map((c) => `<tr class="pickable" data-client="${esc(c.id)}"><td>${esc(c.name)}</td><td class="ip">${esc(c.ip || "–")}</td><td class="r-right num">${c.out ? fmtBytes(c.out) : "–"}</td><td class="r-right num">${c.in ? fmtBytes(c.in) : "–"}</td><td class="r-right num">${fmt(c.conns, 0)}</td></tr>`).join("")
+    }</tbody></table>` : `<p class="muted">Ingen klient har pratat med ${esc(countryName(cc))} under perioden.</p>`;
+    $("cd-remotes").innerHTML = d.remotes.length ? `<table><thead><tr><th>Adress</th><th>Värdnamn</th><th>Organisation</th><th>Port</th><th>Riktning</th><th>Klient</th><th class="r-right">Data</th><th class="r-right">Anslutn.</th><th>Senast</th></tr></thead><tbody>${
+      d.remotes.map((x) => `<tr><td class="ip">${esc(x.ip)}${x.active ? ' <span class="live" title="Aktiv anslutning just nu"></span>' : ""}</td><td class="wrapcell">${esc(x.host || "–")}</td><td class="wrapcell">${esc(x.org || "–")}</td><td class="num">${x.ports.map(esc).join(", ") || "–"}</td><td>${dirPill(x.dir)}</td><td class="wrapcell">${x.clients.map((c) => esc(c.name)).join(", ")}</td><td class="r-right num">${x.bytes ? fmtBytes(x.bytes) : "–"}</td><td class="r-right num">${fmt(x.conns, 0)}</td><td class="muted">${x.active ? "nu" : ago(x.last)}</td></tr>`).join("")
+    }</tbody></table>` : `<p class="muted">Inga adresser sparade än. Adresser sparas från och med den här versionen av dashboarden.</p>`;
+  } catch (e) {
+    $("cd-sub").textContent = `Kunde inte hämta detaljer (${e.message}).`;
+  }
+}
+$("ctrylist").addEventListener("click", (e) => { const r = e.target.closest("[data-cc]"); if (r) openCountry(r.dataset.cc); });
+$("map").addEventListener("click", (e) => { const g = e.target.closest("[data-cc]"); if (g) openCountry(g.getAttribute("data-cc")); });
+$("cd-close").addEventListener("click", () => $("country").close());
+$("cd-clients").addEventListener("click", (e) => {
+  const r = e.target.closest("[data-client]"); if (!r) return;
+  state.mapFilter = r.dataset.client; $("country").close(); render();
+});
+
 /* ── inställningar ── */
 async function openSettings() {
   const dlg = $("settings");
@@ -234,15 +267,18 @@ $("alerts").addEventListener("click", async (e) => {
 
 /* ── rendering ── */
 function renderStatus(d) {
-  const names = { pfsense: "pfSense", unifi: "UniFi", netflow: "NetFlow", syslog: "Syslog", geoip: "GeoIP", email: "E-post" };
+  const names = { pfsense: "pfSense", vpn: "VPN", unifi: "UniFi", netflow: "NetFlow", syslog: "Syslog", geoip: "GeoIP", email: "E-post" };
   const chips = [], problems = [];
-  for (const [k, label] of Object.entries(names)) {
+  for (const [k, baseLabel] of Object.entries(names)) {
     const s = d.status[k] || {};
+    const label = k === "vpn" ? (s.label || baseLabel) : baseLabel;
+    if (k === "vpn" && !s.enabled && !(d.status.pfsense || {}).ok) continue;
     const enabled = k === "geoip" ? true : s.enabled;
     let cls = "off", title = "Inte konfigurerat";
     if (k === "email" && enabled && !s.ok && !s.error) { cls = "ok"; title = "Konfigurerat"; }
-    else if (enabled && s.ok) { cls = "ok"; title = s.last ? `Senast ${clock(s.last)}` : "OK"; }
-    else if (enabled && s.error) { cls = "err"; title = s.error; problems.push([label, s.error]); }
+    else if (enabled && s.ok) { cls = "ok"; title = (s.detail ? s.detail + " · " : "") + (s.last ? `Senast ${clock(s.last)}` : "OK"); }
+    else if (k === "vpn" && !enabled) { cls = "off"; title = "Ingen OpenVPN-klient hittad i pfSense"; }
+    else if (enabled && s.error) { cls = "err"; title = s.error; if (k !== "vpn") problems.push([label, s.error]); }
     else if (enabled) { cls = ""; title = "Väntar på data"; }
     chips.push(`<span class="chip ${cls}" title="${esc(title)}">${label}</span>`);
   }
@@ -277,7 +313,7 @@ function renderCountries(d) {
   const all = d3.sum(by, (x) => x[1].o + x[1].i) || 1;
   $("ctrylist").innerHTML = by.length ? by.slice(0, 9).map(([cc, v]) => {
     const t = v.o + v.i, share = t / all * 100;
-    return `<div class="crow"><span class="f">${esc(countryName(cc))}</span><span class="num">${fmtBytes(t)}</span><div class="split"><div class="o" style="width:${t ? share * v.o / t : 0}%"></div><div class="i" style="width:${v.hasIn ? Math.max(1.2, t ? share * v.i / t : 0) : 0}%"></div></div><span class="m">${fmt(v.n, 0)} anslutningar${v.hasIn ? " · varav utifrån" : ""}</span><span class="m num">${fmt(share, 0)} %</span></div>`;
+    return `<div class="crow pickable" data-cc="${esc(cc)}" title="Visa vilka adresser och klienter som pratar med ${esc(countryName(cc))}"><span class="f">${esc(countryName(cc))}</span><span class="num">${fmtBytes(t)}</span><div class="split"><div class="o" style="width:${t ? share * v.o / t : 0}%"></div><div class="i" style="width:${v.hasIn ? Math.max(1.2, t ? share * v.i / t : 0) : 0}%"></div></div><span class="m">${fmt(v.n, 0)} anslutningar${v.hasIn ? " · varav utifrån" : ""}</span><span class="m num">${fmt(share, 0)} %</span></div>`;
   }).join("") : `<div class="empty">Ingen trafik registrerad än.</div>`;
 }
 
@@ -363,6 +399,8 @@ function connHTML(c) {
 }
 
 function renderTable(d) {
+  const editingInput = document.activeElement && document.activeElement.id === "rename-input";
+  const caret = editingInput ? document.activeElement.selectionStart : null;
   const q = $("search").value.trim().toLowerCase();
   const ipn = (ip) => (ip && ip.includes(".") ? ip.split(".").reduce((a, x) => a * 256 + +x, 0) : 0);
   const val = (c) => state.sortKey === "conn" ? (c.conn ? (c.conn.kind === "wifi" ? "0" + (c.conn.band || "") + String(200 + (c.conn.rssi || 0)).padStart(3, "0") : "1" + (c.conn.dev_name || "") + String(c.conn.port || 0).padStart(3, "0")) : "2")
@@ -371,13 +409,54 @@ function renderTable(d) {
   const rows = d.clients.filter((c) => (!state.connF || (c.conn && c.conn.kind === state.connF)) && (!dev || (c.conn && c.conn.dev === dev))
     && (!q || `${c.name} ${c.ip || ""} ${c.mac || ""}`.toLowerCase().includes(q)))
     .sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir; });
-  document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td></tr>`).join("")
+  document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td></tr>`).join("")
     : `<tr><td colspan="7" class="muted">Inga klienter matchar filtret.</td></tr>`;
+  if (editingInput) { const i = $("rename-input"); if (i) { i.focus(); if (caret != null) i.setSelectionRange(caret, caret); } }
   document.querySelectorAll("#table th button").forEach((b) => {
     const base = b.textContent.replace(/ [↑↓]$/, "");
     b.textContent = b.dataset.sort === state.sortKey ? `${base} ${state.sortDir < 0 ? "↓" : "↑"}` : base;
   });
 }
+
+const PENCIL = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M14 6l4 4"/></svg>';
+function nameCell(c) {
+  if (state.editing === c.id) {
+    return `<span class="rename"><input type="text" id="rename-input" maxlength="64" value="${esc(state.editValue ?? c.name)}" placeholder="${esc(c.default_name)}" aria-label="Nytt namn för ${esc(c.name)}"><button type="button" class="btn primary" data-save="${esc(c.id)}">Spara</button><button type="button" class="btn" data-cancel>Avbryt</button></span>`;
+  }
+  const orig = c.custom_name && c.default_name !== c.name ? ` <small class="muted" title="Namn från nätverket">(${esc(c.default_name)})</small>` : "";
+  return `<span class="who">${icon(c.type)}<span>${esc(c.name)}${orig}</span><button type="button" class="edit" data-edit="${esc(c.id)}" title="Byt namn" aria-label="Byt namn på ${esc(c.name)}">${PENCIL}</button></span>`;
+}
+async function saveName(id) {
+  const input = $("rename-input");
+  const name = input ? input.value.trim() : "";
+  try {
+    const r = await fetch(`api/clients/${encodeURIComponent(id)}/name`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(r.status);
+  } catch (e) {
+    $("problems").innerHTML = `<div class="problem"><b>Namn</b>Kunde inte spara namnet (${esc(e.message)}).</div>`;
+  }
+  state.editing = null; state.editValue = null;
+  load();
+}
+document.querySelector("#table tbody").addEventListener("click", (e) => {
+  const ed = e.target.closest("[data-edit]");
+  if (ed) {
+    e.stopPropagation();
+    state.editing = ed.dataset.edit; state.editValue = null; renderTable(state.data);
+    const i = $("rename-input"); if (i) { i.focus(); i.select(); }
+    return;
+  }
+  const sv = e.target.closest("[data-save]");
+  if (sv) { e.stopPropagation(); saveName(sv.dataset.save); return; }
+  if (e.target.closest("[data-cancel]")) { e.stopPropagation(); state.editing = null; state.editValue = null; renderTable(state.data); return; }
+  if (e.target.closest(".rename")) e.stopPropagation();
+});
+document.querySelector("#table tbody").addEventListener("input", (e) => { if (e.target.id === "rename-input") state.editValue = e.target.value; });
+document.querySelector("#table tbody").addEventListener("keydown", (e) => {
+  if (e.target.id !== "rename-input") return;
+  if (e.key === "Enter") { e.preventDefault(); saveName(state.editing); }
+  if (e.key === "Escape") { state.editing = null; state.editValue = null; renderTable(state.data); }
+});
 
 function renderMapFilter() {
   const c = state.mapFilter && byId[state.mapFilter];

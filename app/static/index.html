@@ -82,6 +82,17 @@
   </section>
   <p class="foot">Kartdata: Natural Earth via world-atlas. Landsuppslag: <span id="geo-src">DB-IP Lite (CC BY 4.0)</span>.</p>
 </div>
+<dialog id="country" class="wide">
+  <div class="cdlg">
+    <div class="cdhead"><div><h2 id="cd-title">Land</h2><p class="muted" id="cd-sub"></p></div><button type="button" class="btn" id="cd-close">Stäng</button></div>
+    <h3>Klienter i ditt nätverk</h3>
+    <p class="hint">Klicka på en klient för att se bara dess linjer på kartan.</p>
+    <div class="tablebox" id="cd-clients"></div>
+    <h3>Adresser i landet</h3>
+    <div class="tablebox" id="cd-remotes"></div>
+    <p class="hint">Värdnamn kommer från omvänt DNS-uppslag och organisation från DB-IP Lite. Porten är tjänsten som användes, t.ex. 443 för HTTPS. En grön prick betyder att anslutningen är aktiv just nu.</p>
+  </div>
+</dialog>
 <dialog id="settings">
   <form method="dialog" id="settings-form" class="sform">
     <h2>Inställningar</h2>

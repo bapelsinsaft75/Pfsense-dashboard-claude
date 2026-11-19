@@ -32,7 +32,15 @@ CREATE TABLE IF NOT EXISTS security(
   cid TEXT NOT NULL, remote TEXT NOT NULL, cc TEXT NOT NULL, dir TEXT NOT NULL, count INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS security_ts ON security(ts);
+CREATE TABLE IF NOT EXISTS remotes(
+  ts INTEGER NOT NULL, cid TEXT NOT NULL, ip TEXT NOT NULL, cc TEXT NOT NULL, dir TEXT NOT NULL,
+  port INTEGER NOT NULL, up INTEGER NOT NULL, down INTEGER NOT NULL, conns INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS remotes_cc_ts ON remotes(cc, ts);
+CREATE INDEX IF NOT EXISTS remotes_ts ON remotes(ts);
+CREATE TABLE IF NOT EXISTS aliases(cid TEXT PRIMARY KEY, name TEXT NOT NULL, updated INTEGER);
 """
+REMOTE_BUCKET = 3600
 
 
 class History:
@@ -43,12 +51,20 @@ class History:
         self.lock = threading.Lock()
         self.pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
         self.sec_pending: dict[tuple, int] = defaultdict(int)
+        self.rem_pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
 
     # ── skrivning ──
-    def add(self, cid: str, cc: str | None, direction: str, up: int, down: int, conns: int = 0, ts: float | None = None) -> None:
+    def add(self, cid: str, cc: str | None, direction: str, up: int, down: int, conns: int = 0, ts: float | None = None,
+            remote: str | None = None, port: int | None = None) -> None:
         if up <= 0 and down <= 0 and conns <= 0:
             return
-        bucket = int((ts or time.time()) // BUCKET * BUCKET)
+        now = ts or time.time()
+        if remote:
+            r = self.rem_pending[(int(now // REMOTE_BUCKET * REMOTE_BUCKET), cid, remote, cc or "", direction, port or 0)]
+            r[0] += max(0, up)
+            r[1] += max(0, down)
+            r[2] += max(0, conns)
+        bucket = int(now // BUCKET * BUCKET)
         acc = self.pending[(bucket, cid, cc or "", direction)]
         acc[0] += max(0, up)
         acc[1] += max(0, down)
@@ -65,13 +81,17 @@ class History:
             self.pending.clear()
             sec = [k + (n,) for k, n in self.sec_pending.items()]
             self.sec_pending.clear()
+            rem = [k + tuple(v) for k, v in self.rem_pending.items()]
+            self.rem_pending.clear()
+            if rem:
+                self.db.executemany("INSERT INTO remotes VALUES(?,?,?,?,?,?,?,?,?)", rem)
             if rows:
                 self.db.executemany("INSERT INTO traffic VALUES(?,?,?,?,?,?,?,?)", rows)
             if sec:
                 self.db.executemany("INSERT INTO security VALUES(?,?,?,?,?,?,?,?,?)", sec)
-            if rows or sec:
+            if rows or sec or rem:
                 self.db.commit()
-        return len(rows) + len(sec)
+        return len(rows) + len(sec) + len(rem)
 
     def insert_raw(self, rows: list[tuple]) -> None:
         with self.lock:
@@ -104,6 +124,13 @@ class History:
             old = int(now - retention_days * 86400)
             cur.execute("DELETE FROM traffic WHERE ts<?", (old,))
             cur.execute("DELETE FROM security WHERE ts<?", (old,))
+            cur.execute("DELETE FROM remotes WHERE ts<?", (old,))
+            # slå ihop timrader till dygnsrader efter 48 timmar så att tabellen inte växer för mycket
+            day_cut = int((now - HOURLY_AFTER) // 86400 * 86400)
+            cur.execute(
+                "INSERT INTO remotes SELECT (ts/86400)*86400 + 1, cid, ip, cc, dir, port, sum(up), sum(down), sum(conns) "
+                "FROM remotes WHERE ts<? AND ts % 86400 != 1 GROUP BY ts/86400, cid, ip, cc, dir, port", (day_cut,))
+            cur.execute("DELETE FROM remotes WHERE ts<? AND ts % 86400 != 1", (day_cut,))
             cur.execute("DELETE FROM clients WHERE last_seen<?", (old,))
             cur.execute("DELETE FROM alerts WHERE updated<? AND (resolved IS NOT NULL OR acked IS NOT NULL)", (old,))
             self.db.commit()
@@ -188,6 +215,34 @@ class History:
             "pfb_clients": [{"cid": c, "count": n} for c, n in pfb_clients],
             "blocked_countries": [{"cc": c, "count": n} for c, n in pfb_cc],
         }
+
+    def country_detail(self, cc: str, since: int) -> dict:
+        clients = self._q(
+            "SELECT cid, dir, sum(up), sum(down), sum(conns) FROM traffic WHERE cc=? AND ts>=? GROUP BY cid, dir "
+            "ORDER BY sum(up+down) DESC", (cc, since))
+        remotes = self._q(
+            "SELECT ip, dir, group_concat(DISTINCT port), group_concat(DISTINCT cid), sum(up), sum(down), sum(conns), max(ts) "
+            "FROM remotes WHERE cc=? AND ts>=? GROUP BY ip, dir ORDER BY sum(up+down) DESC, sum(conns) DESC LIMIT 300",
+            (cc, since - REMOTE_BUCKET))
+        return {
+            "clients": [{"cid": c, "dir": d, "up": u, "down": dn, "conns": n} for c, d, u, dn, n in clients],
+            "remotes": [{"ip": ip, "dir": d, "ports": sorted({int(p) for p in (ports or "").split(",") if p and p != "0"}),
+                         "cids": (cids or "").split(","), "up": u, "down": dn, "conns": n, "last": last}
+                        for ip, d, ports, cids, u, dn, n, last in remotes],
+        }
+
+    def aliases(self) -> dict[str, str]:
+        return dict(self._q("SELECT cid, name FROM aliases"))
+
+    def set_alias(self, cid: str, name: str | None) -> None:
+        with self.lock:
+            if name:
+                self.db.execute("INSERT INTO aliases(cid, name, updated) VALUES(?,?,?) "
+                                "ON CONFLICT(cid) DO UPDATE SET name=excluded.name, updated=excluded.updated",
+                                (cid, name, int(time.time())))
+            else:
+                self.db.execute("DELETE FROM aliases WHERE cid=?", (cid,))
+            self.db.commit()
 
     def empty(self) -> bool:
         return not self._q("SELECT 1 FROM traffic LIMIT 1")

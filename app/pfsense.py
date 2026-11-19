@@ -162,6 +162,21 @@ class Conn:
 
 
 WELL_KNOWN = 1024
+EPHEMERAL = 32768  # Linux 32768–60999, Windows/macOS 49152–65535
+
+
+def guess_initiator(lan_port: int | None, remote_port: int | None, default: str) -> str:
+    """Den som startar en anslutning använder nästan alltid en tillfällig (hög) port mot en tjänsteport.
+
+    Används för att rätta en riktning som ser fel ut. Lika höga eller lika låga portar ändrar inget.
+    """
+    if lan_port is None or remote_port is None:
+        return default
+    if remote_port < WELL_KNOWN <= lan_port or (lan_port >= EPHEMERAL and remote_port < EPHEMERAL):
+        return "out"
+    if lan_port < WELL_KNOWN <= remote_port or (remote_port >= EPHEMERAL and lan_port < EPHEMERAL and lan_port < 1024):
+        return "in"
+    return default
 
 
 def parse_state(st: dict, cfg: Config, wan_ips: set[str]) -> Conn | None:
@@ -198,11 +213,9 @@ def parse_state(st: dict, cfg: Config, wan_ips: set[str]) -> Conn | None:
     else:
         return None
 
-    # Rimlighetskontroll: väl känd port på den externa sidan och tillfällig port lokalt
-    # betyder nästan alltid att klienten startade anslutningen.
-    if initiated == "in" and remote[1] is not None and lan[1] is not None:
-        if remote[1] < WELL_KNOWN <= lan[1]:
-            initiated = "out"
+    # Rimlighetskontroll med portarna: tillfällig port lokalt mot en tjänsteport externt
+    # betyder att klienten startade anslutningen, och tvärtom.
+    initiated = guess_initiator(lan[1], remote[1], initiated)
 
     b_in = to_int(pick(st, "bytes_in", "bytesin", "in_bytes"))
     b_out = to_int(pick(st, "bytes_out", "bytesout", "out_bytes"))

@@ -173,6 +173,50 @@ async def summary(period: str = Query("24h", pattern="^(24h|7d|30d)$")):
     return await asyncio.to_thread(engine.summary, period)
 
 
+PTR_CACHE: dict[str, tuple[str | None, float]] = {}
+
+
+async def reverse_dns(ips: list[str], limit: int = 60, timeout: float = 2.5) -> dict[str, str | None]:
+    """Omvända DNS-uppslag med cache. Uppslag som inte hinner klart visas som tomma."""
+    import socket
+    now = time.time()
+    out, todo = {}, []
+    for ip in ips:
+        hit = PTR_CACHE.get(ip)
+        if hit and now - hit[1] < 86400:
+            out[ip] = hit[0]
+        elif len(todo) < limit:
+            todo.append(ip)
+
+    async def one(ip: str) -> None:
+        try:
+            name = (await asyncio.wait_for(asyncio.to_thread(socket.gethostbyaddr, ip), timeout))[0]
+        except (OSError, asyncio.TimeoutError, UnicodeError):
+            name = None
+        PTR_CACHE[ip] = (name, time.time())
+        out[ip] = name
+
+    if todo:
+        await asyncio.gather(*(one(ip) for ip in todo))
+    if len(PTR_CACHE) > 20000:
+        PTR_CACHE.clear()
+    return out
+
+
+@app.get("/api/country/{cc}")
+async def country(cc: str, period: str = Query("24h", pattern="^(24h|7d|30d)$")):
+    engine: Engine = app.state.engine
+    cc = cc.upper()
+    if len(cc) != 2 or not cc.isalpha():
+        raise HTTPException(400, "Ogiltig landskod")
+    detail = await asyncio.to_thread(engine.country_detail, cc, period)
+    if engine.cfg.reverse_dns and not engine.cfg.demo:
+        ptr = await reverse_dns([r["ip"] for r in detail["remotes"]])
+        for r in detail["remotes"]:
+            r["host"] = ptr.get(r["ip"])
+    return detail
+
+
 @app.get("/api/health")
 async def health():
     engine: Engine = app.state.engine
@@ -189,6 +233,16 @@ async def ack_alert(alert_id: int):
 async def ack_all():
     engine: Engine = app.state.engine
     return {"ok": True, "count": engine.alerts.ack_all()}
+
+
+@app.put("/api/clients/{cid}/name")
+async def rename_client(cid: str, body: dict = Body(...)):
+    engine: Engine = app.state.engine
+    name = body.get("name")
+    if name is not None and not isinstance(name, str):
+        raise HTTPException(400, "Namnet måste vara text")
+    await asyncio.to_thread(engine.set_alias, cid, name)
+    return {"id": cid, "name": engine.display_name(cid)}
 
 
 @app.get("/api/settings")

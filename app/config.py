@@ -86,6 +86,8 @@ class Config:
         # GeoIP: tom = ladda ner DB-IP Lite automatiskt
         self.geoip_path = env("GEOIP_DB_PATH", "") or ""
         self.geoip_auto_download = env_bool("GEOIP_AUTO_DOWNLOAD", True)
+        self.asn_path = env("GEOIP_ASN_PATH", "") or ""
+        self.reverse_dns = env_bool("REVERSE_DNS", True)
 
         # Hemstad på kartan
         self.home_city = env("HOME_CITY", "Örebro") or "Örebro"

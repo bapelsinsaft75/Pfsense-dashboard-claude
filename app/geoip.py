@@ -18,6 +18,7 @@ from .config import Config, is_public
 log = logging.getLogger("geoip")
 
 DBIP_URL = "https://download.db-ip.com/free/dbip-country-lite-{y}-{m:02d}.mmdb.gz"
+DBIP_ASN_URL = "https://download.db-ip.com/free/dbip-asn-lite-{y}-{m:02d}.mmdb.gz"
 MAX_AGE_DAYS = 32
 
 
@@ -29,6 +30,9 @@ class GeoIP:
         self.reader: maxminddb.Reader | None = None
         self.cache: OrderedDict[str, str | None] = OrderedDict()
         self.status = {"ok": False, "error": None, "source": None, "updated": None}
+        self.asn_path = cfg.asn_path or os.path.join(cfg.data_dir, "dbip-asn-lite.mmdb")
+        self.asn_reader: maxminddb.Reader | None = None
+        self.asn_cache: OrderedDict[str, str | None] = OrderedDict()
 
     def _open(self) -> None:
         reader = maxminddb.open_database(self.path)
@@ -63,24 +67,63 @@ class GeoIP:
                 self.status.update(ok=False, error=f"Kunde inte läsa {self.path}: {exc}")
         elif not self.status["error"]:
             self.status["error"] = f"Hittar ingen GeoIP-databas på {self.path}"
+        await self.ensure_asn()
 
-    async def _download(self) -> None:
+    async def ensure_asn(self) -> None:
+        """Organisation (AS-nummer) per IP-adress. Valfritt: saknas den visas bara IP och värdnamn."""
+        stale = not os.path.exists(self.asn_path) or time.time() - os.path.getmtime(self.asn_path) > MAX_AGE_DAYS * 86400
+        if stale and self.cfg.geoip_auto_download and not self.cfg.asn_path:
+            try:
+                await self._download(DBIP_ASN_URL, self.asn_path)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Kunde inte ladda ner ASN-databas: %s", exc)
+        if os.path.exists(self.asn_path):
+            try:
+                old, self.asn_reader = self.asn_reader, maxminddb.open_database(self.asn_path)
+                self.asn_cache.clear()
+                if old:
+                    old.close()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Kunde inte läsa %s: %s", self.asn_path, exc)
+
+    def org(self, ip: str) -> str | None:
+        """Organisationen som äger adressen, t.ex. 'Google LLC'."""
+        if ip in self.asn_cache:
+            return self.asn_cache[ip]
+        org = None
+        if self.asn_reader and is_public(ip):
+            try:
+                rec = self.asn_reader.get(ip)
+                if isinstance(rec, dict):
+                    org = rec.get("autonomous_system_organization")
+                    num = rec.get("autonomous_system_number")
+                    if org and num:
+                        org = f"{org} (AS{num})"
+            except ValueError:
+                org = None
+        self.asn_cache[ip] = org
+        if len(self.asn_cache) > 50000:
+            self.asn_cache.popitem(last=False)
+        return org
+
+    async def _download(self, url_tpl: str = DBIP_URL, path: str | None = None) -> None:
+        path = path or self.path
         today = dt.date.today()
         first = today.replace(day=1)
         prev = (first - dt.timedelta(days=1)).replace(day=1)
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         last_error: Exception | None = None
         async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
             for month in (first, prev):
-                url = DBIP_URL.format(y=month.year, m=month.month)
-                tmp_gz = self.path + ".download.gz"
+                url = url_tpl.format(y=month.year, m=month.month)
+                tmp_gz = path + ".download.gz"
                 try:
                     async with client.stream("GET", url) as resp:
                         resp.raise_for_status()
                         with open(tmp_gz, "wb") as fh:
                             async for chunk in resp.aiter_bytes():
                                 fh.write(chunk)
-                    await asyncio.to_thread(self._gunzip, tmp_gz)
+                    await asyncio.to_thread(self._gunzip, tmp_gz, path)
                     log.info("Laddade ner %s", url)
                     return
                 except Exception as exc:  # noqa: BLE001
@@ -90,11 +133,11 @@ class GeoIP:
                         os.remove(tmp_gz)
         raise RuntimeError(str(last_error))
 
-    def _gunzip(self, src: str) -> None:
-        tmp = self.path + ".tmp"
+    def _gunzip(self, src: str, dest: str) -> None:
+        tmp = dest + ".tmp"
         with gzip.open(src, "rb") as fin, open(tmp, "wb") as fout:
             shutil.copyfileobj(fin, fout)
-        os.replace(tmp, self.path)
+        os.replace(tmp, dest)
 
     async def refresh_loop(self) -> None:
         while True:
@@ -105,6 +148,7 @@ class GeoIP:
                 try:
                     await self._download()
                     self._open()
+                    await self.ensure_asn()
                 except Exception as exc:  # noqa: BLE001
                     log.warning("GeoIP-uppdatering misslyckades: %s", exc)
 

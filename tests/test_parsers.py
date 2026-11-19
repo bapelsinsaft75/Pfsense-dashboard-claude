@@ -117,3 +117,21 @@ def test_base_url(monkeypatch):
     monkeypatch.setenv("PFSENSE_URL", "192.168.2.1/")
     c = Config()
     assert c.unifi_url == "https://192.168.2.9:8443" and c.pfsense_url == "https://192.168.2.1"
+
+
+def test_guess_initiator():
+    from app.pfsense import guess_initiator
+    assert guess_initiator(51000, 443, "in") == "out"      # webb
+    assert guess_initiator(50123, 3478, "in") == "out"     # STUN/videosamtal
+    assert guess_initiator(62000, 5223, "in") == "out"     # Apple push
+    assert guess_initiator(32400, 55555, "out") == "out"   # Plex: lämnas som den är
+    assert guess_initiator(32400, 55555, "in") == "in"
+    assert guess_initiator(51413, 60001, "in") == "in"     # torrent inkommande: båda höga, ingen ändring
+    assert guess_initiator(22, 50000, "out") == "in"       # SSH till en LAN-server
+    assert guess_initiator(123, 123, "out") == "out"
+
+
+def test_state_high_remote_port_is_outbound():
+    c = cfg()
+    st = parse_state({"protocol": "udp", "source": "142.250.74.14:19302", "destination": "192.168.1.21:58000"}, c, set())
+    assert st.initiated == "out"

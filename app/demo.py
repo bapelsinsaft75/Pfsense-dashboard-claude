@@ -106,6 +106,19 @@ def setup(engine: Engine) -> None:
                     rows.append((t, res, mac, cc, direction, int(total * ratio), int(total * (1 - ratio)),
                                  max(1, int(rnd.uniform(0, 4) * res / 300))))
     engine.history.insert_raw(rows)
+    # externa adresser per klient (en rad per timme senaste dygnet)
+    rem_rows = []
+    for t in range(int((now - 86400) // 3600 * 3600), int(now), 3600):
+        for mac, name, _ip, down, up, gb, _link in CLIENTS:
+            for cc, direction, share, remote in FLOWS[name]:
+                total = gb * 1e9 / 24 * share * rnd.uniform(.5, 1.5)
+                ratio = up / (up + down) if (up + down) else .1
+                port = 32400 if direction == "in" else 443
+                rem_rows.append((t, mac, remote, cc, direction, port, int(total * ratio), int(total * (1 - ratio)),
+                                 rnd.randint(1, 20)))
+    with engine.history.lock:
+        engine.history.db.executemany("INSERT INTO remotes VALUES(?,?,?,?,?,?,?,?,?)", rem_rows)
+        engine.history.db.commit()
 
     # aktiva anslutningar (för de linjer som syns "just nu")
     for mac, name, ip, *_ in CLIENTS:
@@ -118,6 +131,7 @@ def setup(engine: Engine) -> None:
             engine.conns[key] = Conn(key, ip, port, remote, rport, "tcp", direction, 0, 0)
     engine.geo.status.update(ok=True, error=None, source="Exempeldata")
     engine.geo.country = _demo_country  # type: ignore[method-assign]
+    engine.geo.org = lambda ip: DEMO_ORG.get(ip.rsplit(".", 2)[0])  # type: ignore[method-assign]
     for name in ("pfsense", "unifi", "netflow", "syslog"):
         engine.status[name].update(enabled=True, ok=True, error=None, last=now)
     _seed_alerts(engine, now, rnd)
@@ -129,11 +143,13 @@ def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
         "WAN_DHCP": {"name": "WAN_DHCP", "state": "up", "status": "online", "loss": "0.0%", "delay": "4.1ms",
                      "monitor": "1.1.1.1", "vpn": False},
     }
-    engine.vpn_clients = {"ProtonVPN": {"name": "ProtonVPN", "up": True, "status": "up, connected", "remote": "185.159.157.1"}}
+    engine.vpn_clients = {"Littorin VPN": {"name": "Littorin VPN", "up": True, "status": "up, connected",
+                                           "remote": "185.159.157.1"}}
+    engine._update_vpn_status()
     a = engine.alerts
-    vpn = a.raise_("ovpn:ProtonVPN", "critical", "vpn_down", "VPN-anslutningen ProtonVPN är nere",
-                   'OpenVPN-klienten ProtonVPN har status "down, reconnecting".', now=now - 47 * 60)
-    a.resolve("ovpn:ProtonVPN", "ProtonVPN är ansluten igen.", now=now - 39 * 60)
+    vpn = a.raise_("ovpn:Littorin VPN", "critical", "vpn_down", "VPN-anslutningen Littorin VPN är nere",
+                   'OpenVPN-klienten Littorin VPN har status "down, reconnecting".', now=now - 47 * 60)
+    a.resolve("ovpn:Littorin VPN", "Littorin VPN är ansluten igen.", now=now - 39 * 60)
     a.raise_("data:bc:33:29:7a:01:f2", "warning", "data_anomaly", "PS5 använder ovanligt mycket data",
              "PS5 har använt 48,2 GB de senaste 24 timmarna. Normalt är 11,6 GB per dygn (4 gånger mer än vanligt).",
              now=now - 25 * 60)
@@ -157,6 +173,17 @@ def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
     h.flush()
     del vpn
 
+
+DEMO_ORG = {
+    "18.192": "Amazon.com, Inc. (AS16509)", "3.80": "Amazon.com, Inc. (AS14618)", "133.11": "Sony Interactive Entertainment (AS2914)",
+    "45.57": "Netflix Streaming Services (AS2906)", "194.68": "SVT / Akamai (AS20940)", "81.2": "BBC (AS2818)",
+    "73.0": "Comcast Cable (AS7922)", "88.198": "Hetzner Online GmbH (AS24940)", "185.220": "Tor exit / Stiftung Erneuerbare Freiheit (AS60729)",
+    "1.180": "China Telecom (AS4134)", "177.0": "Telefônica Brasil (AS27699)", "49.36": "Reliance Jio (AS55836)",
+    "95.216": "Hetzner Online GmbH (AS24940)", "52.16": "Microsoft Corporation (AS8075)", "13.107": "Microsoft Corporation (AS8068)",
+    "51.15": "Scaleway (AS12876)", "17.253": "Apple Inc. (AS714)", "17.0": "Apple Inc. (AS714)", "84.208": "Telenor Norge (AS2119)",
+    "34.240": "Google LLC (AS15169)", "80.62": "TDC Holding (AS3292)", "5.8": "PJSC Rostelecom (AS12389)",
+    "13.228": "Amazon.com, Inc. (AS16509)", "15.73": "HP Inc. (AS71)",
+}
 
 _REMOTE_CC = {remote: cc for flows in FLOWS.values() for cc, _d, _s, remote in flows}
 

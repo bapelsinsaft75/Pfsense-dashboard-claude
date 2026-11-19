@@ -5,7 +5,9 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
 - Karta med hus-ikon i hemstaden (standard: Örebro) och linjer till de länder klienterna pratar med.
   **Grön** linje = anslutningen startades inifrån nätverket, **lila** = startades utifrån.
 - Vilka klienter som använder mest bandbredd just nu och mest data (24 timmar, 7 dagar, 30 dagar).
-- Lista över alla klienter med namn, IP och MAC.
+- Lista över alla klienter med namn, IP och MAC. Du kan ge klienterna egna namn direkt i listan (pennan vid namnet).
+- Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
+  (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,
   samt en vy över switchar och accesspunkter.
 - **Larm** som en banner överst på sidan, och **e-post** (t.ex. Proton Mail med SMTP-token) vid viktiga händelser.
@@ -23,6 +25,8 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
 | Bandbredd och datamängd per klient | NetFlow/IPFIX från **softflowd** (rekommenderas), annars räknare i tillståndstabellen |
 | Bandbredd på WAN | pfSense REST API: gränssnittsstatus |
 | Land för en IP-adress | Lokal GeoIP-databas (DB-IP Lite laddas ner automatiskt varje månad) |
+| Organisation för en IP-adress | DB-IP Lite ASN (laddas ner automatiskt) |
+| Värdnamn för en extern adress | Omvänt DNS-uppslag, när du öppnar ett land |
 | Trådlöst/kabel, switchport, Wi-Fi | UniFi Network Application |
 | OpenVPN-klienter och gateways (WAN) | pfSense REST API: OpenVPN-status och gateway-status |
 | Suricata-larm, pfBlockerNG och brandväggsblockeringar | Syslog från pfSense till containern (UDP 5514) |
@@ -136,9 +140,11 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `PFBLOCKER_TRACKER_PREFIX` | `177` | Hur pfBlockerNG-regler känns igen i brandväggsloggen |
 | `PFSENSE_VERIFY_SSL`, `UNIFI_VERIFY_SSL` | `false` | `false` för självsignerade certifikat |
 | `GEOIP_DB_PATH` | | Egen MMDB-fil, t.ex. MaxMind GeoLite2-Country |
+| `GEOIP_ASN_PATH` | | Egen ASN-databas, t.ex. MaxMind GeoLite2-ASN |
+| `REVERSE_DNS` | `true` | Slå upp värdnamn för externa adresser |
 | `DEBUG_ENDPOINTS` | `true` | Felsökningssidor, se nedan |
 
-Historik, larm, inställningar från webbsidan (`settings.json`) och GeoIP-databas sparas i `/data`
+Historik, larm, egna klientnamn, inställningar från webbsidan (`settings.json`) och GeoIP-databaser sparas i `/data`
 (mappa till `/mnt/user/appdata/pfsense-dashboard`). Det du sparar under *Inställningar* på webbsidan går före
 miljövariablerna.
 
