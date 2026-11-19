@@ -313,7 +313,9 @@ async def get_settings():
     engine: Engine = app.state.engine
     return {"settings": engine.settings.all(), "email": {"enabled": engine.mailer.configured, "to": engine.mailer.to,
                                                          "host": engine.mailer.host},
-            "slack": {"enabled": engine.slack.enabled}}
+            "slack": {"enabled": engine.slack.enabled},
+            "servers": {"plex": [p.name for p in engine.plex_servers],
+                        "unraid": [u.status.get("name") or u.url for u in engine.unraids]}}
 
 
 @app.put("/api/settings")

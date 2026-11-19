@@ -345,3 +345,18 @@ def test_digest_per_recipient(engine, monkeypatch):
     by_to = {m["To"]: m.get_content() for m in FakeSMTP.sent}
     assert "Ny enhet" in by_to["jag@exempel.se"] and "VPN-anslutningen A" in by_to["jag@exempel.se"]
     assert "Ny enhet" not in by_to["alex@exempel.se"] and "VPN-anslutningen A" in by_to["alex@exempel.se"]
+
+
+def test_recipients_per_server(engine):
+    engine.settings.update({"recipients": [
+        {"email": "peter@exempel.se", "kinds": ["plex_down", "unraid_vm"], "servers": ["Peters Plex", "LillaNasen"]},
+        {"email": "alex@exempel.se", "kinds": ["plex_down", "unraid_vm"], "servers": ["Alex Plex", "Tower"]},
+        {"email": "alla@exempel.se", "kinds": ["plex_down"], "servers": None},
+    ]})
+    engine.alerts.raise_("plex:a", "critical", "plex_down", "Alex Plex svarar inte", "nere", source="Alex Plex")
+    assert FakeSMTP.sent[-1]["To"] == "alex@exempel.se, alla@exempel.se"
+    engine.alerts.raise_("watch:LillaNasen:vms:Win", "critical", "unraid_vm", "Den virtuella maskinen Win på LillaNasen har stannat",
+                         "x", source="LillaNasen")
+    assert FakeSMTP.sent[-1]["To"] == "peter@exempel.se"
+    engine.alerts.resolve("plex:a", "uppe")
+    assert FakeSMTP.sent[-1]["To"] == "alex@exempel.se, alla@exempel.se" and "Löst" in FakeSMTP.sent[-1]["Subject"]

@@ -515,7 +515,7 @@ class Engine:
         if self.confirm(key, not u.status["ok"]):
             self.alerts.raise_(key, "critical", "unraid_down", f"{name} svarar inte",
                                f"Dashboarden får inte svar från Unraid-servern {name}. {u.status.get('error') or ''}"
-                               + self.confirm_note(key))
+                               + self.confirm_note(key), source=name)
             return
         if not u.status["ok"]:
             return
@@ -525,7 +525,7 @@ class Engine:
         if self.confirm(pkey, level in ("err", "warn")):
             self.alerts.raise_(pkey, "critical" if level == "err" else "warning", "unraid_problem",
                                f"{name}: {'fel' if level == 'err' else 'varning'}",
-                               f"{u.status.get('detail')}.{self.confirm_note(pkey)}")
+                               f"{u.status.get('detail')}.{self.confirm_note(pkey)}", source=name)
         elif level == "ok":
             self.alerts.resolve(pkey, f"{name}: allt ser bra ut igen.")
         # övervakade containrar och virtuella maskiner
@@ -542,7 +542,8 @@ class Engine:
                     why = "finns inte längre" if not obj else (obj.get("status") or obj.get("state") or "har stannat")
                     self.alerts.raise_(wkey, "critical", "unraid_watch" if kind == "containers" else "unraid_vm",
                                        f"{label} {item} på {name} har stannat",
-                                       f"{label} {item} på {name} är inte igång ({why}).{self.confirm_note(wkey)}")
+                                       f"{label} {item} på {name} är inte igång ({why}).{self.confirm_note(wkey)}",
+                                       source=name)
                 elif up:
                     self.alerts.resolve(wkey, f"{item} på {name} är igång igen.")
         # sluta larma för sådant som inte längre övervakas
@@ -557,7 +558,8 @@ class Engine:
         key = f"plex:{p.url}"
         if self.confirm(key, not p.status["ok"]):
             self.alerts.raise_(key, "critical", "plex_down", f"{p.name} svarar inte",
-                               f"{p.status.get('error') or 'Plex-servern svarar inte.'}{self.confirm_note(key)}")
+                               f"{p.status.get('error') or 'Plex-servern svarar inte.'}{self.confirm_note(key)}",
+                               source=p.name)
         elif p.status["ok"]:
             self.alerts.resolve(key, f"{p.name} svarar igen.")
 

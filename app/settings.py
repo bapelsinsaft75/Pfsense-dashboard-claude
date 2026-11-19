@@ -207,8 +207,11 @@ class Settings:
                             if email.lower() in seen:
                                 raise ValueError(f"{email} finns redan")
                             seen.add(email.lower())
+                            servers = r.get("servers")
                             val.append({"email": email, "name": str(r.get("name") or "").strip()[:60],
-                                        "kinds": sorted({k for k in r.get("kinds", []) if k in ALERT_KINDS})})
+                                        "kinds": sorted({k for k in r.get("kinds", []) if k in ALERT_KINDS}),
+                                        # None = alla servrar, annars en lista med servernamn
+                                        "servers": None if servers is None else sorted({str(x) for x in servers})})
                 elif typ == "watch":
                     if not isinstance(raw, dict):
                         raise ValueError

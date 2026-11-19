@@ -58,7 +58,8 @@ Under *Inställningar* (kugghjulet):
   Larmen syns ändå i bannern. Valfritt: släpp igenom kritiska larm, och få en sammanfattning när tiden är slut.
 - **Aviseringar → E-postmottagare:** lägg till flera adresser och välj vilka larmtyper var och en ska få,
   t.ex. att larm om virtuella maskiner bara går till en viss adress. `MAIL_TO` blir första mottagare tills du
-  sparar listan här. Varje rad har en knapp för testmejl.
+  sparar listan här. Varje rad har en knapp för testmejl. Under *Servrar* väljer du vilka Plex- och
+  Unraid-servrar mottagaren ska få larm om (från början alla).
 - **Övervaka containrar och virtuella maskiner:** klicka på klockan vid en container eller VM i Unraid-sektionen.
   Stannar den blir det ett kritiskt larm (efter bekräftelsen ovan).
 

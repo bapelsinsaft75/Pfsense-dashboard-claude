@@ -386,11 +386,13 @@ document.querySelector(".stabs").addEventListener("click", (e) => {
   document.querySelectorAll(".stabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll(".spane").forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
 });
-let recips = [], mailConfigured = false;
+let recips = [], mailConfigured = false, serverList = [];
 function readRecips() {
   return [...$("s-recips").querySelectorAll(".recip")].map((row) => ({
     email: row.querySelector(".r-email").value.trim(), name: row.querySelector(".r-name").value.trim(),
     kinds: [...row.querySelectorAll("[data-rkind]:checked")].map((c) => c.dataset.rkind),
+    servers: !serverList.length || row.querySelector(".r-allsrv").checked ? null
+      : [...row.querySelectorAll("[data-rsrv]:checked")].map((c) => c.dataset.rsrv),
   }));
 }
 function renderRecips() {
@@ -404,6 +406,9 @@ function renderRecips() {
       <details ${r.open ? "open" : ""}><summary>Larm som skickas hit: <b>${n} av ${alertKinds.length}</b></summary>
         <div class="rquick"><button type="button" class="linkbtn" data-rall="${i}">Alla</button><button type="button" class="linkbtn" data-rcrit="${i}">Bara kritiska</button><button type="button" class="linkbtn" data-rnone="${i}">Inga</button></div>
         <div class="rkinds">${alertKinds.map((k) => `<label class="check"><input type="checkbox" data-rkind="${k.id}" ${r.kinds.includes(k.id) ? "checked" : ""}> ${esc(k.label)}</label>`).join("")}</div>
+        ${serverList.length ? `<div class="rsrv"><div><b>Servrar</b> <span class="muted">· gäller larm om Plex och Unraid</span></div>
+          <label class="check"><input type="checkbox" class="r-allsrv" ${r.servers == null ? "checked" : ""}> Alla servrar</label>
+          <div class="rsrvlist">${serverList.map((sv) => `<label class="check"><input type="checkbox" data-rsrv="${esc(sv.name)}" ${r.servers == null || r.servers.includes(sv.name) ? "checked" : ""} ${r.servers == null ? "disabled" : ""}> ${esc(sv.name)} <span class="muted">${sv.type}</span></label>`).join("")}</div></div>` : ""}
       </details></div>`;
   }).join("") : '<p class="muted">Inga mottagare. Lägg till en för att få larm via e-post.</p>';
 }
@@ -418,6 +423,10 @@ $("s-add-recip").addEventListener("click", () => {
   const rows = $("s-recips").querySelectorAll(".r-email"); rows[rows.length - 1].focus();
 });
 $("s-recips").addEventListener("change", (e) => {
+  if (e.target.matches(".r-allsrv")) {
+    e.target.closest(".recip").querySelectorAll("[data-rsrv]").forEach((c) => { c.disabled = e.target.checked; if (e.target.checked) c.checked = true; });
+    return;
+  }
   if (!e.target.matches("[data-rkind]")) return;
   const row = e.target.closest(".recip");
   row.querySelector("summary b").textContent = `${row.querySelectorAll("[data-rkind]:checked").length} av ${alertKinds.length}`;
@@ -462,6 +471,7 @@ async function openSettings() {
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
     $("s-slackwarn").checked = !!st.slack_warnings;
     mailConfigured = j.email.enabled;
+    serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" }))];
     recips = st.recipients ? st.recipients.map((r) => ({ ...r }))
       : j.email.to.map((email) => ({ email, name: "", kinds: alertKinds.filter((k) => k.critical || (st.email_warnings && st.alert_kinds[k.id])).map((k) => k.id) }));
     renderRecips();
