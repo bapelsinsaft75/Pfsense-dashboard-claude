@@ -756,7 +756,10 @@ function render() {
   map.flows = d.flows;
   map.filter = state.mapFilter;
   map.render();
+  if (window.onDashRender) window.onDashRender(d);
 }
+window.dashState = state;
+window.dashRender = () => render();
 
 async function load() {
   try {
@@ -776,6 +779,7 @@ $("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"
 $("connf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.connF = b.dataset.c; setPressed(e.currentTarget, b); render(); });
 $("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });
 function scrollToCard(id) {
+  if (window.layoutGoto && window.layoutGoto(id)) return;
   const el = $(id);
   if (!el || el.hidden) return;
   const top = el.getBoundingClientRect().top + window.scrollY - $("alerts").offsetHeight - 12;

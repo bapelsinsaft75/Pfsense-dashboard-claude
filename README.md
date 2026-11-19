@@ -6,6 +6,10 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   **Grön** linje = anslutningen startades inifrån nätverket, **lila** = startades utifrån.
 - Vilka klienter som använder mest bandbredd just nu och mest data (24 timmar, 7 dagar, 30 dagar).
 - Lista över alla klienter med namn, IP och MAC. Du kan ge klienterna egna namn direkt i listan (pennan vid namnet).
+- Fyra utseenden att välja mellan under *Inställningar → Allmänt*: **Klassisk** (allt på en sida), **Sidomeny**
+  (en sak i taget), **Statusrutor** (en ruta per system, detaljer i en panel) och **Flikar och rader**
+  (delar som kan fällas ihop). Valet sparas i webbläsaren. Lägg till `?layout=rutor` (eller `sidomeny`, `flikar`,
+  `klassisk`) i adressen för att låsa utseendet, t.ex. på en väggskärm.
 - Klientlistan kan filtreras på status (online, inaktiva) och anslutning (trådlöst, kabel, okänd).
 - Status för Unraid-servern: array, diskar med temperatur, processor, minne, Docker-containrar och
   virtuella maskiner (med filter för körs/stoppade).

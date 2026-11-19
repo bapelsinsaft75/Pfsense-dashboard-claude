@@ -423,7 +423,7 @@ def _version() -> str:
     v = os.environ.get("APP_VERSION", "").strip()
     if v:
         return v[:12]
-    newest = max(os.path.getmtime(os.path.join(STATIC, f)) for f in ("index.html", "app.js", "style.css"))
+    newest = max(os.path.getmtime(os.path.join(STATIC, f)) for f in ("index.html", "app.js", "style.css", "layout.js"))
     return datetime.fromtimestamp(newest, STOCKHOLM).strftime("%Y%m%d-%H%M")
 
 
@@ -435,6 +435,7 @@ async def index():
         html = fh.read()
     html = (html.replace('href="style.css"', f'href="style.css?v={v}"')
                 .replace('src="app.js"', f'src="app.js?v={v}"')
+                .replace('src="layout.js"', f'src="layout.js?v={v}"')
                 .replace("{{VERSION}}", v))
     return Response(html, media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
