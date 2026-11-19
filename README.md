@@ -9,7 +9,7 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid.
 - **A – Kontrollrum**: mörk driftvy, allt på en skärm.
 - **B – Översikt**: ljus rapportvy med perioder, 24 h-graf och sökbar klientlista.
 - **C – Glob**: snurrbar jordglob centrerad på Örebro.
-- **D – Översikt, mörk**: layouten från B i färgerna och typsnitten från A (vald riktning).
+- **D – Översikt, mörk**: layouten från B i färgerna och typsnitten från A (vald riktning). Visar även UniFi-data: trådlöst eller kabel, switch och port, Wi-Fi-band och signal.
 
 Gemensamt: karta med hus-ikon i Örebro och linjer till länder
 (grön = anslutningen startades inifrån, lila = startades utifrån),

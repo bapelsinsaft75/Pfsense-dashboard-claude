@@ -174,6 +174,30 @@ table{border-collapse:collapse;width:100%;color:inherit}
 .pb .pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--b-ok-bg);color:var(--b-ok-fg);font-weight:500}
 .pb .pill.idle{background:var(--b-idle-bg);color:var(--b-idle-fg)}
 .pb .r-right{text-align:right}
+.pb .devs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.pb .dev{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--b-line);border-radius:var(--b-r);background:var(--b-bg)}
+.pb .dev:hover{border-color:var(--b-muted)}
+.pb .dev[aria-pressed="true"]{border-color:var(--b-accent);box-shadow:inset 0 0 0 1px var(--b-accent)}
+.pb .dev:focus-visible{outline:2px solid var(--b-accent);outline-offset:2px}
+.pb .dev .hd{display:flex;gap:10px;align-items:center}
+.pb .dev .hd .ico{color:var(--b-muted);width:22px;height:22px}
+.pb .dev .hd b{display:block;font-weight:600;font-size:13.5px}
+.pb .dev .hd span{display:block;color:var(--b-muted);font-size:12px}
+.pb .dev .cnt{font-size:13px}
+.pb .dev .cnt small{color:var(--b-muted)}
+.pb .dev .meta{color:var(--b-muted);font-size:12px}
+.pb .ports{display:flex;flex-wrap:wrap;gap:3px}
+.pb .ports i{width:12px;height:10px;border-radius:2px;background:var(--b-track);border:1px solid var(--b-line);box-sizing:border-box}
+.pb .ports i.on{background:var(--b-accent);border-color:var(--b-accent)}
+.pb .ports i.inf{background:var(--b-muted);border-color:var(--b-muted)}
+.pb .portkey{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--b-muted)}
+.pb .portkey i{display:inline-block;width:10px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+.pb .conn{display:inline-flex;align-items:center;gap:7px}
+.pb .conn .ico{width:16px;height:16px;color:var(--b-muted)}
+.pb .conn small{color:var(--b-muted);font-size:12px}
+.pb .sig{display:inline-flex;gap:1.5px;align-items:flex-end;height:11px}
+.pb .sig i{width:3px;border-radius:1px;background:var(--b-track)}
+.pb .sig i.on{background:var(--b-fg)}
 @media (max-width:980px){.pb .row{grid-template-columns:1fr}.pb .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 
@@ -198,6 +222,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
 .pb.theme-a .topc .r .t div{background:linear-gradient(90deg,#3a5874,#7fb0d8)}
 .pb.theme-a td.mono:nth-child(2){color:#8fc7ff}
 .pb.theme-a .crow,.pb.theme-a .topc .r,.pb.theme-a table{font-size:12.5px}
+.pb.theme-a .dev .hd b{font-family:var(--font-cond);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .pb.theme-a .chart text{font-family:var(--font-mono);font-size:10px}
 
 /* ── C: Glob ──────────────────────────────── */
@@ -257,7 +282,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
   <header class="top">
     <div>
       <h1>pfSense Nätverkskarta</h1>
-      <p>Fyra visuella förslag för samma dashboard. D är det senaste: B:s layout i A:s färger. Allt du ser är exempeldata. Klicka på en klient i något av förslagen för att bara se dess trafik på kartan.</p>
+      <p>Fyra visuella förslag för samma dashboard. D är det senaste: B:s layout i A:s färger, nu med UniFi-data om trådlöst och kabel. Allt du ser är exempeldata. Klicka på en klient i något av förslagen för att bara se dess trafik på kartan.</p>
     </div>
     <div class="legend-shell" aria-label="Färgförklaring">
       <span><i style="background:#2fbf71"></i>Startad inifrån nätverket</span>
@@ -348,9 +373,14 @@ table{border-collapse:collapse;width:100%;color:inherit}
         </div>
       </div>
       <div class="card">
-        <h3>Klienter <span class="tools"><input type="search" id="b-search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient"></span></h3>
+        <h3>UniFi-enheter <small>klicka på en enhet för att se dess klienter</small></h3>
+        <div class="devs" id="b-devs"></div>
+        <div class="portkey"><span><i style="background:var(--b-accent)"></i>port med klient</span><span><i style="background:var(--b-muted)"></i>upplänk eller annan UniFi-enhet</span><span><i style="background:var(--b-track);border:1px solid var(--b-line)"></i>ledig port</span></div>
+      </div>
+      <div class="card">
+        <h3>Klienter <span class="tools"><span class="seg" role="group" aria-label="Anslutningstyp" id="b-conn"><button aria-pressed="true" data-c="">Alla</button><button aria-pressed="false" data-c="wifi">Trådlöst</button><button aria-pressed="false" data-c="wired">Kabel</button></span><input type="search" id="b-search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient"></span></h3>
         <div class="tablebox"><table id="b-table"><thead><tr>
-          <th><button data-sort="name">Namn</button></th><th><button data-sort="ip">IP-adress</button></th><th>MAC</th><th>Status</th>
+          <th><button data-sort="name">Namn</button></th><th><button data-sort="ip">IP-adress</button></th><th><button data-sort="conn">Anslutning</button></th><th>MAC</th><th>Status</th>
           <th class="r-right"><button data-sort="now">Nu ↓</button></th><th class="r-right"><button data-sort="gb">Data</button></th></tr></thead><tbody></tbody></table></div>
       </div>
     </div>
@@ -388,6 +418,7 @@ table{border-collapse:collapse;width:100%;color:inherit}
       <h2>Samma data i alla fyra</h2>
       <ul>
         <li>Klienter, IP och MAC hämtas från pfSense DHCP-leases och ARP-tabellen.</li>
+        <li>Trådlöst eller kabel, switchport, Wi-Fi-band och signal hämtas från UniFi Network-kontrollern (B och D).</li>
         <li>Bandbredd och datamängd per klient kommer från trafikräkning per IP (t.ex. NetFlow eller ntopng).</li>
         <li>Land slås upp lokalt med en GeoIP-databas. Riktning avgörs av vem som skickade första paketet i anslutningen.</li>
       </ul>
@@ -448,7 +479,21 @@ const FLOWS=[
  {country:"Brasilien",lon:-46.63,lat:-23.55,dir:"in",gb:.02,conns:37,clients:["unraid"]},
  {country:"Indien",lon:77.21,lat:28.61,dir:"in",gb:.01,conns:52,clients:["unraid"]}
 ];
-const ICONS={
+const DEVICES=[
+ {id:"sw1",kind:"switch",name:"Switch Förråd",model:"USW-Lite-16-PoE",ports:16,uplink:1,infra:{1:"pfSense LAN",2:"Switch Kontor",4:"Switch Vardagsrum",8:"AP Hall (PoE)"}},
+ {id:"sw2",kind:"switch",name:"Switch Kontor",model:"USW-Lite-8-PoE",ports:8,uplink:1,infra:{1:"Switch Förråd"}},
+ {id:"sw3",kind:"switch",name:"Switch Vardagsrum",model:"USW-Flex-Mini",ports:5,uplink:1,infra:{1:"Switch Förråd"}},
+ {id:"ap",kind:"ap",name:"AP Hall",model:"U6 Pro",up:"Switch Förråd, port 8"}
+];
+const LINK={ps5:{conn:"wired",dev:"sw3",port:3},tv:{conn:"wired",dev:"sw3",port:2},unraid:{conn:"wired",dev:"sw1",port:3},kontor:{conn:"wired",dev:"sw2",port:2},
+ macbook:{conn:"wifi",dev:"ap",band:"5 GHz",rssi:-54},appletv:{conn:"wired",dev:"sw3",port:4},ipad:{conn:"wifi",dev:"ap",band:"5 GHz",rssi:-61},
+ iphone:{conn:"wifi",dev:"ap",band:"5 GHz",rssi:-58},galaxy:{conn:"wifi",dev:"ap",band:"5 GHz",rssi:-67},sonos:{conn:"wifi",dev:"ap",band:"2,4 GHz",rssi:-63},
+ ha:{conn:"wired",dev:"sw1",port:5},robo:{conn:"wifi",dev:"ap",band:"2,4 GHz",rssi:-71},hue:{conn:"wired",dev:"sw1",port:7},hp:{conn:"wired",dev:"sw2",port:4}};
+CLIENTS.forEach(c=>Object.assign(c,LINK[c.id]));
+const ICONS={wifi:"M2.5 9a14 14 0 0 1 19 0 M5.5 12.3a9.5 9.5 0 0 1 13 0 M8.7 15.6a5 5 0 0 1 6.6 0 M12 19h.01",
+ cable:"M7 3h10v8H7z M10 11v4h4v-4 M12 15v6 M9.5 6v2 M12 6v2 M14.5 6v2",
+ switch:"M2 8h20v8H2z M5.5 12h.01 M8.5 12h.01 M11.5 12h.01 M14.5 12h.01 M18 12h1",
+ ap:"M3 11a9 4 0 1 0 18 0a9 4 0 1 0-18 0 M12 11h.01 M3 11v2a9 4 0 0 0 18 0v-2",
  laptop:"M4 6h16v10H4z M2 19h20",phone:"M8 3h8v18H8z M11 18h2",tablet:"M6 3h12v18H6z M11 18h2",
  tv:"M3 5h18v12H3z M8 21h8",server:"M4 4h16v6H4z M4 14h16v6H4z M8 7h.01 M8 17h.01",
  console:"M7 8h10a4 4 0 0 1 0 9l-2-2H9l-2 2a4 4 0 0 1 0-9z M9 11v3 M7.5 12.5h3 M15.5 12h.01",
@@ -464,6 +509,10 @@ const fmtRate=m=>m>=10?fmt(m,0):m>=1?fmt(m,1):fmt(m,2);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const byId=Object.fromEntries(CLIENTS.map(c=>[c.id,c]));
+const devById=Object.fromEntries(DEVICES.map(d=>[d.id,d]));
+const sigLvl=r=>r>=-55?4:r>=-62?3:r>=-70?2:1;
+const sig=r=>`<span class="sig" title="${r} dBm">${[3,5,8,11].map((h,i)=>`<i class="${i<sigLvl(r)?"on":""}" style="height:${h}px"></i>`).join("")}</span>`;
+const connHTML=c=>c.conn==="wifi"?`<span class="conn">${icon("wifi")}<span>Wi-Fi ${c.band}</span>${sig(c.rssi)}<small>${c.rssi} dBm</small></span>`:`<span class="conn">${icon("cable")}<span>${esc(devById[c.dev].name)}</span><small>port ${c.port}</small></span>`;
 const live=CLIENTS.map(c=>({...c}));
 const HOUSE="M0-8.5-8-1.5h2.3V7h4.2V2.2h3V7h4.2V-1.5H8z";
 
@@ -558,11 +607,16 @@ function setA(id){if(!mapA)return;mapA.setFilter(id);const p=document.getElement
 setInterval(()=>{const t=new Date().toLocaleTimeString("sv-SE",{timeZone:"Europe/Stockholm"});document.getElementById("a-clock").textContent="LIVE "+t;},1000);
 
 /* ═════ B ═════ */
-let mapB,period=1,sortKey="gb",sortDir=-1;
+let mapB,period=1,sortKey="gb",sortDir=-1,connF="",devF=null;
 function rng(seed){return()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646;};}
 function initB(){
   document.getElementById("b-cl").textContent=online();
-  document.getElementById("b-cl-s").textContent=`${CLIENTS.length-online()} inaktiva av ${CLIENTS.length}`;
+  const on=CLIENTS.filter(c=>!c.idle);
+  document.getElementById("b-cl-s").textContent=`${on.filter(c=>c.conn==="wifi").length} trådlöst · ${on.filter(c=>c.conn==="wired").length} kabel · ${CLIENTS.length-on.length} inaktiva`;
+  renderDevs();
+  document.getElementById("b-devs").addEventListener("click",e=>{const b=e.target.closest("[data-dev]");if(!b)return;devF=devF===b.dataset.dev?null:b.dataset.dev;renderDevs();renderBTable();});
+  document.getElementById("b-conn").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;connF=b.dataset.c;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed",x===b));renderBTable();});
   const cs=new Set(FLOWS.map(f=>f.country));
   document.getElementById("b-ctry").textContent=cs.size;
   document.getElementById("b-ctry-s").textContent=`${new Set(FLOWS.filter(f=>f.dir==="in").map(f=>f.country)).size} med inkommande trafik`;
@@ -591,15 +645,25 @@ function renderB(){
     return `<div class="crow"><span class="f">${c}</span><span class="num">${fmtGB(t*period)}</span><div class="split" title="${fmt(v.o/t*100,0)} % inifrån"><div class="o" style="width:${t/all*100*(v.o/t)}%"></div><div class="i" style="width:${Math.max(v.i>0?1.2:0,t/all*100*(v.i/t))}%"></div></div><span class="m">${v.n} anslutningar${v.i>0?" · varav inkommande":""}</span><span class="m num">${fmt(t/all*100,0)} %</span></div>`;}).join("");
   const mx=CLIENTS[0].gb;
   document.getElementById("b-topc").innerHTML=CLIENTS.slice(0,7).map(c=>`<div class="r pickable" data-id="${c.id}">${icon(c.type)}<span>${esc(c.name)}</span><span class="num">${fmtGB(c.gb*period)}</span><div class="t"><div style="width:${c.gb/mx*100}%"></div></div></div>`).join("");
-  renderBNow();renderBTable();
+  renderBNow();renderBTable();renderDevs();
+}
+function renderDevs(){
+  document.getElementById("b-devs").innerHTML=DEVICES.map(d=>{const cl=CLIENTS.filter(c=>c.dev===d.id),gb=cl.reduce((s,c)=>s+c.gb,0);
+    let body;
+    if(d.kind==="switch"){const used=Object.fromEntries(cl.map(c=>[c.port,c.name]));
+      body=`<div class="ports" aria-label="Portar">${Array.from({length:d.ports},(_,i)=>{const n=i+1,t=used[n]?`Port ${n}: ${used[n]}`:d.infra[n]?`Port ${n}: ${d.infra[n]}`:`Port ${n}: ledig`;
+        return `<i class="${used[n]?"on":d.infra[n]?"inf":""}" title="${esc(t)}"></i>`;}).join("")}</div><div class="meta">${Object.keys(used).length+Object.keys(d.infra).length} av ${d.ports} portar används · upplänk port ${d.uplink}</div>`;}
+    else{const b5=cl.filter(c=>c.band==="5 GHz").length;
+      body=`<div class="meta">${b5} på 5 GHz · ${cl.length-b5} på 2,4 GHz · SSID Hemma</div><div class="meta">Ansluten till ${d.up}</div>`;}
+    return `<button class="dev" type="button" data-dev="${d.id}" aria-pressed="${devF===d.id}"><div class="hd">${icon(d.kind)}<div><b>${esc(d.name)}</b><span>${d.model}</span></div></div><div class="cnt num">${cl.length} klienter <small>· ${fmtGB(gb*period)}</small></div>${body}</button>`;}).join("");
 }
 function renderBNow(){document.getElementById("b-now").innerHTML=fmt(totDown()+totUp(),0)+"<small>Mbit/s</small>";}
 function renderBTable(){
   const q=document.getElementById("b-search").value.trim().toLowerCase();
   const ipn=ip=>ip.split(".").reduce((a,x)=>a*256+ +x,0);
-  const val=c=>sortKey==="now"?c.down+c.up:sortKey==="ip"?ipn(c.ip):sortKey==="name"?c.name.toLowerCase():c.gb;
-  const rows=live.filter(c=>!q||(c.name+" "+c.ip+" "+c.mac).toLowerCase().includes(q)).sort((a,b)=>{const x=val(a),y=val(b);return(x>y?1:x<y?-1:0)*sortDir;});
-  document.querySelector("#b-table tbody").innerHTML=rows.length?rows.map(c=>`<tr class="pickable" data-id="${c.id}" ${mapB&&mapB.filter===c.id?'style="background:var(--b-sel)"':""}><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="mono">${c.ip}</td><td class="mono">${c.mac}</td><td><span class="pill${c.idle?" idle":""}">${c.idle?"Inaktiv":"Online"}</span></td><td class="r-right num">${c.idle?"–":fmtRate(c.down+c.up)+" Mbit/s"}</td><td class="r-right num">${fmtGB(c.gb*period)}</td></tr>`).join(""):`<tr><td colspan="6" style="color:var(--b-muted)">Ingen klient matchar "${esc(q)}".</td></tr>`;
+  const val=c=>sortKey==="conn"?(c.conn==="wifi"?"0"+c.rssi:"1"+c.dev+String(c.port).padStart(2,"0")):sortKey==="now"?c.down+c.up:sortKey==="ip"?ipn(c.ip):sortKey==="name"?c.name.toLowerCase():c.gb;
+  const rows=live.filter(c=>(!connF||c.conn===connF)&&(!devF||c.dev===devF)&&(!q||(c.name+" "+c.ip+" "+c.mac).toLowerCase().includes(q))).sort((a,b)=>{const x=val(a),y=val(b);return(x>y?1:x<y?-1:0)*sortDir;});
+  document.querySelector("#b-table tbody").innerHTML=rows.length?rows.map(c=>`<tr class="pickable" data-id="${c.id}" ${mapB&&mapB.filter===c.id?'style="background:var(--b-sel)"':""}><td><span class="who">${icon(c.type)}${esc(c.name)}</span></td><td class="mono">${c.ip}</td><td>${connHTML(c)}</td><td class="mono">${c.mac}</td><td><span class="pill${c.idle?" idle":""}">${c.idle?"Inaktiv":"Online"}</span></td><td class="r-right num">${c.idle?"–":fmtRate(c.down+c.up)+" Mbit/s"}</td><td class="r-right num">${fmtGB(c.gb*period)}</td></tr>`).join(""):`<tr><td colspan="7" style="color:var(--b-muted)">Inga klienter matchar filtret.</td></tr>`;
 }
 function drawChartB(){
   const r=rng(42),W=760,H=220,m={l:36,r:8,t:10,b:24};
