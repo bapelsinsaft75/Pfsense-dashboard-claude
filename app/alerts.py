@@ -1,0 +1,137 @@
+"""Larm: sparas i SQLite, visas som banner och skickas via e-post när det är viktigt."""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+import time
+from zoneinfo import ZoneInfo
+
+from .history import History
+from .mailer import Mailer
+from .settings import Settings
+
+log = logging.getLogger("alerts")
+TZ = ZoneInfo("Europe/Stockholm")
+RESOLVED_VISIBLE = 6 * 3600  # lösta kritiska larm syns i bannern så här länge
+MAIL_COOLDOWN = 30 * 60
+
+LEVEL_LABEL = {"critical": "Kritiskt", "warning": "Varning", "info": "Info"}
+
+
+def _when(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts, TZ).strftime("%Y-%m-%d %H:%M")
+
+
+class Alerts:
+    def __init__(self, history: History, mailer: Mailer, settings: Settings) -> None:
+        self.h = history
+        self.mailer = mailer
+        self.settings = settings
+        self._last_mail: dict[str, float] = {}
+
+    def _should_mail(self, level: str) -> bool:
+        return level == "critical" or (level == "warning" and self.settings.get("email_warnings"))
+
+    def _mail(self, key: str, subject: str, body: str, force: bool = False) -> bool:
+        if not self.mailer.enabled:
+            return False
+        now = time.time()
+        if not force and now - self._last_mail.get(key, 0) < MAIL_COOLDOWN:
+            return False
+        self._last_mail[key] = now
+        self.mailer.send_background(subject, body)
+        return True
+
+    def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None) -> int:
+        """Skapa ett larm, eller uppdatera det om samma larm redan är aktivt."""
+        now = now or time.time()
+        with self.h.lock:
+            row = self.h.db.execute("SELECT id, level FROM alerts WHERE key=? AND resolved IS NULL", (key,)).fetchone()
+            if row:
+                self.h.db.execute("UPDATE alerts SET updated=?, message=?, count=count+1 WHERE id=?",
+                                  (int(now), message, row[0]))
+                self.h.db.commit()
+                return row[0]
+            cur = self.h.db.execute(
+                "INSERT INTO alerts(key, level, kind, title, message, created, updated) VALUES(?,?,?,?,?,?,?)",
+                (key, level, kind, title, message, int(now), int(now)),
+            )
+            self.h.db.commit()
+            alert_id = cur.lastrowid
+        log.info("Larm (%s): %s – %s", level, title, message)
+        if self._should_mail(level):
+            body = f"{LEVEL_LABEL.get(level, level)}: {title}\n\n{message}\n\nTid: {_when(now)}\n"
+            if self._mail(key, title, body):
+                with self.h.lock:
+                    self.h.db.execute("UPDATE alerts SET emailed=1 WHERE id=?", (alert_id,))
+                    self.h.db.commit()
+        return alert_id
+
+    def resolve(self, key: str, message: str | None = None, now: float | None = None) -> None:
+        now = now or time.time()
+        with self.h.lock:
+            rows = self.h.db.execute(
+                "SELECT id, level, title, created, emailed FROM alerts WHERE key=? AND resolved IS NULL", (key,)
+            ).fetchall()
+            if not rows:
+                return
+            self.h.db.execute("UPDATE alerts SET resolved=?, updated=? WHERE key=? AND resolved IS NULL",
+                              (int(now), int(now), key))
+            self.h.db.commit()
+        for _id, level, title, created, emailed in rows:
+            log.info("Löst: %s", title)
+            if emailed and level == "critical":
+                mins = max(1, int((now - created) / 60))
+                body = (f"Löst: {title}\n\n{message or 'Problemet är inte längre aktivt.'}\n\n"
+                        f"Varade i cirka {mins} minuter ({_when(created)} – {_when(now)}).\n")
+                self._mail(key + ":resolved", f"Löst: {title}", body, force=True)
+
+    def expire(self, kinds: tuple[str, ...], quiet_seconds: int, now: float | None = None) -> None:
+        """Avsluta händelselarm (t.ex. Suricata) som varit tysta en tid, utan att mejla."""
+        now = now or time.time()
+        marks = ",".join("?" * len(kinds))
+        with self.h.lock:
+            self.h.db.execute(
+                f"UPDATE alerts SET resolved=? WHERE resolved IS NULL AND kind IN ({marks}) AND updated<?",
+                (int(now), *kinds, int(now - quiet_seconds)),
+            )
+            self.h.db.commit()
+
+    def is_active(self, key: str) -> bool:
+        with self.h.lock:
+            return self.h.db.execute("SELECT 1 FROM alerts WHERE key=? AND resolved IS NULL", (key,)).fetchone() is not None
+
+    def ack(self, alert_id: int) -> bool:
+        with self.h.lock:
+            cur = self.h.db.execute("UPDATE alerts SET acked=? WHERE id=? AND acked IS NULL", (int(time.time()), alert_id))
+            self.h.db.commit()
+            return cur.rowcount > 0
+
+    def ack_all(self) -> int:
+        with self.h.lock:
+            cur = self.h.db.execute("UPDATE alerts SET acked=? WHERE acked IS NULL", (int(time.time()),))
+            self.h.db.commit()
+            return cur.rowcount
+
+    def _rows(self, where: str, args: tuple, limit: int) -> list[dict]:
+        cols = ("id", "key", "level", "kind", "title", "message", "created", "updated", "resolved", "acked", "emailed", "count")
+        with self.h.lock:
+            rows = self.h.db.execute(
+                f"SELECT {', '.join(cols)} FROM alerts WHERE {where} ORDER BY "
+                "CASE level WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, updated DESC LIMIT ?",
+                args + (limit,),
+            ).fetchall()
+        return [dict(zip(cols, r)) for r in rows]
+
+    def banner(self, now: float | None = None) -> list[dict]:
+        now = now or time.time()
+        return self._rows("acked IS NULL AND (resolved IS NULL OR (level='critical' AND resolved>?))",
+                          (int(now - RESOLVED_VISIBLE),), 20)
+
+    def recent(self, limit: int = 30) -> list[dict]:
+        with self.h.lock:
+            cols = ("id", "level", "kind", "title", "message", "created", "updated", "resolved", "count")
+            rows = self.h.db.execute(
+                f"SELECT {', '.join(cols)} FROM alerts ORDER BY updated DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(zip(cols, r)) for r in rows]

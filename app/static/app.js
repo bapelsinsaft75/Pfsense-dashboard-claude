@@ -121,15 +121,127 @@ class MapView {
   }
 }
 
+/* ── larm ── */
+const seenAlerts = new Set();
+let firstAlertRender = true;
+function ago(t) {
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  if (m < 1) return "nyss";
+  if (m < 60) return `för ${m} min sedan`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `för ${h} h sedan`;
+  return new Date(t * 1000).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+const LVL = { critical: "Kritiskt", warning: "Varning", info: "Info" };
+function renderAlerts(d) {
+  const list = d.alerts || [];
+  const html = list.map((a) => {
+    const resolved = !!a.resolved;
+    const isNew = !firstAlertRender && !seenAlerts.has(a.id);
+    const meta = resolved ? `Löst ${ago(a.resolved)} · började ${ago(a.created)}` : `${ago(a.created)}${a.count > 1 ? ` · ${a.count} gånger` : ""}${a.emailed ? " · mejlat" : ""}`;
+    return `<div class="alert ${resolved ? "resolved" : a.level}${isNew ? " new" : ""}" role="${a.level === "critical" && !resolved ? "alert" : "status"}">
+      <span class="lvl">${resolved ? "Löst" : LVL[a.level] || a.level}</span>
+      <div class="txt"><b>${esc(a.title)}</b><span>${esc(a.message || "")} · ${meta}</span></div>
+      <div class="acts"><button type="button" class="btn" data-ack="${a.id}">${resolved ? "OK" : "Stäng"}</button></div></div>`;
+  }).join("") + (list.length > 1 ? `<div class="alert info" style="background:var(--card);padding-block:6px"><span></span><span></span><div class="acts"><button type="button" class="btn" data-ack="all">Stäng alla</button></div></div>` : "");
+  $("alerts").innerHTML = html;
+  list.forEach((a) => seenAlerts.add(a.id));
+  firstAlertRender = false;
+  const active = list.filter((a) => !a.resolved).length;
+  document.title = (active ? `(${active}) ` : "") + "pfSense Nätverkskarta";
+}
+
+function renderSecurity(d) {
+  const sec = d.security || {};
+  const t = sec.totals || {};
+  const parts = [];
+  const gws = (sec.gateways || []).concat((sec.vpn_clients || []).map((v) => ({ name: v.name, state: v.up ? "up" : "down", status: v.status, vpn: true })));
+  if (gws.length) {
+    parts.push(`<div><h3>Gateways och VPN</h3><div class="gws">${gws.map((g) => `<span class="gw ${g.state}" title="${esc(g.status || "")}">${esc(g.name)}${g.vpn ? " <small>VPN</small>" : ""}${g.delay ? ` <small>${esc(g.delay)}</small>` : ""}</span>`).join("")}</div></div>`);
+  }
+  parts.push(`<div class="secnums"><div><b class="num">${fmt(t.suricata || 0, 0)}</b><span>Suricata-larm</span></div><div><b class="num">${fmt(t.pfblockerng || 0, 0)}</b><span>pfBlockerNG-blockeringar</span></div><div><b class="num">${fmt(t.firewall || 0, 0)}</b><span>Övriga blockeringar</span></div></div>`);
+  if ((sec.suricata || []).length) {
+    parts.push(`<div><h3>Suricata</h3><div class="slist">${sec.suricata.map((x) => `<div class="r"><span class="prio p${x.prio}">P${x.prio}</span><span class="n" title="${esc(x.label)}">${esc(x.label)}</span><span class="num">${fmt(x.count, 0)}</span></div>`).join("")}</div></div>`);
+  }
+  if ((sec.pfb_clients || []).length) {
+    parts.push(`<div><h3>Klienter som stoppats av pfBlockerNG</h3><div class="slist">${sec.pfb_clients.map((x) => `<div class="r"><span></span><span class="n">${esc(x.name)}</span><span class="num">${fmt(x.count, 0)}</span></div>`).join("")}</div></div>`);
+  }
+  if ((sec.blocked_countries || []).length) {
+    parts.push(`<div><h3>Blockerade försök utifrån, per land</h3><div class="slist">${sec.blocked_countries.map((x) => `<div class="r"><span></span><span class="n">${esc(countryName(x.cc))}</span><span class="num">${fmt(x.count, 0)}</span></div>`).join("")}</div></div>`);
+  }
+  if (!t.suricata && !t.pfblockerng && !t.firewall && !(d.status.syslog || {}).ok) {
+    parts.push(`<p class="muted" style="margin:0">Ingen syslog från pfSense än. Slå på fjärrloggning i pfSense (Status → System Logs → Settings) och skicka till dashboardens IP, port 5514. I Suricata: slå på "Send Alerts to System Log".</p>`);
+  }
+  $("security").innerHTML = parts.join("");
+}
+
+function renderEvents(d) {
+  const ev = d.events || [];
+  $("events").innerHTML = ev.length ? ev.map((e) => `<div class="ev ${e.level}"><i></i><span class="t">${esc(e.title)}${e.resolved ? ' <span class="ok">· löst</span>' : ""}</span><span class="w">${ago(e.updated)}</span><span class="m">${esc(e.message || "")}</span></div>`).join("")
+    : `<div class="empty">Inga larm. Här visas allt som har hänt, även larm du har stängt.</div>`;
+}
+
+/* ── inställningar ── */
+async function openSettings() {
+  const dlg = $("settings");
+  $("s-msg").textContent = ""; $("s-msg").className = "formmsg";
+  try {
+    const r = await fetch("api/settings", { cache: "no-store" });
+    const j = await r.json();
+    const st = j.settings;
+    $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
+    $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
+    $("s-newdev").checked = !!st.new_device_alerts; $("s-mailwarn").checked = !!st.email_warnings;
+    $("s-mail").innerHTML = j.email.enabled ? `E-post skickas via <b>${esc(j.email.host)}</b> till <b>${esc(j.email.to.join(", "))}</b>.`
+      : "E-post är inte konfigurerat. Fyll i SMTP_USER, SMTP_TOKEN och MAIL_TO i Unraid-mallen.";
+    $("s-test").disabled = !j.email.enabled;
+  } catch (e) { $("s-msg").textContent = "Kunde inte läsa inställningarna."; $("s-msg").className = "formmsg err"; }
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+}
+$("open-settings").addEventListener("click", openSettings);
+$("s-cancel").addEventListener("click", () => $("settings").close());
+$("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {
+    retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
+    suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
+    new_device_alerts: $("s-newdev").checked, email_warnings: $("s-mailwarn").checked,
+  };
+  try {
+    const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.status);
+    $("s-msg").textContent = "Sparat."; $("s-msg").className = "formmsg ok";
+    setTimeout(() => $("settings").close(), 700);
+    load();
+  } catch (err) { $("s-msg").textContent = `Kunde inte spara: ${err.message}`; $("s-msg").className = "formmsg err"; }
+});
+$("s-test").addEventListener("click", async () => {
+  $("s-msg").textContent = "Skickar …"; $("s-msg").className = "formmsg";
+  try {
+    const r = await fetch("api/test-email", { method: "POST" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.status);
+    $("s-msg").textContent = `Testmejl skickat till ${j.to.join(", ")}.`; $("s-msg").className = "formmsg ok";
+  } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
+});
+$("alerts").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-ack]"); if (!b) return;
+  b.disabled = true;
+  await fetch(b.dataset.ack === "all" ? "api/alerts/ack-all" : `api/alerts/${b.dataset.ack}/ack`, { method: "POST" }).catch(() => {});
+  load();
+});
+
 /* ── rendering ── */
 function renderStatus(d) {
-  const names = { pfsense: "pfSense", unifi: "UniFi", netflow: "NetFlow", geoip: "GeoIP" };
+  const names = { pfsense: "pfSense", unifi: "UniFi", netflow: "NetFlow", syslog: "Syslog", geoip: "GeoIP", email: "E-post" };
   const chips = [], problems = [];
   for (const [k, label] of Object.entries(names)) {
     const s = d.status[k] || {};
     const enabled = k === "geoip" ? true : s.enabled;
     let cls = "off", title = "Inte konfigurerat";
-    if (enabled && s.ok) { cls = "ok"; title = s.last ? `Senast ${clock(s.last)}` : "OK"; }
+    if (k === "email" && enabled && !s.ok && !s.error) { cls = "ok"; title = "Konfigurerat"; }
+    else if (enabled && s.ok) { cls = "ok"; title = s.last ? `Senast ${clock(s.last)}` : "OK"; }
     else if (enabled && s.error) { cls = "err"; title = s.error; problems.push([label, s.error]); }
     else if (enabled) { cls = ""; title = "Väntar på data"; }
     chips.push(`<span class="chip ${cls}" title="${esc(title)}">${label}</span>`);
@@ -277,6 +389,7 @@ function render() {
   if (!d) return;
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
+  renderAlerts(d); renderSecurity(d); renderEvents(d);
   renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderTop(d); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
   map.flows = d.flows;

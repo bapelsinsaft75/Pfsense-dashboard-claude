@@ -118,9 +118,45 @@ def setup(engine: Engine) -> None:
             engine.conns[key] = Conn(key, ip, port, remote, rport, "tcp", direction, 0, 0)
     engine.geo.status.update(ok=True, error=None, source="Exempeldata")
     engine.geo.country = _demo_country  # type: ignore[method-assign]
-    for name in ("pfsense", "unifi", "netflow"):
+    for name in ("pfsense", "unifi", "netflow", "syslog"):
         engine.status[name].update(enabled=True, ok=True, error=None, last=now)
+    _seed_alerts(engine, now, rnd)
     tick(engine)
+
+
+def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:
+    engine.gateways = {
+        "WAN_DHCP": {"name": "WAN_DHCP", "state": "up", "status": "online", "loss": "0.0%", "delay": "4.1ms",
+                     "monitor": "1.1.1.1", "vpn": False},
+        "PROTONVPN_WG": {"name": "PROTONVPN_WG", "state": "up", "status": "online", "loss": "0.0%", "delay": "18.7ms",
+                         "monitor": "10.2.0.1", "vpn": True},
+    }
+    a = engine.alerts
+    vpn = a.raise_("gw:PROTONVPN_WG", "critical", "vpn_down", "VPN-anslutningen PROTONVPN_WG är nere",
+                   "pfSense rapporterar att PROTONVPN_WG är nere (status: down, förlust 100%).", now=now - 47 * 60)
+    a.resolve("gw:PROTONVPN_WG", "PROTONVPN_WG är uppe igen.", now=now - 39 * 60)
+    a.raise_("data:bc:33:29:7a:01:f2", "warning", "data_anomaly", "PS5 använder ovanligt mycket data",
+             "PS5 har använt 48,2 GB de senaste 24 timmarna. Normalt är 11,6 GB per dygn (4 gånger mer än vanligt).",
+             now=now - 25 * 60)
+    a.raise_("pfb:64:90:c1:2b:7d:08", "warning", "pfblocker", "Roborock försöker nå blockerade adresser",
+             "pfBlockerNG har stoppat 31 försök från Roborock (192.168.1.62) de senaste 10 minuterna, "
+             "till bland annat 47.88.0.12, 8.209.0.4. Det kan tyda på skadlig kod eller reklam/spårning.", now=now - 8 * 60)
+    h = engine.history
+    sigs = [("ET SCAN Suspicious inbound to mySQL port 3306", 2, 41), ("ET DROP Dshield Block Listed Source", 2, 128),
+            ("ET POLICY Possible Plex Media Server Login from external", 3, 6), ("ET SCAN NMAP OS Detection Probe", 2, 9)]
+    for label, prio, n in sigs:
+        for _ in range(n):
+            h.add_security("suricata", label, prio, "d0:50:99:3a:11:0c", "45.148.10.5", rnd.choice(["CN", "RU", "NL", "US"]),
+                           "in", ts=now - rnd.uniform(0, 86000))
+    for _ in range(214):
+        h.add_security("pfblockerng", "igb1", 0, "64:90:c1:2b:7d:08", "47.88.0.12", "CN", "out", ts=now - rnd.uniform(0, 86000))
+    for _ in range(38):
+        h.add_security("pfblockerng", "igb1", 0, "a8:23:fe:10:9c:44", "8.8.4.4", "US", "out", ts=now - rnd.uniform(0, 86000))
+    for cc, n in (("CN", 1830), ("RU", 1204), ("US", 760), ("NL", 512), ("BR", 330), ("IN", 290)):
+        for _ in range(n):
+            h.add_security("pfblockerng", "igb0", 0, "", "", cc, "in", ts=now - rnd.uniform(0, 86000))
+    h.flush()
+    del vpn
 
 
 _REMOTE_CC = {remote: cc for flows in FLOWS.values() for cc, _d, _s, remote in flows}

@@ -7,11 +7,18 @@ import re
 import time
 from collections import defaultdict, deque
 
+import statistics
+
+from .alerts import Alerts
 from .config import Config, is_public
 from .geoip import GeoIP
 from .history import History
+from .mailer import Mailer
 from .netflow import Flow, FlowParser
-from .pfsense import Conn, parse_arp, parse_interfaces, parse_lease, parse_state, wan_counters
+from .pfsense import (Conn, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
+                      parse_state, wan_counters)
+from .settings import Settings
+from .syslog import parse_filterlog, parse_suricata
 from .unifi import parse_client, parse_device
 
 log = logging.getLogger("engine")
@@ -19,6 +26,9 @@ log = logging.getLogger("engine")
 PERIODS = {"24h": (86400, 1800), "7d": (7 * 86400, 7200), "30d": (30 * 86400, 43200)}
 PROTOS = {1: "icmp", 6: "tcp", 17: "udp", 58: "icmpv6"}
 NETFLOW_WINDOW = 60
+SOURCE_DOWN_AFTER = 300  # sekunder innan "pfSense svarar inte" larmar
+DOWN_STREAK = 2  # antal kontroller i rad innan en gateway räknas som nere
+PFB_WINDOW = 600
 
 TYPE_RULES = [
     ("console", r"ps[345]|playstation|xbox|switch-?oled|nintendo|steamdeck"),
@@ -53,6 +63,17 @@ class Engine:
             os.makedirs(cfg.data_dir, exist_ok=True)
             db_path = os.path.join(cfg.data_dir, "history.sqlite")
         self.history = History(db_path)
+        self.settings = Settings(cfg, persist=not cfg.demo)
+        self.mailer = Mailer(cfg)
+        self.alerts = Alerts(self.history, self.mailer, self.settings)
+        self.gateways: dict[str, dict] = {}
+        self.vpn_clients: dict[str, dict] = {}
+        self._gw_streak: dict[str, int] = defaultdict(int)
+        self._fail_since: dict[str, float] = {}
+        self._clients_polled = False
+        self._pfb_hits: dict[str, deque] = defaultdict(deque)
+        self.syslog_lines = 0
+        self.syslog_last = 0.0
 
         self.clients: dict[str, dict] = {}  # cid (mac) → info från pfSense
         self.ip_to_cid: dict[str, str] = {}
@@ -79,7 +100,9 @@ class Engine:
             "pfsense": {"enabled": bool(cfg.pfsense_url), "ok": False, "error": None, "last": None},
             "unifi": {"enabled": cfg.unifi_enabled, "ok": False, "error": None, "last": None},
             "netflow": {"enabled": cfg.netflow_port > 0, "ok": False, "error": None, "last": None},
+            "syslog": {"enabled": cfg.syslog_port > 0, "ok": False, "error": None, "last": None},
             "geoip": self.geo.status,
+            "email": self.mailer.status,
         }
         self.raw: dict[str, list] = {}
 
@@ -95,14 +118,21 @@ class Engine:
     def mark(self, name: str, ok: bool, error: str | None = None) -> None:
         st = self.status[name]
         st["ok"], st["error"] = ok, error
+        now = time.time()
         if ok:
-            st["last"] = time.time()
+            st["last"] = now
+            if name in self._fail_since:
+                del self._fail_since[name]
+                self.alerts.resolve(f"source:{name}", "Kontakten är återställd.")
+        else:
+            self._fail_since.setdefault(name, now)
 
     # ── pfSense ──
     def update_clients(self, leases: list[dict], arp: list[dict]) -> None:
         self.raw["leases"], self.raw["arp"] = leases[:50], arp[:50]
         now = time.time()
         seen_online: set[str] = set()
+        known_before = set(self.history.known_clients(0)) if self._clients_polled else None
         for row in leases:
             lease = parse_lease(row)
             if not lease:
@@ -126,6 +156,12 @@ class Engine:
             if c["online"]:
                 c["last_seen"] = now
         self._rebuild_ip_map()
+        if known_before is not None and known_before and self.settings.get("new_device_alerts"):
+            for mac, c in self.clients.items():
+                if c.get("online") and mac not in known_before:
+                    self.alerts.raise_(f"new:{mac}", "warning", "new_device", f"Ny enhet i nätverket: {self.display_name(mac)}",
+                                       f"{self.display_name(mac)} ({c.get('ip')}, MAC {mac.upper()}) har anslutit för första gången.")
+        self._clients_polled = True
         self.history.remember_clients(
             [(mac, mac, c.get("ip"), self.display_name(mac), int(c.get("last_seen") or now))
              for mac, c in self.clients.items() if c.get("online")]
@@ -275,6 +311,162 @@ class Engine:
                 devices[d["id"]] = d
         self.unifi_clients, self.devices = clients, devices
         self._rebuild_ip_map()
+        for d in devices.values():
+            key = f"unifi:{d['id']}"
+            if not d["online"]:
+                self.alerts.raise_(key, "warning", "unifi_offline", f"{d['name']} är offline",
+                                   f"UniFi-enheten {d['name']} ({d['model']}) svarar inte. Klienter som är anslutna via den kan sakna nätverk.")
+            else:
+                self.alerts.resolve(key, f"{d['name']} är online igen.")
+
+    # ── gateways och VPN ──
+    def update_gateways(self, rows: list[dict]) -> None:
+        self.raw["gateways"] = rows[:20]
+        seen = {}
+        for row in rows:
+            g = parse_gateway(row)
+            if g:
+                seen[g["name"]] = g
+        for name, g in seen.items():
+            what = "VPN-anslutningen" if g["vpn"] else "Gatewayen"
+            key = f"gw:{name}"
+            if g["state"] == "down":
+                self._gw_streak[name] += 1
+                if self._gw_streak[name] >= DOWN_STREAK:
+                    self.alerts.raise_(key, "critical", "vpn_down" if g["vpn"] else "gateway_down", f"{what} {name} är nere",
+                                       f"pfSense rapporterar att {name} är nere (status: {g['status']}"
+                                       f"{', förlust ' + g['loss'] if g['loss'] else ''}).")
+            else:
+                self._gw_streak[name] = 0
+                self.alerts.resolve(key, f"{name} är uppe igen.")
+            dkey = f"gwdeg:{name}"
+            if g["state"] == "degraded":
+                self.alerts.raise_(dkey, "warning", "gateway_degraded", f"{what} {name} har problem",
+                                   f"Hög paketförlust eller fördröjning på {name} (förlust {g['loss'] or '?'}, fördröjning {g['delay'] or '?'}).")
+            else:
+                self.alerts.resolve(dkey)
+        self.gateways = seen
+
+    def update_openvpn(self, rows: list[dict]) -> None:
+        self.raw["openvpn"] = rows[:20]
+        seen = {}
+        for row in rows:
+            v = parse_openvpn_client(row)
+            if v:
+                seen[v["name"]] = v
+        for name, v in seen.items():
+            key = f"ovpn:{name}"
+            if not v["up"]:
+                self._gw_streak[key] += 1
+                if self._gw_streak[key] >= DOWN_STREAK:
+                    self.alerts.raise_(key, "critical", "vpn_down", f"VPN-anslutningen {name} är nere",
+                                       f"OpenVPN-klienten {name} har status \"{v['status']}\".")
+            else:
+                self._gw_streak[key] = 0
+                self.alerts.resolve(key, f"{name} är ansluten igen.")
+        self.vpn_clients = seen
+
+    # ── syslog: Suricata och pfBlockerNG ──
+    def on_syslog(self, line: str) -> None:
+        now = time.time()
+        self.syslog_lines += 1
+        self.syslog_last = now
+        self.mark("syslog", True)
+        is_lan = self.cfg.is_lan
+        sa = parse_suricata(line)
+        if sa:
+            lan = sa.src if is_lan(sa.src) else sa.dst if is_lan(sa.dst) else ""
+            remote = sa.dst if lan == sa.src else sa.src
+            direction = "out" if lan and lan == sa.src else "in"
+            cid = self.cid_for_ip(lan) if lan else ""
+            cc = self.geo.country(remote) or ""
+            self.history.add_security("suricata", sa.signature, sa.priority, cid, remote, cc, direction, ts=now)
+            if sa.priority <= self.settings.get("suricata_min_priority"):
+                who = self.display_name(cid) if cid else (lan or sa.dst)
+                level = "critical" if sa.priority == 1 else "warning"
+                self.alerts.raise_(
+                    f"suricata:{sa.sid}", level, "suricata", f"Suricata: {sa.signature}",
+                    f"Prioritet {sa.priority} ({sa.classification}). {sa.src}{':' + str(sa.sport) if sa.sport else ''} → "
+                    f"{sa.dst}{':' + str(sa.dport) if sa.dport else ''} ({sa.proto}). Berör {who}"
+                    f"{', ' + cc if cc else ''}.")
+            return
+        fe = parse_filterlog(line)
+        if not fe or fe.action != "block":
+            return
+        source = "pfblockerng" if fe.tracker.startswith(self.cfg.pfblocker_tracker_prefix) else "firewall"
+        if is_lan(fe.src) and not is_lan(fe.dst):
+            cid, remote, direction = self.cid_for_ip(fe.src), fe.dst, "out"
+        elif not is_lan(fe.src):
+            cid, remote, direction = (self.cid_for_ip(fe.dst) if is_lan(fe.dst) else ""), fe.src, "in"
+        else:
+            return
+        cc = self.geo.country(remote) or ""
+        self.history.add_security(source, fe.interface, 0, cid, remote if direction == "out" else "", cc, direction, ts=now)
+        if source == "pfblockerng" and direction == "out":
+            hits = self._pfb_hits[cid]
+            hits.append((now, remote))
+            while hits and now - hits[0][0] > PFB_WINDOW:
+                hits.popleft()
+            threshold = self.settings.get("pfblocker_threshold")
+            if len(hits) >= threshold:
+                name = self.display_name(cid)
+                targets = sorted({r for _, r in hits})
+                self.alerts.raise_(
+                    f"pfb:{cid}", "warning", "pfblocker", f"{name} försöker nå blockerade adresser",
+                    f"pfBlockerNG har stoppat {len(hits)} försök från {name} ({fe.src}) de senaste 10 minuterna, "
+                    f"till bland annat {', '.join(targets[:5])}. Det kan tyda på skadlig kod eller reklam/spårning.")
+
+    # ── kontroller som körs regelbundet ──
+    def check_sources(self, now: float | None = None) -> None:
+        now = now or time.time()
+        self.alerts.expire(("suricata", "pfblocker"), 3600, now)
+        if self.status["syslog"]["enabled"] and self.syslog_last and now - self.syslog_last > 1800:
+            self.status["syslog"].update(ok=False, error="Ingen syslog från pfSense på över 30 minuter.")
+        for name, since in list(self._fail_since.items()):
+            if name == "pfsense" and now - since >= SOURCE_DOWN_AFTER:
+                self.alerts.raise_("source:pfsense", "critical", "source_down", "pfSense svarar inte",
+                                   f"Dashboarden har inte fått svar från pfSense sedan "
+                                   f"{time.strftime('%H:%M', time.localtime(since))}. Senaste fel: {self.status['pfsense']['error']}")
+            elif name == "unifi" and now - since >= SOURCE_DOWN_AFTER:
+                self.alerts.raise_("source:unifi", "warning", "source_down", "UniFi svarar inte",
+                                   f"Senaste fel: {self.status['unifi']['error']}")
+
+    def check_data_anomalies(self, now: float | None = None) -> None:
+        """Larma när en klient har använt betydligt mer data senaste dygnet än den brukar."""
+        now = now or time.time()
+        factor = float(self.settings.get("anomaly_factor"))
+        min_bytes = float(self.settings.get("anomaly_min_gb")) * 1e9
+        days = min(14, int(self.settings.get("retention_days")))
+        first = self.history.first_traffic()
+        if days < 4 or not first:
+            return
+        full_days = int((now - first) // 86400)
+        if full_days < 4:
+            return
+        for cid, per_day in self.history.daily_totals(now, days).items():
+            last = per_day[0]
+            baseline_days = [v for v in per_day[1:full_days]]
+            if len(baseline_days) < 3:
+                continue
+            typical = statistics.median(baseline_days)
+            key = f"data:{cid}"
+            name = self.display_name(cid)
+            if last >= min_bytes and last > factor * max(typical, 1):
+                ratio = last / typical if typical else None
+                self.alerts.raise_(
+                    key, "warning", "data_anomaly", f"{name} använder ovanligt mycket data",
+                    f"{name} har använt {last / 1e9:.1f} GB de senaste 24 timmarna. Normalt är "
+                    f"{typical / 1e9:.1f} GB per dygn" + (f" ({ratio:.0f} gånger mer än vanligt)." if ratio else "."))
+            elif self.alerts.is_active(key) and last < factor * max(typical, 1) * 0.8:
+                self.alerts.resolve(key, f"{name} är tillbaka på normal nivå.")
+
+    def security(self, since: int) -> dict:
+        sec = self.history.security_summary(since)
+        for item in sec["pfb_clients"]:
+            item["name"] = self.display_name(item["cid"])
+        sec["gateways"] = sorted(self.gateways.values(), key=lambda g: (not g["vpn"], g["name"]))
+        sec["vpn_clients"] = list(self.vpn_clients.values())
+        return sec
 
     # ── svar till webbsidan ──
     def display_name(self, cid: str, known: dict | None = None) -> str:
@@ -385,6 +577,10 @@ class Engine:
             "devices": self.device_list(),
             "series": self.history.series(since, step, now),
             "series_step": step,
+            "alerts": self.alerts.banner(now),
+            "events": self.alerts.recent(25),
+            "security": self.security(int(now - 86400)),
+            "settings": self.settings.all(),
         }
 
     def device_list(self) -> list[dict]:

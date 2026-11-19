@@ -8,7 +8,7 @@ import os
 import time
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -17,6 +17,7 @@ from .config import Config
 from .engine import Engine
 from .netflow import NetflowProtocol
 from .pfsense import PfSense, PfSenseError
+from .syslog import SyslogProtocol
 from .unifi import UniFi, UniFiError
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -48,6 +49,27 @@ async def pfsense_loop(engine: Engine, pf: PfSense) -> None:
         await asyncio.sleep(cfg.pfsense_poll)
 
 
+async def vpn_loop(engine: Engine, pf: PfSense) -> None:
+    """Gateways (inklusive VPN-gateways) och OpenVPN-klienter."""
+    openvpn_supported = True
+    while True:
+        try:
+            engine.update_gateways(await pf.gateways())
+        except PfSenseError as exc:
+            log.debug("Gateways: %s", exc)
+        except Exception:  # noqa: BLE001
+            log.exception("Kunde inte läsa gateways")
+        if openvpn_supported:
+            try:
+                engine.update_openvpn(await pf.openvpn_clients())
+            except PfSenseError as exc:
+                if "404" in str(exc):
+                    openvpn_supported = False
+            except Exception:  # noqa: BLE001
+                log.exception("Kunde inte läsa OpenVPN-status")
+        await asyncio.sleep(engine.cfg.vpn_poll)
+
+
 async def unifi_loop(engine: Engine, uf: UniFi) -> None:
     while True:
         try:
@@ -64,7 +86,8 @@ async def unifi_loop(engine: Engine, uf: UniFi) -> None:
 
 
 async def ticker(engine: Engine) -> None:
-    last_flush = last_compact = time.time()
+    last_flush = last_compact = last_check = time.time()
+    last_anomaly = time.time() - 3000  # första kontrollen efter cirka 10 minuter
     while True:
         await asyncio.sleep(2)
         if engine.cfg.demo:
@@ -72,11 +95,17 @@ async def ticker(engine: Engine) -> None:
         else:
             engine.tick()
         now = time.time()
+        if not engine.cfg.demo and now - last_check >= 30:
+            engine.check_sources(now)
+            last_check = now
+        if not engine.cfg.demo and now - last_anomaly >= 3600:
+            await asyncio.to_thread(engine.check_data_anomalies, now)
+            last_anomaly = now
         if now - last_flush >= 60:
             await asyncio.to_thread(engine.history.flush)
             last_flush = now
         if now - last_compact >= 3600:
-            await asyncio.to_thread(engine.history.compact, engine.cfg.retention_days)
+            await asyncio.to_thread(engine.history.compact, engine.settings.get("retention_days"))
             last_compact = now
 
 
@@ -97,6 +126,7 @@ async def lifespan(app: FastAPI):
         pf = PfSense(cfg)
         closers.append(pf.close)
         tasks.append(asyncio.create_task(pfsense_loop(engine, pf)))
+        tasks.append(asyncio.create_task(vpn_loop(engine, pf)))
         if cfg.unifi_enabled:
             uf = UniFi(cfg)
             closers.append(uf.close)
@@ -110,6 +140,15 @@ async def lifespan(app: FastAPI):
                 log.info("Tar emot NetFlow/IPFIX på UDP %s", cfg.netflow_port)
             except OSError as exc:
                 engine.mark("netflow", False, f"Kan inte lyssna på UDP {cfg.netflow_port}: {exc}")
+    syslog_transport = None
+    if cfg.syslog_port > 0 and not cfg.demo:
+        try:
+            syslog_transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+                lambda: SyslogProtocol(engine.on_syslog), local_addr=("0.0.0.0", cfg.syslog_port)
+            )
+            log.info("Tar emot syslog på UDP %s", cfg.syslog_port)
+        except OSError as exc:
+            engine.mark("syslog", False, f"Kan inte lyssna på UDP {cfg.syslog_port}: {exc}")
     tasks.append(asyncio.create_task(ticker(engine)))
     try:
         yield
@@ -118,6 +157,8 @@ async def lifespan(app: FastAPI):
             t.cancel()
         if transport:
             transport.close()
+        if syslog_transport:
+            syslog_transport.close()
         for close in closers:
             await close()
         engine.history.flush()
@@ -138,12 +179,57 @@ async def health():
     return {"ok": True, "mode": "demo" if engine.cfg.demo else "live", "status": engine.status}
 
 
+@app.post("/api/alerts/{alert_id}/ack")
+async def ack_alert(alert_id: int):
+    engine: Engine = app.state.engine
+    return {"ok": engine.alerts.ack(alert_id)}
+
+
+@app.post("/api/alerts/ack-all")
+async def ack_all():
+    engine: Engine = app.state.engine
+    return {"ok": True, "count": engine.alerts.ack_all()}
+
+
+@app.get("/api/settings")
+async def get_settings():
+    engine: Engine = app.state.engine
+    return {"settings": engine.settings.all(), "email": {"enabled": engine.mailer.enabled, "to": engine.mailer.to,
+                                                         "host": engine.mailer.host}}
+
+
+@app.put("/api/settings")
+async def put_settings(values: dict = Body(...)):
+    engine: Engine = app.state.engine
+    try:
+        before = engine.settings.get("retention_days")
+        result = engine.settings.update(values)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if result["retention_days"] < before:
+        await asyncio.to_thread(engine.history.flush)
+        await asyncio.to_thread(engine.history.compact, result["retention_days"])
+    return {"settings": result}
+
+
+@app.post("/api/test-email")
+async def test_email():
+    engine: Engine = app.state.engine
+    try:
+        await asyncio.to_thread(
+            engine.mailer.send, "Testmejl",
+            "Det här är ett testmejl från din pfSense-dashboard. Om du läser det fungerar e-postlarmen.\n")
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "to": engine.mailer.to}
+
+
 @app.get("/api/debug/raw/{name}")
 async def debug_raw(name: str):
     engine: Engine = app.state.engine
     if not engine.cfg.debug_endpoints:
         raise HTTPException(404)
-    if name not in ("states", "arp", "leases", "interfaces", "unifi_clients", "unifi_devices"):
+    if name not in ("states", "arp", "leases", "interfaces", "gateways", "openvpn", "unifi_clients", "unifi_devices"):
         raise HTTPException(404, "Okänd källa")
     return JSONResponse({"name": name, "sample": engine.raw.get(name, [])})
 

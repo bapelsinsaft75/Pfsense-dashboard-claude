@@ -8,6 +8,9 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
 - Lista över alla klienter med namn, IP och MAC.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,
   samt en vy över switchar och accesspunkter.
+- **Larm** som en banner överst på sidan, och **e-post** (t.ex. Proton Mail med SMTP-token) vid viktiga händelser.
+- Säkerhetsvy med Suricata-larm, pfBlockerNG-blockeringar och status för gateways och VPN.
+- Historik äldre än 14 dagar raderas. Antalet dagar går att ändra under *Inställningar* på webbsidan.
 
 Utan inställningar startar containern i **demoläge** med exempeldata.
 
@@ -21,6 +24,25 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
 | Bandbredd på WAN | pfSense REST API: gränssnittsstatus |
 | Land för en IP-adress | Lokal GeoIP-databas (DB-IP Lite laddas ner automatiskt varje månad) |
 | Trådlöst/kabel, switchport, Wi-Fi | UniFi Network Application |
+| Gateways och VPN (WAN, WireGuard, OpenVPN) | pfSense REST API: gateway-status och OpenVPN-status |
+| Suricata-larm, pfBlockerNG och brandväggsblockeringar | Syslog från pfSense till containern (UDP 5514) |
+
+## Larm
+
+| Larm | Nivå | Mejlas |
+| --- | --- | --- |
+| VPN-anslutning eller gateway nere (två kontroller i rad, var 30:e sekund) | Kritiskt | Ja, och när den är uppe igen |
+| pfSense svarar inte på 5 minuter | Kritiskt | Ja, och när det fungerar igen |
+| Suricata-larm med prioritet 1 (nivån går att ändra) | Kritiskt | Ja |
+| En klient har använt minst 3 gånger mer data än normalt senaste 24 timmarna, och minst 2 GB | Varning | Om du valt det |
+| En klient försöker nå adresser som pfBlockerNG blockerar (25 gånger på 10 minuter) | Varning | Om du valt det |
+| Hög paketförlust eller fördröjning på en gateway | Varning | Om du valt det |
+| En UniFi-switch eller accesspunkt är offline, eller UniFi svarar inte | Varning | Om du valt det |
+| Ny enhet ansluter till nätverket | Varning | Om du valt det |
+
+"Normalt" är medianen av klientens dataförbrukning per dygn de senaste två veckorna, och kräver minst 4 dygns historik.
+Gränserna ändras under *Inställningar* (kugghjulet). Samma larm mejlas inte igen förrän det har lösts.
+Stängda larm syns kvar under *Händelser*.
 
 ## 1. Förbered pfSense
 
@@ -35,12 +57,37 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
    - Om det finns en inställning för maximal livslängd eller aktiv timeout: sätt den till cirka 60 sekunder,
      så att långa anslutningar (strömning, nedladdningar) rapporteras löpande.
 
+3. **Fjärrloggning** (för Suricata och pfBlockerNG): *Status → System Logs → Settings → Remote Logging Options*
+   - Kryssa i *Enable Remote Logging*, Remote log servers: `<dashboardens IP>:5514`
+   - Remote Syslog Contents: *Firewall Events* och *System Events* (eller *Everything*)
+4. **Suricata**: under *Services → Suricata → (interface) → Interface Settings*, kryssa i
+   **Send Alerts to System Log**. Gör det för varje interface där Suricata körs.
+5. **pfBlockerNG** loggar sina blockeringar i brandväggsloggen. Se till att *Logging* är påslaget för
+   IP-listorna (standard). Dashboarden känner igen pfBlockerNG-regler på att deras tracker-ID börjar med `177`
+   (ändras med `PFBLOCKER_TRACKER_PREFIX` om dina ser annorlunda ut). DNSBL-blockeringar syns inte i
+   brandväggsloggen och räknas därför inte.
+6. **VPN**: dashboarden läser alla gateways i pfSense, så en VPN-tunnel som är en gateway (t.ex. WireGuard
+   eller OpenVPN mot Proton VPN) övervakas automatiskt. Gateways vars namn innehåller t.ex. `VPN`, `WG`,
+   `PROTON` eller `OVPN` visas som VPN. Se till att gatewayen har *Gateway Monitoring* påslaget i
+   *System → Routing → Gateways*, annars kan pfSense inte avgöra om den är nere.
+
 ## 2. Förbered UniFi (valfritt)
 
 Skapa ett lokalt konto i UniFi Network (*Inställningar → Admins & Users*) med enbart visningsrätt,
 t.ex. `dashboard`. Kontot måste vara lokalt, inte ett UI.com-konto.
 
-## 3. Installera på Unraid
+## 3. E-post via Proton Mail (valfritt)
+
+1. Logga in på Proton Mail på webben: *Inställningar → Alla inställningar → IMAP/SMTP → SMTP-tokens*.
+2. Skapa en token, välj adressen som ska skicka mejlen och kopiera token direkt (den visas bara en gång).
+   Proton erbjuder SMTP-tokens på betalda planer, och adressen behöver vara på din egen domän.
+3. Fyll i `SMTP_USER` (adressen), `SMTP_TOKEN` (token) och `MAIL_TO` (vem som ska få larmen) i Unraid-mallen.
+   `SMTP_HOST` är `smtp.protonmail.ch` och `SMTP_PORT` `587` som standard.
+4. Öppna *Inställningar* på webbsidan och tryck *Skicka testmejl*.
+
+Fungerar även med andra SMTP-tjänster: ändra `SMTP_HOST` och `SMTP_PORT`.
+
+## 4. Installera på Unraid
 
 Imagen byggs automatiskt av GitHub Actions och publiceras som
 `ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest`.
@@ -59,7 +106,8 @@ och lägg till variablerna i tabellen nedan.
 ### Nätverk
 
 Ge containern **en egen IP på `br0`** (*Network Type: Custom: br0*, *Fixed IP address*), precis som UniFi.
-Då når den UniFi-containern direkt och softflowd kan skicka till den IP-adressen på port 2055.
+Då når den UniFi-containern direkt, och pfSense kan skicka NetFlow till port 2055 och syslog till port 5514
+på den IP-adressen.
 Webbsidan finns på `http://<containerns IP>:8080`.
 
 Kör du hellre containern i *bridge*-läge med Unraids IP behöver Unraid kunna prata med containrar på br0:
@@ -79,12 +127,20 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `TRAFFIC_SOURCE` | `auto` | `auto`, `netflow` eller `states` |
 | `HOME_CITY`, `HOME_LAT`, `HOME_LON` | `Örebro`, `59.2741`, `15.2066` | Hus-ikonen på kartan |
 | `WAN_INTERFACE` | `wan` | WAN-gränssnittets namn i pfSense |
-| `RETENTION_DAYS` | `35` | Hur länge historiken sparas |
+| `RETENTION_DAYS` | `14` | Hur länge historiken sparas (standardvärde, kan ändras på webbsidan) |
+| `SYSLOG_PORT` | `5514` | Syslog från pfSense, `0` stänger av |
+| `SMTP_HOST`, `SMTP_PORT` | `smtp.protonmail.ch`, `587` | E-postserver |
+| `SMTP_USER`, `SMTP_TOKEN` | | Proton-adress och SMTP-token |
+| `MAIL_TO`, `MAIL_FROM` | | Mottagare (kommaseparerade) och avsändare (standard: `SMTP_USER`) |
+| `EMAIL_WARNINGS` | `false` | Mejla även varningar (kan ändras på webbsidan) |
+| `PFBLOCKER_TRACKER_PREFIX` | `177` | Hur pfBlockerNG-regler känns igen i brandväggsloggen |
 | `PFSENSE_VERIFY_SSL`, `UNIFI_VERIFY_SSL` | `false` | `false` för självsignerade certifikat |
 | `GEOIP_DB_PATH` | | Egen MMDB-fil, t.ex. MaxMind GeoLite2-Country |
 | `DEBUG_ENDPOINTS` | `true` | Felsökningssidor, se nedan |
 
-Historik och GeoIP-databas sparas i `/data` (mappa till `/mnt/user/appdata/pfsense-dashboard`).
+Historik, larm, inställningar från webbsidan (`settings.json`) och GeoIP-databas sparas i `/data`
+(mappa till `/mnt/user/appdata/pfsense-dashboard`). Det du sparar under *Inställningar* på webbsidan går före
+miljövariablerna.
 
 ## Felsökning
 
@@ -92,11 +148,13 @@ Historik och GeoIP-databas sparas i `/data` (mappa till `/mnt/user/appdata/pfsen
   Håll muspekaren över en markering för att se felet.
 - Rådata från källorna (de första raderna) visas på
   `/api/debug/raw/states`, `/api/debug/raw/arp`, `/api/debug/raw/leases`, `/api/debug/raw/interfaces`,
+  `/api/debug/raw/gateways`, `/api/debug/raw/openvpn`,
   `/api/debug/raw/unifi_clients` och `/api/debug/raw/unifi_devices`.
   Bra att titta på om något ser fel ut, eftersom fältnamnen i pfSense REST API skiljer sig något mellan versioner.
 - `/api/health` används av Dockers hälsokontroll.
 
-Dashboarden har ingen inloggning och är tänkt att bara nås från det lokala nätet.
+Dashboarden har ingen inloggning och är tänkt att bara nås från det lokala nätet. Den som når sidan kan
+också ändra inställningarna och stänga larm.
 
 ## Utveckling
 

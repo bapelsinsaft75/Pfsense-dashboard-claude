@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Stockholm \
     DATA_DIR=/data \
     WEB_PORT=8080 \
-    NETFLOW_PORT=2055
+    NETFLOW_PORT=2055 \
+    SYSLOG_PORT=5514
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata \
@@ -17,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
 VOLUME ["/data"]
-EXPOSE 8080/tcp 2055/udp
+EXPOSE 8080/tcp 2055/udp 5514/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import os,urllib.request;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"WEB_PORT\",\"8080\")}/api/health',timeout=4)" || exit 1

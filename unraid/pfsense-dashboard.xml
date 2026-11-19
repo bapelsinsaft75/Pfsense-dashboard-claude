@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Support>
   <Project>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Project>
-  <Overview>Grafisk dashboard för pfSense: karta med trafik per land från hemstaden, vilka klienter som använder mest bandbredd och data, samt klientlista med IP. Med UniFi visas även om klienter är trådlösa eller trådbundna, switchport och Wi-Fi-signal. Utan PFSENSE_URL startar den i demoläge med exempeldata.</Overview>
+  <Overview>Grafisk dashboard för pfSense: karta med trafik per land från hemstaden, vilka klienter som använder mest bandbredd och data, samt klientlista med IP. Larmbanner och e-post (t.ex. Proton SMTP) när VPN går ner, Suricata larmar eller en klient använder ovanligt mycket data. Med UniFi visas även om klienter är trådlösa eller trådbundna, switchport och Wi-Fi-signal. Utan PFSENSE_URL startar den i demoläge med exempeldata.</Overview>
   <Category>Network:Management Tools: Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <Icon>https://raw.githubusercontent.com/bapelsinsaft75/Pfsense-dashboard-claude/main/unraid/icon.png</Icon>
@@ -17,6 +17,7 @@
   <DateInstalled></DateInstalled>
   <Config Name="Webbport" Target="8080" Default="8080" Mode="tcp" Description="Webbsidan. Med egen IP på br0 nås den direkt på http://IP:8080." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="NetFlow-port" Target="2055" Default="2055" Mode="udp" Description="Hit skickar softflowd i pfSense sina flöden." Type="Port" Display="always" Required="false" Mask="false">2055</Config>
+  <Config Name="Syslog-port" Target="5514" Default="5514" Mode="udp" Description="Hit skickar pfSense sin logg (Suricata, pfBlockerNG, brandvägg)." Type="Port" Display="always" Required="false" Mask="false">5514</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/pfsense-dashboard" Mode="rw" Description="Historik (SQLite) och GeoIP-databas." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/pfsense-dashboard</Config>
 
   <Config Name="pfSense-adress" Target="PFSENSE_URL" Default="" Mode="" Description="T.ex. https://192.168.1.1. Lämna tomt för demoläge." Type="Variable" Display="always" Required="false" Mask="false"></Config>
@@ -28,12 +29,20 @@
   <Config Name="UniFi-lösenord" Target="UNIFI_PASS" Default="" Mode="" Description="" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="UniFi-site" Target="UNIFI_SITE" Default="default" Mode="" Description="Sitens kortnamn i UniFi (oftast default)." Type="Variable" Display="advanced" Required="false" Mask="false">default</Config>
 
+  <Config Name="E-post: SMTP-användare" Target="SMTP_USER" Default="" Mode="" Description="Din Proton-adress som SMTP-token hör till." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="E-post: SMTP-token" Target="SMTP_TOKEN" Default="" Mode="" Description="Proton: Inställningar → IMAP/SMTP → SMTP-tokens." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="E-post: mottagare" Target="MAIL_TO" Default="" Mode="" Description="Vart larmen skickas. Flera adresser separeras med komma." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="E-post: SMTP-server" Target="SMTP_HOST" Default="smtp.protonmail.ch" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">smtp.protonmail.ch</Config>
+  <Config Name="E-post: SMTP-port" Target="SMTP_PORT" Default="587" Mode="" Description="587 (STARTTLS) eller 465 (SSL)." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
+  <Config Name="E-post: avsändare" Target="MAIL_FROM" Default="" Mode="" Description="Tomt = samma som SMTP-användare." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
   <Config Name="Hemstad" Target="HOME_CITY" Default="Örebro" Mode="" Description="Namn vid hus-ikonen på kartan." Type="Variable" Display="advanced" Required="false" Mask="false">Örebro</Config>
   <Config Name="Hemstad latitud" Target="HOME_LAT" Default="59.2741" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">59.2741</Config>
   <Config Name="Hemstad longitud" Target="HOME_LON" Default="15.2066" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">15.2066</Config>
   <Config Name="WAN-gränssnitt" Target="WAN_INTERFACE" Default="wan" Mode="" Description="Namnet på WAN i pfSense." Type="Variable" Display="advanced" Required="false" Mask="false">wan</Config>
   <Config Name="Trafikkälla" Target="TRAFFIC_SOURCE" Default="auto" Mode="" Description="auto = NetFlow om flöden tas emot, annars pfSense-tillståndstabellen. Eller: netflow, states." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
-  <Config Name="Spara historik (dagar)" Target="RETENTION_DAYS" Default="35" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">35</Config>
+  <Config Name="Spara historik (dagar)" Target="RETENTION_DAYS" Default="14" Mode="" Description="Standardvärde. Kan ändras senare under Inställningar på webbsidan, och då gäller det värdet." Type="Variable" Display="advanced" Required="false" Mask="false">14</Config>
+  <Config Name="pfBlockerNG tracker-prefix" Target="PFBLOCKER_TRACKER_PREFIX" Default="177" Mode="" Description="Regler vars tracker-ID börjar så här räknas som pfBlockerNG." Type="Variable" Display="advanced" Required="false" Mask="false">177</Config>
   <Config Name="Verifiera pfSense-certifikat" Target="PFSENSE_VERIFY_SSL" Default="false" Mode="" Description="false för självsignerat certifikat." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="Verifiera UniFi-certifikat" Target="UNIFI_VERIFY_SSL" Default="false" Mode="" Description="false för självsignerat certifikat." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="Tidszon" Target="TZ" Default="Europe/Stockholm" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Stockholm</Config>

@@ -81,7 +81,30 @@ class Config:
         self.home_lat = env_float("HOME_LAT", 59.2741)
         self.home_lon = env_float("HOME_LON", 15.2066)
 
-        self.retention_days = max(2, env_int("RETENTION_DAYS", 35))
+        # Standardvärden; kan ändras på webbsidan (sparas i /data/settings.json)
+        self.retention_days = min(365, max(1, env_int("RETENTION_DAYS", 14)))
+        self.anomaly_factor = env_float("ALERT_DATA_FACTOR", 3.0)
+        self.anomaly_min_gb = env_float("ALERT_DATA_MIN_GB", 2.0)
+        self.suricata_min_priority = env_int("ALERT_SURICATA_PRIORITY", 1)
+        self.pfblocker_threshold = env_int("ALERT_PFBLOCKER_THRESHOLD", 25)
+        self.email_warnings = env_bool("EMAIL_WARNINGS", False)
+
+        # Övervakning av gateways och VPN i pfSense
+        self.vpn_poll = max(10, env_int("VPN_POLL_SECONDS", 30))
+
+        # Syslog från pfSense (Suricata, pfBlockerNG, brandväggslogg). 0 = av
+        self.syslog_port = env_int("SYSLOG_PORT", 5514)
+        self.pfblocker_tracker_prefix = env("PFBLOCKER_TRACKER_PREFIX", "177") or "177"
+
+        # E-post (Proton Mail SMTP-token: smtp.protonmail.ch, port 587)
+        self.smtp_host = env("SMTP_HOST", "smtp.protonmail.ch") or ""
+        self.smtp_port = env_int("SMTP_PORT", 587)
+        self.smtp_user = env("SMTP_USER", "") or ""
+        self.smtp_token = env("SMTP_TOKEN", "") or ""
+        self.mail_from = env("MAIL_FROM", "") or ""
+        self.mail_to = env("MAIL_TO", "") or ""
+        self.mail_subject_prefix = env("MAIL_SUBJECT_PREFIX", "[Nätverket hemma]") or ""
+
         self.debug_endpoints = env_bool("DEBUG_ENDPOINTS", True)
 
         demo = (env("DEMO", "auto") or "auto").lower()

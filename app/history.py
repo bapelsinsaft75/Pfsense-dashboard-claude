@@ -21,6 +21,17 @@ CREATE INDEX IF NOT EXISTS traffic_ts ON traffic(ts);
 CREATE TABLE IF NOT EXISTS clients(
   cid TEXT PRIMARY KEY, mac TEXT, ip TEXT, name TEXT, last_seen INTEGER
 );
+CREATE TABLE IF NOT EXISTS alerts(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, level TEXT NOT NULL, kind TEXT NOT NULL,
+  title TEXT NOT NULL, message TEXT, created INTEGER, updated INTEGER, resolved INTEGER, acked INTEGER,
+  emailed INTEGER DEFAULT 0, count INTEGER DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS alerts_key ON alerts(key);
+CREATE TABLE IF NOT EXISTS security(
+  ts INTEGER NOT NULL, source TEXT NOT NULL, label TEXT NOT NULL, prio INTEGER NOT NULL,
+  cid TEXT NOT NULL, remote TEXT NOT NULL, cc TEXT NOT NULL, dir TEXT NOT NULL, count INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS security_ts ON security(ts);
 """
 
 
@@ -31,6 +42,7 @@ class History:
         self.db.executescript(SCHEMA)
         self.lock = threading.Lock()
         self.pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
+        self.sec_pending: dict[tuple, int] = defaultdict(int)
 
     # ── skrivning ──
     def add(self, cid: str, cc: str | None, direction: str, up: int, down: int, conns: int = 0, ts: float | None = None) -> None:
@@ -42,14 +54,24 @@ class History:
         acc[1] += max(0, down)
         acc[2] += max(0, conns)
 
+    def add_security(self, source: str, label: str, prio: int, cid: str, remote: str, cc: str, direction: str,
+                     ts: float | None = None) -> None:
+        bucket = int((ts or time.time()) // BUCKET * BUCKET)
+        self.sec_pending[(bucket, source, label[:200], prio, cid, remote, cc, direction)] += 1
+
     def flush(self) -> int:
         with self.lock:
             rows = [(b, BUCKET, cid, cc, d, v[0], v[1], v[2]) for (b, cid, cc, d), v in self.pending.items()]
             self.pending.clear()
+            sec = [k + (n,) for k, n in self.sec_pending.items()]
+            self.sec_pending.clear()
             if rows:
                 self.db.executemany("INSERT INTO traffic VALUES(?,?,?,?,?,?,?,?)", rows)
+            if sec:
+                self.db.executemany("INSERT INTO security VALUES(?,?,?,?,?,?,?,?,?)", sec)
+            if rows or sec:
                 self.db.commit()
-        return len(rows)
+        return len(rows) + len(sec)
 
     def insert_raw(self, rows: list[tuple]) -> None:
         with self.lock:
@@ -79,8 +101,11 @@ class History:
                 (BUCKET, cut),
             )
             cur.execute("DELETE FROM traffic WHERE res=? AND ts<?", (BUCKET, cut))
-            cur.execute("DELETE FROM traffic WHERE ts<?", (int(now - retention_days * 86400),))
-            cur.execute("DELETE FROM clients WHERE last_seen<?", (int(now - retention_days * 86400),))
+            old = int(now - retention_days * 86400)
+            cur.execute("DELETE FROM traffic WHERE ts<?", (old,))
+            cur.execute("DELETE FROM security WHERE ts<?", (old,))
+            cur.execute("DELETE FROM clients WHERE last_seen<?", (old,))
+            cur.execute("DELETE FROM alerts WHERE updated<? AND (resolved IS NOT NULL OR acked IS NOT NULL)", (old,))
             self.db.commit()
 
     # ── läsning ──
@@ -128,6 +153,41 @@ class History:
     def known_clients(self, since: int) -> dict[str, dict]:
         rows = self._q("SELECT cid, mac, ip, name, last_seen FROM clients WHERE last_seen>=?", (since,))
         return {r[0]: {"mac": r[1], "ip": r[2], "name": r[3], "last_seen": r[4]} for r in rows}
+
+    def daily_totals(self, now: float, days: int) -> dict[str, list[int]]:
+        """Datamängd per klient för hela 24-timmarsperioder bakåt från nu. Index 0 = senaste dygnet."""
+        rows = self._q(
+            "SELECT cid, CAST((? - ts) / 86400 AS INTEGER) AS d, sum(up+down) FROM traffic "
+            "WHERE ts>? GROUP BY cid, d",
+            (now, now - days * 86400),
+        )
+        out: dict[str, list[int]] = {}
+        for cid, d, total in rows:
+            if 0 <= d < days:
+                out.setdefault(cid, [0] * days)[d] += total
+        return out
+
+    def first_traffic(self) -> int | None:
+        r = self._q("SELECT min(ts) FROM traffic")
+        return r[0][0] if r and r[0][0] else None
+
+    def security_summary(self, since: int) -> dict:
+        tot = self._q("SELECT source, sum(count) FROM security WHERE ts>=? GROUP BY source", (since,))
+        sigs = self._q(
+            "SELECT label, min(prio), sum(count), max(ts) FROM security WHERE ts>=? AND source='suricata' "
+            "GROUP BY label ORDER BY min(prio), sum(count) DESC LIMIT 8", (since,))
+        pfb_clients = self._q(
+            "SELECT cid, sum(count) FROM security WHERE ts>=? AND source='pfblockerng' AND dir='out' AND cid!='' "
+            "GROUP BY cid ORDER BY sum(count) DESC LIMIT 6", (since,))
+        pfb_cc = self._q(
+            "SELECT cc, sum(count) FROM security WHERE ts>=? AND source IN ('pfblockerng','firewall') AND dir='in' "
+            "AND cc!='' GROUP BY cc ORDER BY sum(count) DESC LIMIT 6", (since,))
+        return {
+            "totals": {s: n for s, n in tot},
+            "suricata": [{"label": l, "prio": p, "count": n, "last": t} for l, p, n, t in sigs],
+            "pfb_clients": [{"cid": c, "count": n} for c, n in pfb_clients],
+            "blocked_countries": [{"cc": c, "count": n} for c, n in pfb_cc],
+        }
 
     def empty(self) -> bool:
         return not self._q("SELECT 1 FROM traffic LIMIT 1")
