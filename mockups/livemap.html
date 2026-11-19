@@ -1,0 +1,156 @@
+<meta charset="utf-8">
+<title>Kartan just nu</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: kartan och länderlistan i läget "Just nu" – bara länder med anslutningar som har trafik. */
+:root{
+  --bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--land:#172433;--accent:#ffb547;--up:#5aa9ff;
+  --out:#3ddc84;--in:#b46cff;--track:#0b131c;--sel:#1a2c40;--ok:#3ddc84;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:grid;gap:18px}
+h1{margin:0;font-family:var(--cond);font-size:26px;letter-spacing:.06em;text-transform:uppercase}
+.lead{margin:4px 0 0;color:var(--muted);max-width:90ch}
+.lead b{color:var(--fg);font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.row{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1000px){.row{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:12px;min-width:0}
+.card h2{margin:0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 small{font-family:var(--mono);text-transform:none;letter-spacing:.02em;color:var(--fg);font-size:11px;font-weight:400}
+.ctrls{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--track);padding:3px;gap:2px}
+.seg span{padding:4px 11px;font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+.live{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.live,.flow.dash{animation:none}}
+.livebar{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.livebar b{display:block;color:var(--fg);font-family:var(--cond);font-size:22px;font-weight:600;line-height:1.1}
+.livebar b small{font-size:12px;color:var(--muted);margin-left:3px}
+.map{position:relative;background:radial-gradient(ellipse at 55% 30%,#102033,var(--card) 70%)}
+.map svg{display:block;width:100%;height:auto}
+.land{fill:var(--land);stroke:var(--bg);stroke-width:.6}
+.flow{fill:none;stroke-linecap:round}
+.flow.dash{stroke-dasharray:2 8;animation:flowdash .8s linear infinite}
+@keyframes flowdash{to{stroke-dashoffset:-10}}
+.home path{fill:var(--accent)}
+.home text{fill:var(--accent);font-family:var(--cond);font-size:13px;letter-spacing:.08em;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.ep text{fill:var(--fg);font-size:10.5px;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.ep .rate{fill:var(--muted);font-size:9.5px}
+.pulse{fill:none;stroke-width:1.5;transform-box:fill-box;transform-origin:center;animation:pulse 2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+.tipbox{position:absolute;left:40%;top:62%;width:250px;background:#0b131c;border:1px solid #2a3d52;padding:9px 11px;box-shadow:0 10px 30px -10px rgba(0,0,0,.8);font-size:11.5px}
+.tipbox b{display:block;font-weight:500;margin-bottom:3px}
+.tipbox span{display:block;color:var(--muted)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.legend i{width:16px;height:3px;display:inline-block;margin-right:6px;vertical-align:3px}
+.clist{display:grid;gap:10px}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
+.crow .f{font-weight:500;display:flex;gap:8px;align-items:center}
+.crow .m{color:var(--muted);font-size:11.5px}
+.split{grid-column:1/-1;display:flex;height:6px;background:var(--track);overflow:hidden}
+.split .o{background:var(--out)} .split .i{background:var(--in)}
+.note{border:1px dashed var(--line);padding:10px 14px;color:var(--muted)}
+.note b{color:var(--accent);font-weight:500}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;color:var(--muted)}
+.cmp h3{margin:0 0 4px;font-family:var(--cond);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg)}
+.cmp ul{margin:0;padding-left:18px}
+@media (max-width:800px){.cmp{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Kartan just nu</h1>
+    <p class="lead">Skiss med exempeldata. Kartrutan får valet <b>Just nu</b> eller <b>Period</b>. I läget Just nu syns bara länder där en anslutning har skickat eller tagit emot data den senaste minuten. Linjerna blir tjockare ju mer bandbredd de använder, och listan bredvid visar Mbit/s per land. I skissen visas förklaringen för Tyskland, som när man håller muspekaren över landet.</p>
+  </header>
+
+  <div class="row">
+    <section class="card">
+      <h2>Vart trafiken går
+        <span class="ctrls"><span class="seg"><span class="on"><i class="live"></i>Just nu</span><span>Period</span></span><span class="seg"><span class="on">Världen</span><span>Europa</span></span></span>
+      </h2>
+      <div class="livebar">
+        <span><b class="num">8</b>länder med trafik</span>
+        <span><b class="num">23</b>anslutningar med trafik · av 412 öppna</span>
+        <span><b class="num">276<small>Mbit/s</small></b>totalt just nu</span>
+        <span><b>10 s</b>sedan senaste mätning</span>
+      </div>
+      <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med länder som har trafik just nu"></svg>
+        <div class="tipbox"><b>Tyskland · startad inifrån</b><span>182 Mbit/s just nu · 4 anslutningar med trafik</span><span>PS5 (179 Mbit/s), Unraid, Home-Assistant</span></div>
+      </div>
+      <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån</span><span><i style="background:var(--in)"></i>Startad utifrån</span><span>· tjocklek = bandbredd just nu</span></div>
+    </section>
+    <section class="card">
+      <h2>Länder <small>Mbit/s just nu</small></h2>
+      <div class="clist" id="list"></div>
+    </section>
+  </div>
+
+  <div class="cmp">
+    <div><h3>Just nu</h3><ul><li>Bara länder där en anslutning har haft trafik den senaste minuten. Öppna men tysta anslutningar räknas inte.</li><li>Tjocklek och siffror visar bandbredd, inte datamängd.</li><li>Uppdateras var 10:e sekund. Länder försvinner när trafiken slutar.</li><li>Landet får en pulserande prick när det har trafik.</li></ul></div>
+    <div><h3>Period</h3><ul><li>Som i dag: all trafik under 24 timmar, 7 dagar eller 30 dagar enligt valet överst på sidan.</li><li>Tjocklek och siffror visar datamängd.</li><li>Länder ligger kvar hela perioden.</li></ul></div>
+  </div>
+  <p class="note"><b>Varifrån:</b> pfSense lista över anslutningar har räknare för varje anslutning. Dashboarden jämför dem var 10:e sekund och räknar de anslutningar vars räknare har ökat. Valet Just nu eller Period sparas i webbläsaren.</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+(function () {
+  const HOME = [15.2066, 59.2741];
+  const LIVE = [
+    { name: "Tyskland", ll: [10.4, 51.2], dir: "out", mbit: 182, conns: 4 },
+    { name: "Nederländerna", ll: [5.3, 52.1], dir: "out", mbit: 28, conns: 3 },
+    { name: "Sverige", ll: [18.07, 59.33], dir: "out", mbit: 22, conns: 6 },
+    { name: "USA", ll: [-97, 38], dir: "out", mbit: 14, conns: 5 },
+    { name: "Irland", ll: [-8, 53], dir: "out", mbit: 11, conns: 2 },
+    { name: "Sverige", ll: [18.07, 59.33], dir: "in", mbit: 9, conns: 1, label: "Plex utifrån" },
+    { name: "Japan", ll: [138, 36], dir: "out", mbit: 6, conns: 1 },
+    { name: "Finland", ll: [26, 64], dir: "out", mbit: 3, conns: 1 },
+  ];
+  const svg = d3.select("#map svg");
+  const W = 860, H = 440;
+  const p = d3.geoEqualEarth().fitExtent([[6, 6], [W - 6, H - 6]], { type: "Sphere" });
+  const path = d3.geoPath(p);
+  const max = d3.max(LIVE, (d) => d.mbit);
+  const arc = (d) => {
+    const [s, t] = d.dir === "out" ? [HOME, d.ll] : [d.ll, HOME];
+    const p0 = p(s), p1 = p(t), dx = p1[0] - p0[0], dy = p1[1] - p0[1], dd = Math.hypot(dx, dy) || 1;
+    const k = Math.min(0.32, 14 / dd + 0.14) * (d.dir === "in" ? 0.6 : 1), nx = -dy / dd, ny = dx / dd, mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+    let cx = mx + nx * dd * k, cy = my + ny * dd * k; if (cy > my) { cx = mx - nx * dd * k; cy = my - ny * dd * k; }
+    return `M${p0[0]},${p0[1]}Q${cx},${cy} ${p1[0]},${p1[1]}`;
+  };
+  fetch("countries-110m.json").then((r) => r.json()).then((world) => {
+    svg.append("g").selectAll("path").data(topojson.feature(world, world.objects.countries).features).join("path").attr("class", "land").attr("d", path);
+    const sw = (d) => 1.2 + Math.sqrt(d.mbit / max) * 5;
+    const col = (d) => (d.dir === "out" ? "#3ddc84" : "#b46cff");
+    svg.append("g").selectAll("path").data(LIVE).join("path").attr("class", "flow").attr("d", arc).attr("stroke", col).attr("stroke-width", sw).attr("opacity", 0.3);
+    svg.append("g").selectAll("path").data(LIVE).join("path").attr("class", "flow dash").attr("d", arc).attr("stroke", col).attr("stroke-width", sw);
+    const ep = svg.append("g").selectAll("g").data(LIVE.filter((d) => d.name !== "Sverige")).join("g").attr("class", "ep").attr("transform", (d) => `translate(${p(d.ll)})`);
+    ep.append("circle").attr("class", "pulse").attr("r", 5).attr("stroke", col);
+    ep.append("circle").attr("r", 3.5).attr("fill", col);
+    ep.append("text").attr("x", 7).attr("y", 3).text((d) => d.name);
+    ep.append("text").attr("class", "rate").attr("x", 7).attr("y", 14).text((d) => `${d.mbit} Mbit/s`);
+    const h = svg.append("g").attr("class", "home").attr("transform", `translate(${p(HOME)})`);
+    h.append("path").attr("d", "M0-8.5-8-1.5h2.3V7h4.2V2.2h3V7h4.2V-1.5H8z").attr("transform", "scale(1.1)");
+    h.append("text").attr("x", -13).attr("y", -13).attr("text-anchor", "end").text("Örebro");
+  }).catch(() => svg.append("text").attr("x", 20).attr("y", 30).attr("fill", "#6d8195").text("Kartdata kunde inte laddas."));
+  // länderlista
+  const by = {};
+  LIVE.forEach((d) => { const c = (by[d.name] = by[d.name] || { o: 0, i: 0, n: 0 }); c[d.dir === "out" ? "o" : "i"] += d.mbit; c.n += d.conns; });
+  const rows = Object.entries(by).sort((a, b) => (b[1].o + b[1].i) - (a[1].o + a[1].i));
+  const tot = rows.reduce((s, [, v]) => s + v.o + v.i, 0);
+  document.getElementById("list").innerHTML = rows.map(([n, v]) => {
+    const t = v.o + v.i;
+    return `<div class="crow"><span class="f"><i class="live"></i>${n}</span><span class="num">${t} Mbit/s</span><div class="split"><span class="o" style="width:${v.o / tot * 100}%"></span><span class="i" style="width:${v.i / tot * 100}%"></span></div><span class="m">${v.n} anslutningar med trafik${v.i ? " · varav utifrån" : ""}</span><span class="m num">${Math.round(t / tot * 100)} %</span></div>`;
+  }).join("");
+})();
+</script>
