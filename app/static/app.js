@@ -592,39 +592,113 @@ function renderCountries(d) {
   }).join("") : `<div class="empty">Ingen trafik registrerad än.</div>`;
 }
 
-function renderChart(d) {
-  const W = 760, H = 220, m = { l: 40, r: 8, t: 14, b: 24 };
-  const data = d.series;
-  const el = $("chart");
-  el.innerHTML = "";
-  if (!data.length) return;
-  const x = d3.scaleTime([new Date(data[0].t * 1000), new Date(data[data.length - 1].t * 1000)], [m.l, W - m.r]);
-  const maxV = d3.max(data, (p) => Math.max(p.down_bps, p.up_bps)) / 1e6 || 1;
-  const y = d3.scaleLinear([0, maxV * 1.1], [H - m.b, m.t]).nice(4);
-  const s = d3.select(el).append("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("role", "img").attr("aria-label", "Bandbredd över tid")
-    .style("width", "100%").style("height", "auto").style("display", "block");
-  const yt = y.ticks(4);
-  s.append("g").selectAll("line").data(yt).join("line").attr("class", "gl").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y).attr("y2", y);
-  s.append("g").selectAll("text").data(yt).join("text").attr("x", m.l - 6).attr("y", (v) => y(v) + 3.5).attr("text-anchor", "end").text((v) => fmt(v, 0));
-  const tz = { timeZone: "Europe/Stockholm" };
-  const tf = d.period === "24h" ? (t) => t.toLocaleTimeString("sv-SE", { ...tz, hour: "2-digit", minute: "2-digit" })
-    : (t) => t.toLocaleDateString("sv-SE", { ...tz, day: "numeric", month: "short" });
-  s.append("g").selectAll("text").data(x.ticks(d.period === "24h" ? 8 : 7)).join("text").attr("x", x).attr("y", H - 6).attr("text-anchor", "middle").text(tf);
-  const cv = d3.curveMonotoneX, X = (p) => x(new Date(p.t * 1000));
-  s.append("path").attr("d", d3.area().x(X).y0(y(0)).y1((p) => y(p.down_bps / 1e6)).curve(cv)(data)).attr("fill", "var(--accent)").attr("fill-opacity", 0.12);
-  s.append("path").attr("d", d3.line().x(X).y((p) => y(p.down_bps / 1e6)).curve(cv)(data)).attr("fill", "none").attr("stroke", "var(--accent)").attr("stroke-width", 2);
-  s.append("path").attr("d", d3.line().x(X).y((p) => y(p.up_bps / 1e6)).curve(cv)(data)).attr("fill", "none").attr("stroke", "var(--up)").attr("stroke-width", 1.6);
-  const pk = data.reduce((a, b) => (b.down_bps > a.down_bps ? b : a));
-  if (pk.down_bps > 0) {
-    const px = X(pk), py = y(pk.down_bps / 1e6), left = px > W / 2;
-    s.append("circle").attr("cx", px).attr("cy", py).attr("r", 4).attr("fill", "var(--accent)").attr("stroke", "var(--card)").attr("stroke-width", 2);
-    const when = new Date(pk.t * 1000);
-    const label = d.period === "24h" ? when.toLocaleTimeString("sv-SE", { ...tz, hour: "2-digit", minute: "2-digit" }) : when.toLocaleString("sv-SE", { ...tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-    s.append("text").attr("x", left ? px - 8 : px + 8).attr("y", Math.max(12, py - 8)).attr("text-anchor", left ? "end" : "start")
-      .attr("style", "fill:var(--fg);font-weight:500").text(`Topp ${fmt(pk.down_bps / 1e6, 0)} Mbit/s ${label}`);
-  }
-  $("chart-s").textContent = `Mbit/s, klienter mot internet, ${PERIOD_LABEL[d.period]}`;
+/* ── över tid: bandbredd och datamängd ── */
+const chartState = (() => { try { return { mode: "bw", win: "60m", ...JSON.parse(localStorage.getItem("chartView") || "{}") }; } catch (e) { return { mode: "bw", win: "60m" }; } })();
+let chartData = null;
+const STEP_LABEL = { 30: "30 s", 60: "1 min", 1800: "30 min" };
+async function loadChart() {
+  try {
+    const r = await fetch(`api/series?window=${chartState.win}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    chartData = await r.json();
+    renderChart();
+  } catch (e) { $("chart").innerHTML = `<div class="empty">Kunde inte hämta grafen (${esc(e.message)}).</div>`; }
 }
+function renderChart() {
+  document.querySelectorAll("[data-cmode]").forEach((b) => b.setAttribute("aria-selected", b.dataset.cmode === chartState.mode));
+  document.querySelectorAll("[data-cwin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cwin === chartState.win));
+  const cd = chartData;
+  const el = $("chart");
+  if (!cd) return;
+  const bw = chartState.mode === "bw";
+  // det pågående tidssteget är inte klart: i kurvan skulle det se ut som ett plötsligt fall
+  const nowS = Date.now() / 1000;
+  // första och sista tidssteget ligger bara delvis inom perioden och skulle se ut som fall i kurvan
+  let pts = cd.points;
+  if (bw && pts.length > 4) {
+    pts = pts.slice(pts[0].t < nowS - cd.seconds ? 1 : 0);
+    if (pts[pts.length - 1].t + cd.step > nowS) pts = pts.slice(0, -1);
+  }
+  const tz = { timeZone: "Europe/Stockholm" };
+  const hm = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { ...tz, hour: "2-digit", minute: "2-digit" });
+  const hms = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { ...tz, hour: "2-digit", minute: "2-digit", second: cd.step < 60 ? "2-digit" : undefined });
+  const sumD = cd.total_down, sumU = cd.total_up;
+  const pk = pts.reduce((a, p) => (p.down_bps > a.down_bps ? p : a), pts[0] || { down_bps: 0, t: 0 });
+  $("chart-stats").innerHTML = bw
+    ? `<span><b class="num">${fmtMbit(sumD * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt ned</span><span><b class="num">${fmtMbit(sumU * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt upp</span><span><b class="num">${fmtMbit(pk.down_bps)}<small>Mbit/s</small></b>topp ned${pk.down_bps ? ` kl ${hm(pk.t)}` : ""}</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per punkt</span>`
+    : `<span><b class="num">${bytesParts(sumD + sumU)}</b>totalt</span><span><b class="num">${bytesParts(sumD)}</b>ned</span><span><b class="num">${bytesParts(sumU)}</b>upp</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per stapel</span>`;
+  $("chart-legend").innerHTML = `<span><i class="${bw ? "" : "blk"}" style="background:var(--accent)"></i>Nedladdning</span><span><i class="${bw ? "" : "blk"}" style="background:var(--up)"></i>Uppladdning</span><span>· ${bw ? "Mbit/s" : (cd.step >= 1800 ? "per halvtimme" : cd.step >= 60 ? "per minut" : "per 30 sekunder")}, klienter mot internet</span>`;
+  el.innerHTML = "";
+  if (!pts.length || (sumD + sumU) === 0) {
+    el.innerHTML = `<div class="empty">${cd.seconds > 3600 ? "Ingen data än." : `Ingen trafik registrerad de senaste ${WIN_LABEL[cd.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
+    return;
+  }
+  const W = 760, H = 230, m = { l: 44, r: 10, t: 24, b: 24 };
+  const s = d3.select(el).append("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("role", "img")
+    .attr("aria-label", bw ? "Bandbredd över tid" : "Datamängd över tid").style("width", "100%").style("height", "auto").style("display", "block");
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t + (bw ? 0 : cd.step);
+  const x = d3.scaleLinear([t0, t1], [m.l, W - m.r]);
+  const unit = bw ? 1e6 : (Math.max(...pts.map((p) => p.down + p.up)) >= 1e9 ? 1e9 : 1e6);
+  const val = (p, k) => (bw ? p[k + "_bps"] : p[k]) / unit;
+  const maxV = d3.max(pts, (p) => (bw ? Math.max(val(p, "down"), val(p, "up")) : val(p, "down") + val(p, "up"))) || 1;
+  const y = d3.scaleLinear([0, maxV * 1.1], [H - m.b, m.t]).nice(4);
+  y.ticks(4).forEach((v) => {
+    s.append("line").attr("class", "gl").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y(v)).attr("y2", y(v));
+    s.append("text").attr("x", m.l - 6).attr("y", y(v) + 3.5).attr("text-anchor", "end").text(fmt(v, v < 10 ? 1 : 0));
+  });
+  s.append("text").attr("x", 2).attr("y", 10).text(bw ? "Mbit/s" : unit === 1e9 ? "GB" : "MB");
+  const tickEvery = { 300: 60, 900: 180, 3600: 600, 86400: 10800 }[cd.seconds] || cd.seconds / 6;
+  for (let t = Math.ceil(t0 / tickEvery) * tickEvery; t <= t1; t += tickEvery) {
+    if (x(t) < m.l + 16 || x(t) > W - m.r - 16) continue;
+    s.append("text").attr("x", x(t)).attr("y", H - 6).attr("text-anchor", "middle").text(hm(t));
+  }
+  if (bw) {
+    const cv = d3.curveMonotoneX, X = (p) => x(p.t);
+    s.append("path").attr("d", d3.area().x(X).y0(y(0)).y1((p) => y(val(p, "down"))).curve(cv)(pts)).attr("fill", "var(--accent)").attr("fill-opacity", 0.12);
+    s.append("path").attr("d", d3.line().x(X).y((p) => y(val(p, "down"))).curve(cv)(pts)).attr("fill", "none").attr("stroke", "var(--accent)").attr("stroke-width", 2);
+    s.append("path").attr("d", d3.line().x(X).y((p) => y(val(p, "up"))).curve(cv)(pts)).attr("fill", "none").attr("stroke", "var(--up)").attr("stroke-width", 1.6);
+    if (pk.down_bps > 0) {
+      const px = x(pk.t), py = y(pk.down_bps / 1e6), left = px > W / 2;
+      s.append("circle").attr("cx", px).attr("cy", py).attr("r", 4).attr("fill", "var(--accent)").attr("stroke", "var(--card)").attr("stroke-width", 2);
+      s.append("text").attr("x", left ? px - 8 : px + 8).attr("y", Math.max(12, py - 8)).attr("text-anchor", left ? "end" : "start")
+        .attr("style", "fill:var(--fg);font-weight:500").text(`Topp ${fmtMbit(pk.down_bps)} Mbit/s kl ${hm(pk.t)}`);
+    }
+  } else {
+    const bwid = Math.max(1, (x(t0 + cd.step) - x(t0)) - 2);
+    pts.forEach((p) => {
+      const d = val(p, "down"), u = val(p, "up");
+      s.append("rect").attr("x", x(p.t) + 1).attr("width", bwid).attr("y", y(d)).attr("height", Math.max(0, y(0) - y(d))).attr("fill", "var(--accent)").attr("fill-opacity", 0.85);
+      s.append("rect").attr("x", x(p.t) + 1).attr("width", bwid).attr("y", y(d + u)).attr("height", Math.max(0, y(d) - y(d + u))).attr("fill", "var(--up)");
+    });
+  }
+  // värde vid muspekaren
+  const guide = s.append("line").attr("y1", m.t).attr("y2", H - m.b).attr("stroke", "var(--muted)").attr("stroke-dasharray", "3 3").style("display", "none");
+  const tip = s.append("g").style("display", "none");
+  tip.append("rect").attr("width", 160).attr("height", 46).attr("fill", "var(--track)").attr("stroke", "#2a3d52");
+  const tt = [0, 1, 2].map((i) => tip.append("text").attr("x", 8).attr("y", 15 + i * 13));
+  s.append("rect").attr("x", m.l).attr("y", m.t).attr("width", W - m.l - m.r).attr("height", H - m.t - m.b).attr("fill", "transparent")
+    .on("mousemove", (ev) => {
+      const [mx] = d3.pointer(ev);
+      const tt0 = x.invert(mx);
+      const p = pts.reduce((a, q) => (Math.abs((bw ? q.t : q.t + cd.step / 2) - tt0) < Math.abs((bw ? a.t : a.t + cd.step / 2) - tt0) ? q : a), pts[0]);
+      const gx = bw ? x(p.t) : x(p.t + cd.step / 2);
+      guide.attr("x1", gx).attr("x2", gx).style("display", null);
+      tip.style("display", null).attr("transform", `translate(${gx + 170 > W ? gx - 168 : gx + 8},${m.t + 2})`);
+      tt[0].attr("style", "fill:var(--fg)").text(bw ? hms(p.t) : `${hm(p.t)}–${hm(p.t + cd.step)}`);
+      tt[1].attr("style", "fill:var(--accent)").text(bw ? `ned ${fmtMbit(p.down_bps)} Mbit/s` : `ned ${fmtBytes(p.down)}`);
+      tt[2].attr("style", "fill:var(--up)").text(bw ? `upp ${fmtMbit(p.up_bps)} Mbit/s` : `upp ${fmtBytes(p.up)}`);
+    })
+    .on("mouseleave", () => { guide.style("display", "none"); tip.style("display", "none"); });
+}
+document.querySelector("[data-cmode]").closest(".toptabs").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cmode]"); if (!b) return;
+  chartState.mode = b.dataset.cmode; saveChart(); renderChart();
+});
+$("chartwin").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cwin]"); if (!b) return;
+  chartState.win = b.dataset.cwin; saveChart(); renderChart(); loadChart();
+});
+function saveChart() { try { localStorage.setItem("chartView", JSON.stringify(chartState)); } catch (e) { /* ingen lagring */ } }
 
 /* ── topplista: mest bandbredd och mest data ── */
 const topState = (() => { try { return { mode: "bw", win: "5m", ...JSON.parse(localStorage.getItem("topList") || "{}"), more: false }; } catch (e) { return { mode: "bw", win: "5m", more: false }; } })();
@@ -804,7 +878,7 @@ function render() {
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
   renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d); renderUnraids(d);
-  renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderDevices(d); renderTable(d); renderMapFilter();
+  renderStatus(d); renderKpis(d); renderCountries(d); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
   map.flows = d.flows;
   map.filter = state.mapFilter;
@@ -821,6 +895,7 @@ async function load() {
     state.data = await r.json();
     render();
     loadTop();
+    loadChart();
   } catch (e) {
     $("problems").innerHTML = `<div class="problem"><b>Dashboard</b>Får inget svar från servern (${esc(e.message)}). Försöker igen …</div>`;
   }

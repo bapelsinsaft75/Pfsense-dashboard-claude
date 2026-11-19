@@ -6,6 +6,8 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   **Grön** linje = anslutningen startades inifrån nätverket, **lila** = startades utifrån.
 - Vilka klienter som använder mest bandbredd just nu och mest data (24 timmar, 7 dagar, 30 dagar).
 - Lista över alla klienter med namn, IP och MAC. Du kan ge klienterna egna namn direkt i listan (pennan vid namnet).
+- Grafen *Över tid* med flikarna **Bandbredd** (kurvor i Mbit/s) och **Datamängd** (staplar per tidssteg), för
+  5, 15 eller 60 minuter eller 24 timmar. Håll muspekaren över grafen för att se värdet vid en tidpunkt.
 - Topplista med flikarna **Mest bandbredd** (snitt och topp i Mbit/s) och **Mest data**, för de senaste
   5, 15 eller 60 minuterna eller 24 timmarna. Korta perioder bygger på ett korttidsminne i 30-sekundersluckor
   som fylls på medan dashboarden körs.

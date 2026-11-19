@@ -502,3 +502,10 @@ body.ldrawer-open{overflow:hidden}
 .tr .rank{color:var(--muted);font-size:11px;text-align:center}
 .tr.pickable:hover .n{color:var(--accent)}
 #topc-more{justify-self:start}
+
+/* över tid */
+.tabtitle{padding:3px 12px 6px 0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.cstats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.cstats b{display:block;color:var(--fg);font-family:var(--cond);font-size:22px;font-weight:600;line-height:1.1}
+.cstats b small{font-size:12px;color:var(--muted);margin-left:3px;font-weight:500}
+.legend i.blk{height:10px;width:10px}
