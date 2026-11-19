@@ -413,7 +413,7 @@ class Engine:
             return
         down = [c for c in clients if not c["up"]]
         st["enabled"] = True
-        st["label"] = clients[0]["name"] if len(clients) == 1 else "VPN"
+        st["label"] = "VPN"
         parts = [f"{c['name']}: {'ansluten' if c['up'] else 'inte ansluten'} ({c['status']})"
                  + (f", server {c['remote']}" if c.get("remote") else "") for c in clients]
         st["detail"] = "; ".join(parts)

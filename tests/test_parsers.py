@@ -182,7 +182,7 @@ def test_interfaces_29_format(tmp_path, monkeypatch):
              "gateway": "192.168.100.1", "inbytes": 1, "outbytes": 2}]
     e.update_interfaces(rows)
     assert e.wan_ips == {"203.0.113.170"}
-    assert e.status["vpn"]["ok"] and e.status["vpn"]["label"] == "SITETOSITE"
+    assert e.status["vpn"]["ok"] and e.status["vpn"]["label"] == "VPN" and "SITETOSITE" in e.status["vpn"]["detail"]
     t, rx, tx = e._wan_prev
     e._wan_prev = (t - 10, rx, tx)
     rows[0]["inbytes"] += 125_000_000
@@ -191,4 +191,4 @@ def test_interfaces_29_format(tmp_path, monkeypatch):
     assert [round(x / 1e6) for x in e.wan_rate] == [100, 10]
     # OpenVPN-status går före interfacet
     e.update_openvpn([{"name": "Littorin VPN", "status": "up", "state": "CONNECTED"}])
-    assert e.status["vpn"]["label"] == "Littorin VPN"
+    assert e.status["vpn"]["label"] == "VPN" and e.status["vpn"]["detail"].startswith("Littorin VPN")
