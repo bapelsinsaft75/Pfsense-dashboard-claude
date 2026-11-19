@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>pfsense-dashboard</Name>
+  <Repository>ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest</Repository>
+  <Registry>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude/pkgs/container/pfsense-dashboard-claude</Registry>
+  <Network>br0</Network>
+  <MyIP></MyIP>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Support>
+  <Project>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Project>
+  <Overview>Grafisk dashboard för pfSense: karta med trafik per land från hemstaden, vilka klienter som använder mest bandbredd och data, samt klientlista med IP. Med UniFi visas även om klienter är trådlösa eller trådbundna, switchport och Wi-Fi-signal. Utan PFSENSE_URL startar den i demoläge med exempeldata.</Overview>
+  <Category>Network:Management Tools: Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/bapelsinsaft75/Pfsense-dashboard-claude/main/unraid/icon.png</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <DateInstalled></DateInstalled>
+  <Config Name="Webbport" Target="8080" Default="8080" Mode="tcp" Description="Webbsidan. Med egen IP på br0 nås den direkt på http://IP:8080." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="NetFlow-port" Target="2055" Default="2055" Mode="udp" Description="Hit skickar softflowd i pfSense sina flöden." Type="Port" Display="always" Required="false" Mask="false">2055</Config>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/pfsense-dashboard" Mode="rw" Description="Historik (SQLite) och GeoIP-databas." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/pfsense-dashboard</Config>
+
+  <Config Name="pfSense-adress" Target="PFSENSE_URL" Default="" Mode="" Description="T.ex. https://192.168.1.1. Lämna tomt för demoläge." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="pfSense API-nyckel" Target="PFSENSE_API_KEY" Default="" Mode="" Description="Nyckel från System → REST API → Keys i pfSense. Läsrättighet räcker." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="LAN-nät" Target="LAN_SUBNETS" Default="192.168.1.0/24" Mode="" Description="Dina lokala nät, kommaseparerade, t.ex. 192.168.1.0/24,192.168.20.0/24" Type="Variable" Display="always" Required="true" Mask="false">192.168.1.0/24</Config>
+
+  <Config Name="UniFi-adress" Target="UNIFI_URL" Default="" Mode="" Description="T.ex. https://192.168.1.5:8443 (UniFi-containerns IP på br0)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="UniFi-användare" Target="UNIFI_USER" Default="" Mode="" Description="Lokalt UniFi-konto med läsbehörighet." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="UniFi-lösenord" Target="UNIFI_PASS" Default="" Mode="" Description="" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="UniFi-site" Target="UNIFI_SITE" Default="default" Mode="" Description="Sitens kortnamn i UniFi (oftast default)." Type="Variable" Display="advanced" Required="false" Mask="false">default</Config>
+
+  <Config Name="Hemstad" Target="HOME_CITY" Default="Örebro" Mode="" Description="Namn vid hus-ikonen på kartan." Type="Variable" Display="advanced" Required="false" Mask="false">Örebro</Config>
+  <Config Name="Hemstad latitud" Target="HOME_LAT" Default="59.2741" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">59.2741</Config>
+  <Config Name="Hemstad longitud" Target="HOME_LON" Default="15.2066" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">15.2066</Config>
+  <Config Name="WAN-gränssnitt" Target="WAN_INTERFACE" Default="wan" Mode="" Description="Namnet på WAN i pfSense." Type="Variable" Display="advanced" Required="false" Mask="false">wan</Config>
+  <Config Name="Trafikkälla" Target="TRAFFIC_SOURCE" Default="auto" Mode="" Description="auto = NetFlow om flöden tas emot, annars pfSense-tillståndstabellen. Eller: netflow, states." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+  <Config Name="Spara historik (dagar)" Target="RETENTION_DAYS" Default="35" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">35</Config>
+  <Config Name="Verifiera pfSense-certifikat" Target="PFSENSE_VERIFY_SSL" Default="false" Mode="" Description="false för självsignerat certifikat." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Verifiera UniFi-certifikat" Target="UNIFI_VERIFY_SSL" Default="false" Mode="" Description="false för självsignerat certifikat." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Tidszon" Target="TZ" Default="Europe/Stockholm" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Stockholm</Config>
+</Container>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>pfSense Nätverkskarta</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-10 -10 20 20'%3E%3Cpath fill='%23ffb547' d='M0-8.5-8-1.5h2.3V7h4.2V2.2h3V7h4.2V-1.5H8z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div>
+      <h1>Nätverket hemma</h1>
+      <p id="sub">Ansluter …</p>
+    </div>
+    <div class="headright">
+      <div class="chips" id="chips" aria-label="Datakällor"></div>
+      <div class="seg" role="group" aria-label="Period" id="period">
+        <button type="button" aria-pressed="true" data-p="24h">24 timmar</button><button type="button" aria-pressed="false" data-p="7d">7 dagar</button><button type="button" aria-pressed="false" data-p="30d">30 dagar</button>
+      </div>
+    </div>
+  </header>
+  <div class="demo" id="demo" hidden>Demoläge: du ser exempeldata. Fyll i PFSENSE_URL och PFSENSE_API_KEY i Unraid-mallen för att visa ditt eget nätverk.</div>
+  <div class="problems" id="problems"></div>
+
+  <section class="kpis">
+    <div class="kpi"><div class="l">Total data</div><div class="v num" id="k-total">–</div><div class="s" id="k-total-s"></div></div>
+    <div class="kpi"><div class="l">Bandbredd just nu</div><div class="v num" id="k-now">–</div><div class="s" id="k-now-s"></div></div>
+    <div class="kpi"><div class="l">Anslutna klienter</div><div class="v num" id="k-cl">–</div><div class="s" id="k-cl-s"></div></div>
+    <div class="kpi"><div class="l">Länder</div><div class="v num" id="k-ctry">–</div><div class="s" id="k-ctry-s"></div></div>
+  </section>
+
+  <section class="row">
+    <div class="card">
+      <h2>Vart trafiken går <span class="seg" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></h2>
+      <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från hemmet"></svg></div>
+      <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån (klient → internet)</span><span><i style="background:var(--in)"></i>Startad utifrån (internet → klient)</span><span id="mapfilter"></span></div>
+    </div>
+    <div class="card">
+      <h2>Länder <small>andel av data</small></h2>
+      <div class="clist" id="ctrylist"></div>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="card">
+      <h2>Bandbredd över tid <small id="chart-s">Mbit/s, klienter mot internet</small></h2>
+      <div class="chart" id="chart"></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Nedladdning</span><span><i style="background:var(--up)"></i>Uppladdning</span></div>
+    </div>
+    <div class="card">
+      <h2>Mest data <small id="topc-s"></small></h2>
+      <div class="topc" id="topc"></div>
+    </div>
+  </section>
+
+  <section class="card" id="unifi-card">
+    <h2>UniFi-enheter <small>klicka på en enhet för att se dess klienter</small></h2>
+    <div class="devs" id="devs"></div>
+    <div class="portkey" id="portkey"><span><i style="background:var(--accent)"></i>port med klient</span><span><i style="background:var(--muted)"></i>upplänk eller annan UniFi-enhet</span><span><i style="border:1px solid var(--accent)"></i>aktiv port, okänd enhet</span><span><i style="background:var(--track);border:1px solid var(--line)"></i>ledig port</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Klienter <span class="tools"><span class="seg" role="group" aria-label="Anslutningstyp" id="connf"><button type="button" aria-pressed="true" data-c="">Alla</button><button type="button" aria-pressed="false" data-c="wifi">Trådlöst</button><button type="button" aria-pressed="false" data-c="wired">Kabel</button></span><input type="search" id="search" placeholder="Sök namn, IP eller MAC" aria-label="Sök klient"></span></h2>
+    <div class="tablebox"><table id="table"><thead><tr>
+      <th><button type="button" data-sort="name">Namn</button></th><th><button type="button" data-sort="ip">IP-adress</button></th><th><button type="button" data-sort="conn">Anslutning</button></th><th>MAC</th><th>Status</th>
+      <th class="r-right"><button type="button" data-sort="now">Nu</button></th><th class="r-right"><button type="button" data-sort="bytes">Data ↓</button></th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <p class="foot">Kartdata: Natural Earth via world-atlas. Landsuppslag: <span id="geo-src">DB-IP Lite (CC BY 4.0)</span>.</p>
+</div>
+<script src="vendor/d3.min.js"></script>
+<script src="vendor/topojson.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
