@@ -36,7 +36,13 @@ h1{margin:0;font-family:var(--cond);font-size:26px;letter-spacing:.06em;text-tra
 .seg .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:0 6px 0 4px}
 .seg span{padding:3px 9px;font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
 .seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+.seg.scope span{position:relative;display:inline-flex;align-items:center;padding:3px 8px;cursor:pointer}
+.seg.scope svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .seg.scope span.on{color:var(--lan)}
+.seg.scope span:focus-visible{outline:2px solid var(--accent)}
+.tip{display:none;position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);width:260px;z-index:5;padding:8px 10px;background:#0b131c;border:1px solid #2a3d52;color:var(--fg);font:400 11.5px/1.45 var(--mono);letter-spacing:0;text-transform:none;font-style:normal;box-shadow:0 10px 30px -10px rgba(0,0,0,.8)}
+.tip::before{content:"";position:absolute;top:-6px;left:50%;margin-left:-6px;border:6px solid transparent;border-top:0;border-bottom-color:#2a3d52}
+.seg.scope span:hover .tip,.seg.scope span:focus-visible .tip,.tip.show{display:block}
 .seg .new{position:relative}
 .stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:11px}
 .stats b{display:block;color:var(--fg);font-family:var(--cond);font-size:22px;font-weight:600;line-height:1.1}
@@ -59,7 +65,7 @@ svg.chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
 .explain{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .explain div{border:1px solid var(--line);background:var(--card);padding:12px 14px;color:var(--muted)}
 .explain h3{margin:0 0 6px;font-family:var(--cond);font-size:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg);display:flex;align-items:center;gap:8px}
-.explain h3 i{width:12px;height:12px;display:inline-block}
+.explain h3 .hi{width:20px;height:20px;fill:none;stroke:var(--lan);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .explain ul{margin:0;padding-left:18px}
 .note{border:1px dashed var(--line);padding:10px 14px;color:var(--muted)}
 .note b{color:var(--accent);font-weight:500}
@@ -69,17 +75,17 @@ svg.chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
 <div class="wrap">
   <header>
     <h1>Internet, internt eller allt</h1>
-    <p class="lead">Skiss med exempeldata. Både grafen <b>Över tid</b> och topplistan får ett nytt val: <b>Internet</b>, <b>Internt</b> eller <b>Allt</b>. Valet finns bredvid perioden och fungerar med båda flikarna, alltså både bandbredd och datamängd.</p>
+    <p class="lead">Skiss med exempeldata. Både grafen <b>Över tid</b> och topplistan får ett nytt val: <b>Internet</b>, <b>Internt</b> eller <b>Allt</b>. Valet görs med tre ikoner bredvid perioden: <b>jordglob</b> för internet, <b>nätverksuttag</b> för internt och <b>lager</b> för allt. Håll muspekaren över en ikon för att se vad den betyder (i skissen visas förklaringen för jordgloben). Valet fungerar med båda flikarna.</p>
   </header>
 
   <div class="row">
     <div>
-      <p class="cap">Över tid · flik <b>Datamängd</b> · trafik <b>Allt</b> · <b>24 h</b></p>
+      <p class="cap">Över tid · flik <b>Datamängd</b> · trafik <b>Allt</b> · <b>24 h</b> · muspekaren över <b>jordgloben</b></p>
       <section class="card">
         <div class="head">
           <div class="tabs"><span class="t">Över tid</span><span>Bandbredd</span><span class="on">Datamängd</span></div>
           <div class="ctrls">
-            <div class="seg scope"><span class="lbl">Trafik</span><span>Internet</span><span>Internt</span><span class="on">Allt</span></div>
+            <div class="seg scope" role="group" aria-label="Trafik"><span aria-label="Internet" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18"/></svg><em class="tip show">Internet: trafik mellan nätverket och internet. Från pfSense, med land.</em></span><span aria-label="Internt" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M8 19v-4h8v4 M9 15v-3h6v3 M8 9h1 M11 9h2 M15 9h1"/></svg><em class="tip">Internt: trafik inne i nätverket, t.ex. Plex hemma och filkopiering till LillaNasen och Tower. UniFis totala trafik minus internet.</em></span><span class="on" aria-label="Allt" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5l-9 5l-9-5z M3 13l9 5l9-5 M3 17.5l9 5l9-5"/></svg><em class="tip">Allt: klientens totala trafik enligt UniFi, uppdelat i internet och internt.</em></span></div>
             <div class="seg"><span>5 min</span><span>15 min</span><span>60 min</span><span class="on">24 h</span></div>
           </div>
         </div>
@@ -100,7 +106,7 @@ svg.chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
           <div class="tabs"><span>Mest bandbredd</span><span class="on">Mest data</span></div>
         </div>
         <div class="ctrls">
-          <div class="seg scope"><span class="lbl">Trafik</span><span>Internet</span><span class="on">Internt</span><span>Allt</span></div>
+          <div class="seg scope" role="group" aria-label="Trafik"><span aria-label="Internet" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18"/></svg><em class="tip">Internet: trafik mellan nätverket och internet. Från pfSense, med land.</em></span><span class="on" aria-label="Internt" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M8 19v-4h8v4 M9 15v-3h6v3 M8 9h1 M11 9h2 M15 9h1"/></svg><em class="tip">Internt: trafik inne i nätverket, t.ex. Plex hemma och filkopiering till LillaNasen och Tower. UniFis totala trafik minus internet.</em></span><span aria-label="Allt" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5l-9 5l-9-5z M3 13l9 5l9-5 M3 17.5l9 5l9-5"/></svg><em class="tip">Allt: klientens totala trafik enligt UniFi, uppdelat i internet och internt.</em></span></div>
           <div class="seg"><span>5 min</span><span>15 min</span><span class="on">60 min</span><span>24 h</span></div>
         </div>
         <div class="meta"><span>Internt senaste 60 min · totalt <b>38,6 GB</b></span></div>
@@ -116,9 +122,9 @@ svg.chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
   </div>
 
   <div class="explain">
-    <div><h3><i style="background:var(--accent)"></i>Internet</h3><ul><li>Trafik mellan nätverket och internet, som i dag.</li><li>Från pfSense: NetFlow, eller listan över anslutningar.</li><li>Exakt per anslutning, och med land.</li></ul></div>
-    <div><h3><i style="background:var(--lan)"></i>Internt</h3><ul><li>Trafik inne i nätverket, t.ex. Plex hemma, filkopiering till LillaNasen och Tower.</li><li>Räknas som UniFis totala trafik för klienten minus det som gick mot internet.</li><li>Inget land, eftersom trafiken inte lämnar huset.</li></ul></div>
-    <div><h3><i style="background:linear-gradient(90deg,var(--accent) 50%,var(--lan) 50%)"></i>Allt</h3><ul><li>Klientens totala trafik enligt UniFi.</li><li>I grafen delas varje stapel och kurva i internet och internt, så du ser båda på en gång.</li><li>I topplistan delas stapeln på samma sätt.</li></ul></div>
+    <div><h3><svg class="hi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18"/></svg>Internet</h3><ul><li>Trafik mellan nätverket och internet, som i dag.</li><li>Från pfSense: NetFlow, eller listan över anslutningar.</li><li>Exakt per anslutning, och med land.</li></ul></div>
+    <div><h3><svg class="hi" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z M8 19v-4h8v4 M9 15v-3h6v3 M8 9h1 M11 9h2 M15 9h1"/></svg>Internt</h3><ul><li>Trafik inne i nätverket, t.ex. Plex hemma, filkopiering till LillaNasen och Tower.</li><li>Räknas som UniFis totala trafik för klienten minus det som gick mot internet.</li><li>Inget land, eftersom trafiken inte lämnar huset.</li></ul></div>
+    <div><h3><svg class="hi" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5l-9 5l-9-5z M3 13l9 5l9-5 M3 17.5l9 5l9-5"/></svg>Allt</h3><ul><li>Klientens totala trafik enligt UniFi.</li><li>I grafen delas varje stapel och kurva i internet och internt, så du ser båda på en gång.</li><li>I topplistan delas stapeln på samma sätt.</li></ul></div>
   </div>
 
   <p class="note"><b>Bra att veta:</b> UniFi räknar trafik per klient var 30:e sekund, så Internt och Allt får 30 sekunder som minsta tidssteg. Klienter som UniFi inte känner till, de "okända", har ingen intern trafik. Trafik mellan två containrar på samma Unraid-server syns inte alls, eftersom den aldrig går ut på nätverket.</p>
