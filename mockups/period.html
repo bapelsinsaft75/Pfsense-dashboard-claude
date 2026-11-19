@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gemensamt periodval</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: periodvalet överst får "Just nu", och varje ruta visar vald period efter rubriken. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;
+  --out:#3ddc84;--in:#b46cff;--track:#0b131c;--sel:#1a2c40;--ok:#3ddc84;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:26px}
+.state{display:grid;gap:14px;border:1px dashed #2a3d52;padding:16px}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.04em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+h1{margin:0;font-family:var(--cond);font-size:26px;letter-spacing:.06em;text-transform:uppercase}
+.sub{color:var(--muted)}
+.seg{display:inline-flex;background:var(--track);padding:3px;gap:2px;width:max-content}
+.seg span{padding:6px 14px;font-family:var(--cond);font-size:15px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-flex;gap:7px;align-items:center}
+.seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+.seg.small span{padding:4px 11px;font-size:14px}
+.live{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);display:inline-block}
+.new{outline:2px solid var(--accent);outline-offset:3px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:800px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.card{background:var(--card);border:1px solid var(--line);padding:14px 16px;display:grid;gap:4px;min-width:0}
+.card h2{margin:0;font-family:var(--cond);font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.per{display:inline-flex;align-items:center;gap:6px;color:var(--fg);font-weight:500}
+.per.now{color:var(--ok)}
+.v{font-family:var(--cond);font-size:34px;font-weight:600;line-height:1.1}
+.v small{font-size:15px;color:var(--muted);margin-left:4px}
+.v.acc{color:var(--accent)}
+.m{color:var(--muted);font-size:11.5px}
+.m u{text-decoration:underline dotted;text-underline-offset:3px}
+.maphead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.livebar{display:flex;gap:22px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.livebar b{display:block;color:var(--fg);font-family:var(--cond);font-size:22px;font-weight:600;line-height:1.1}
+.livebar b small{font-size:12px;color:var(--muted);margin-left:3px}
+.map{height:120px;background:radial-gradient(ellipse at 55% 30%,#102033,var(--card) 70%);position:relative}
+.map svg{width:100%;height:100%}
+.note{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px}
+.note b{color:var(--fg);font-weight:500}
+</style>
+<div class="wrap">
+
+<section class="state">
+  <div class="tag">Läge 1 · Just nu valt <em>samma gröna punkt som kartan har idag</em></div>
+  <div><h1>Nätverket hemma</h1><div class="sub">pfSense · Örebro · data från NetFlow · uppdaterad 22:01:24</div></div>
+  <div class="seg new"><span class="on"><i class="live"></i>Just nu</span><span>24 timmar</span><span>7 dagar</span><span>30 dagar</span></div>
+  <div class="kpis">
+    <div class="card"><h2>Total data · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="v acc">75<small>MB</small></div><div class="m">senaste minuten</div></div>
+    <div class="card"><h2>Bandbredd · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="v">10<small>Mbit/s</small></div><div class="m">1 ned · 9 upp · 782 anslutningar</div></div>
+    <div class="card"><h2>Anslutna klienter · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="v">12</div><div class="m">med trafik · av 28 anslutna</div></div>
+    <div class="card"><h2>Länder · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="v">16</div><div class="m">med trafik · 3 startade utifrån</div></div>
+  </div>
+  <div class="card" style="gap:12px">
+    <div class="maphead"><h2>Vart trafiken går · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="seg small"><span class="on">Världen</span><span>Europa</span></div></div>
+    <div class="livebar"><div><b>16</b>länder med trafik</div><div><b>587</b>anslutningar med trafik · av 782 öppna</div><div><b>10<small>Mbit/s</small></b>totalt just nu</div><div><b>1 s</b>sedan senaste mätning</div></div>
+    <div class="map"><svg viewBox="0 0 600 120" preserveAspectRatio="none"><path d="M330 40 Q200 0 90 80" stroke="#3ddc84" stroke-width="2.5" fill="none" stroke-dasharray="2 7"/><path d="M330 40 Q420 10 520 70" stroke="#b46cff" stroke-width="1.5" fill="none" stroke-dasharray="4 5"/><circle cx="330" cy="40" r="5" fill="#ffb547"/><circle cx="90" cy="80" r="3.5" fill="#3ddc84"/><circle cx="520" cy="70" r="3.5" fill="#b46cff"/></svg></div>
+  </div>
+</section>
+
+<section class="state">
+  <div class="tag">Läge 2 · 24 timmar valt <em>perioden står i klartext, ingen punkt</em></div>
+  <div class="seg"><span><i class="live"></i>Just nu</span><span class="on">24 timmar</span><span>7 dagar</span><span>30 dagar</span></div>
+  <div class="kpis">
+    <div class="card"><h2>Total data · <span class="per">senaste 24 h</span></h2>
+      <div class="v acc">6,1<small>GB</small></div><div class="m">ned 5,4 GB · upp 0,7 GB</div></div>
+    <div class="card"><h2>Bandbredd · <span class="per now"><i class="live"></i>just nu</span></h2>
+      <div class="v">10<small>Mbit/s</small></div><div class="m">1 ned · 9 upp · 782 anslutningar</div></div>
+    <div class="card"><h2>Anslutna klienter · <span class="per">senaste 24 h</span></h2>
+      <div class="v">28</div><div class="m"><u>8 trådlöst</u> · <u>15 kabel</u> · <u>5 okänd</u> · <u>49 inaktiva</u></div></div>
+    <div class="card"><h2>Länder · <span class="per">senaste 24 h</span></h2>
+      <div class="v">73</div><div class="m">42 med anslutningar startade utifrån</div></div>
+  </div>
+  <div class="card">
+    <div class="maphead"><h2>Vart trafiken går · <span class="per">senaste 24 h</span></h2>
+      <div class="seg small"><span class="on">Världen</span><span>Europa</span></div></div>
+  </div>
+  <div class="note"><b>Bandbredd</b> är alltid ett mått på just nu, så den rutan behåller ”just nu” oavsett val.
+   7 dagar och 30 dagar visas som ”senaste 7 dagarna” / ”senaste 30 dagarna”.
+   Kartans egna knappar (Just nu · 1 h · 24 h · 7 d · 30 d) försvinner – kartan följer valet överst.</div>
+</section>
+</div>
