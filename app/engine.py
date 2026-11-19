@@ -73,6 +73,7 @@ class Engine:
         self._clients_polled = False
         self._pfb_hits: dict[str, deque] = defaultdict(deque)
         self.syslog_lines = 0
+        self.vpn_ifaces: dict[str, dict] = {}
         self.aliases: dict[str, str] = self.history.aliases()
         self.syslog_last = 0.0
 
@@ -182,6 +183,16 @@ class Engine:
 
     def update_interfaces(self, rows: list[dict]) -> None:
         self.raw["interfaces"] = rows[:20]
+        # OpenVPN-interface (ovpncN) används som reserv om OpenVPN-status saknas
+        self.vpn_ifaces = {
+            str(r.get("descr") or r.get("name")): {"name": str(r.get("descr") or r.get("name")),
+                                                  "up": str(r.get("status", "")).lower() == "up",
+                                                  "status": f"interface {r.get('hwif')} {r.get('status')}",
+                                                  "remote": r.get("gateway")}
+            for r in rows if str(r.get("hwif", "")).startswith(("ovpnc", "ovpns", "tun_wg", "wg"))
+        }
+        if not self.vpn_clients:
+            self._update_vpn_status()
         wan, ips = parse_interfaces(rows, self.cfg.wan_interface)
         self.wan_ips = ips
         if not wan:
@@ -396,7 +407,7 @@ class Engine:
 
     def _update_vpn_status(self) -> None:
         st = self.status["vpn"]
-        clients = list(self.vpn_clients.values())
+        clients = list(self.vpn_clients.values()) or list(self.vpn_ifaces.values())
         if not clients:
             st.update(enabled=False, ok=False, error=None, detail=None, label="VPN")
             return

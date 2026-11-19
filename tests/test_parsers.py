@@ -167,3 +167,28 @@ def test_real_pfsense_29_state_format(monkeypatch):
     assert plex.initiated == "in" and plex.lan_port == 32400 and plex.up == 1158599 and plex.down == 172807
     assert plex.key == plex_lan.key  # samma anslutning, räknas en gång
     assert p2p.initiated == "out"  # båda portarna höga: fälten avgör
+
+
+def test_interfaces_29_format(tmp_path, monkeypatch):
+    from app.engine import Engine
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PFSENSE_URL", "http://127.0.0.1:9")
+    e = Engine(Config())
+    rows = [{"name": "wan", "descr": "WAN", "hwif": "igb0", "status": "up", "ipaddr": "203.0.113.170",
+             "inbytes": 236179498595, "outbytes": 90909217649},
+            {"name": "lan", "descr": "MAIN_LAN", "hwif": "igb3", "status": "up", "ipaddr": "192.168.2.1",
+             "inbytes": 1, "outbytes": 2},
+            {"name": "opt4", "descr": "SITETOSITE", "hwif": "ovpnc1", "status": "up", "ipaddr": "192.168.100.3",
+             "gateway": "192.168.100.1", "inbytes": 1, "outbytes": 2}]
+    e.update_interfaces(rows)
+    assert e.wan_ips == {"203.0.113.170"}
+    assert e.status["vpn"]["ok"] and e.status["vpn"]["label"] == "SITETOSITE"
+    t, rx, tx = e._wan_prev
+    e._wan_prev = (t - 10, rx, tx)
+    rows[0]["inbytes"] += 125_000_000
+    rows[0]["outbytes"] += 12_500_000
+    e.update_interfaces(rows)
+    assert [round(x / 1e6) for x in e.wan_rate] == [100, 10]
+    # OpenVPN-status går före interfacet
+    e.update_openvpn([{"name": "Littorin VPN", "status": "up", "state": "CONNECTED"}])
+    assert e.status["vpn"]["label"] == "Littorin VPN"
