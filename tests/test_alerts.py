@@ -174,3 +174,13 @@ def test_syslog_parsers():
     assert parse_suricata("pfSense suricata[1]: something else") is None
     ev = parse_filterlog("filterlog[1]: 9,,,1000000103,igb0,match,pass,out,4,0x0,,64,0,0,DF,17,udp,76,203.0.113.7,1.1.1.1,123,123,56")
     assert ev.action == "pass" and ev.proto == "udp" and ev.dport == 123
+
+
+def test_netflow_diagnostics(engine):
+    engine.tick()
+    assert "Inga NetFlow-paket har kommit fram" in engine.status["netflow"]["error"]
+    from tests.test_parsers import _v9_packet
+    engine.nf_parser.parse(_v9_packet(template=False), "192.168.2.1")
+    engine.tick()
+    assert "väntar på mallen" in engine.status["netflow"]["error"]
+    assert engine.nf_parser.stats()["received"] == 1

@@ -284,11 +284,27 @@ class Engine:
         while self.nf_window and now - self.nf_window[0][0] > NETFLOW_WINDOW:
             self.nf_window.popleft()
         if self.status["netflow"]["enabled"] and now - self.nf_last > 300:
+            p = self.nf_parser
+            port = self.cfg.netflow_port
+            if not p.received:
+                err = (f"Inga NetFlow-paket har kommit fram till UDP-port {port}. Kontrollera att softflowd körs "
+                       f"(Status → Services) och skickar till dashboardens IP-adress, och att containern har den IP-adressen.")
+            elif now - p.last_received > 300:
+                err = f"Inga NetFlow-paket på över 5 minuter (senast från {p.last_exporter})."
+            elif not p.flows:
+                vers = ", ".join(f"v{v}" for v in p.versions) or "okänd version"
+                if p.no_template and not p.templates:
+                    err = (f"Tar emot paket från {p.last_exporter} ({vers}) men väntar på mallen som beskriver flödena. "
+                           f"softflowd skickar den med jämna mellanrum, vänta några minuter.")
+                elif p.errors and not p.packets:
+                    err = f"Tar emot paket från {p.last_exporter} men kan inte tolka dem ({vers}). Använd NetFlow version 9."
+                else:
+                    err = (f"Tar emot paket från {p.last_exporter} ({vers}), men de innehåller inga flöden mellan "
+                           f"LAN ({', '.join(map(str, self.cfg.lan_subnets))}) och internet. Stämmer LAN_SUBNETS?")
+            else:
+                err = "Inga flöden på över 5 minuter."
             self.status["netflow"]["ok"] = False
-            self.status["netflow"]["error"] = (
-                "Inga flöden mottagna än. Kontrollera softflowd i pfSense." if not self.nf_last
-                else "Inga flöden på över 5 minuter."
-            )
+            self.status["netflow"]["error"] = err
         if not self.state_bytes and self.nf_window:
             agg: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
             for _, cid, up, down in self.nf_window:

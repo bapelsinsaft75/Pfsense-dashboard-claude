@@ -224,6 +224,16 @@ async def test_email():
     return {"ok": True, "to": engine.mailer.to}
 
 
+@app.get("/api/debug/netflow")
+async def debug_netflow():
+    engine: Engine = app.state.engine
+    if not engine.cfg.debug_endpoints:
+        raise HTTPException(404)
+    return {"port": engine.cfg.netflow_port, "history_source": engine.history_source(),
+            "lan_subnets": [str(n) for n in engine.cfg.lan_subnets], **engine.nf_parser.stats(),
+            "lan_flows_last_minute": len(engine.nf_window)}
+
+
 @app.get("/api/debug/raw/{name}")
 async def debug_raw(name: str):
     engine: Engine = app.state.engine

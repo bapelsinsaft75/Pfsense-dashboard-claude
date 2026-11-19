@@ -45,14 +45,25 @@ class FlowParser:
 
     def __init__(self) -> None:
         self.templates: dict[tuple, list[tuple[int, int]]] = {}
-        self.packets = 0
+        self.packets = 0  # tolkade paket
         self.errors = 0
+        self.received = 0  # alla UDP-paket, även de som inte gick att tolka
+        self.versions: dict[int, int] = {}
+        self.no_template = 0  # datamängder som kom innan mallen
+        self.last_exporter: str | None = None
+        self.last_received = 0.0
+        self.flows = 0
 
     def parse(self, data: bytes, exporter: str = "") -> list[Flow]:
+        import time as _t
+        self.received += 1
+        self.last_received = _t.time()
+        self.last_exporter = exporter
         if len(data) < 4:
             self.errors += 1
             return []
         version = struct.unpack_from("!H", data)[0]
+        self.versions[version] = self.versions.get(version, 0) + 1
         try:
             if version == 5:
                 flows = self._v5(data)
@@ -68,6 +79,7 @@ class FlowParser:
             log.debug("Felaktigt flödespaket: %s", exc)
             return []
         self.packets += 1
+        self.flows += len(flows)
         return flows
 
     # ── v5 ──
@@ -149,6 +161,7 @@ class FlowParser:
     def _read_data(self, body: bytes, key: tuple, ipfix: bool) -> list[Flow]:
         fields = self.templates.get(key)
         if not fields:
+            self.no_template += 1
             return []
         flows = []
         off = 0
@@ -169,6 +182,13 @@ class FlowParser:
             if flow:
                 flows.append(flow)
         return flows
+
+    @staticmethod
+    def stats(self) -> dict:
+        return {"received": self.received, "parsed": self.packets, "errors": self.errors, "flows": self.flows,
+                "versions": {str(k): v for k, v in self.versions.items()}, "templates": len(self.templates),
+                "waiting_for_template": self.no_template, "last_exporter": self.last_exporter,
+                "last_received": self.last_received or None}
 
     @staticmethod
     def _to_flow(rec: dict[int, bytes]) -> Flow | None:

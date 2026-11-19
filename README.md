@@ -148,7 +148,7 @@ miljövariablerna.
   Håll muspekaren över en markering för att se felet.
 - Rådata från källorna (de första raderna) visas på
   `/api/debug/raw/states`, `/api/debug/raw/arp`, `/api/debug/raw/leases`, `/api/debug/raw/interfaces`,
-  `/api/debug/raw/gateways`, `/api/debug/raw/openvpn`,
+  `/api/debug/raw/gateways`, `/api/debug/raw/openvpn`, `/api/debug/netflow` (mottagna NetFlow-paket),
   `/api/debug/raw/unifi_clients` och `/api/debug/raw/unifi_devices`.
   Bra att titta på om något ser fel ut, eftersom fältnamnen i pfSense REST API skiljer sig något mellan versioner.
 - `/api/health` används av Dockers hälsokontroll.
