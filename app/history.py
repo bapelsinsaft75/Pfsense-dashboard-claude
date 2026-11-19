@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS remotes(
 );
 CREATE INDEX IF NOT EXISTS remotes_cc_ts ON remotes(cc, ts);
 CREATE INDEX IF NOT EXISTS remotes_ts ON remotes(ts);
+CREATE TABLE IF NOT EXISTS totals(
+  ts INTEGER NOT NULL, res INTEGER NOT NULL, cid TEXT NOT NULL, up INTEGER NOT NULL, down INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS totals_ts ON totals(ts);
 CREATE TABLE IF NOT EXISTS aliases(cid TEXT PRIMARY KEY, name TEXT NOT NULL, updated INTEGER);
 """
 REMOTE_BUCKET = 3600
@@ -63,6 +67,9 @@ class History:
         self.rem_pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
         # korttidsminne för topplistan: (lucka, klient, land) -> [upp, ned]
         self.recent: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
+        # klientens totala trafik enligt UniFi (även intern): korttidsminne och 5-minutershinkar
+        self.recent_all: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
+        self.tot_pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
 
     # ── skrivning ──
     def add(self, cid: str, cc: str | None, direction: str, up: int, down: int, conns: int = 0, ts: float | None = None,
@@ -90,73 +97,125 @@ class History:
         r[0] += max(0, up)
         r[1] += max(0, down)
 
+    def add_total(self, cid: str, up: int, down: int, ts: float | None = None) -> None:
+        """Klientens totala trafik (internet och internt) sedan förra mätningen, från UniFi."""
+        if up <= 0 and down <= 0:
+            return
+        now = ts or time.time()
+        r = self.recent_all[(int(now // RECENT_SLOT * RECENT_SLOT), cid)]
+        r[0] += max(0, up)
+        r[1] += max(0, down)
+        p = self.tot_pending[(int(now // BUCKET * BUCKET), cid)]
+        p[0] += max(0, up)
+        p[1] += max(0, down)
+
     def prune_recent(self, now: float | None = None) -> None:
         cut = (now or time.time()) - RECENT_KEEP
         for k in [k for k in self.recent if k[0] < cut]:
             del self.recent[k]
+        for k in [k for k in self.recent_all if k[0] < cut]:
+            del self.recent_all[k]
 
-    def top_recent(self, window: int, now: float | None = None, points: int = 12) -> dict[str, dict]:
-        """Per klient: upp/ned, toppbandbredd och en kurva för de senaste `window` sekunderna."""
+    # ── trafik per klient och tidssteg, för internet, internt eller allt ──
+    def _cells(self, scope: str, since: float, recent: bool) -> tuple[dict, dict, int]:
+        """(celler, länder, steglängd). Celler: (tid, klient) -> [upp, ned, internet_upp, internet_ned]."""
+        inet: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
+        cc: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        allm: dict[tuple, list[int]] = {}
+        if recent:
+            res = RECENT_SLOT
+            for (slot, cid, c), (u, d) in list(self.recent.items()):
+                if slot + RECENT_SLOT > since:
+                    inet[(slot, cid)][0] += u
+                    inet[(slot, cid)][1] += d
+                    if c:
+                        cc[cid][c] += u + d
+            if scope != "internet":
+                allm = {k: list(v) for k, v in list(self.recent_all.items()) if k[0] + RECENT_SLOT > since}
+        else:
+            res = BUCKET
+            for ts, cid, c, u, d in self._q("SELECT ts, cid, cc, sum(up), sum(down) FROM traffic WHERE ts>=? GROUP BY ts, cid, cc",
+                                            (since,)):
+                inet[(ts, cid)][0] += u
+                inet[(ts, cid)][1] += d
+                if c:
+                    cc[cid][c] += u + d
+            if scope != "internet":
+                pend = [(b, cid, v[0], v[1]) for (b, cid), v in list(self.tot_pending.items()) if b >= since]
+                for ts, cid, u, d in self._q("SELECT ts, cid, sum(up), sum(down) FROM totals WHERE ts>=? GROUP BY ts, cid",
+                                             (since,)) + pend:
+                    cell = allm.setdefault((ts, cid), [0, 0])
+                    cell[0] += u
+                    cell[1] += d
+        cells: dict[tuple, list[int]] = {}
+        for k in set(inet) | set(allm):
+            iu, idn = inet.get(k, (0, 0))
+            au, ad = allm.get(k, (0, 0))
+            au, ad = max(au, iu), max(ad, idn)  # en klient som UniFi inte ser har ändå sin internettrafik
+            if scope == "internet":
+                cells[k] = [iu, idn, iu, idn]
+            elif scope == "internal":
+                cells[k] = [au - iu, ad - idn, 0, 0]
+            else:
+                cells[k] = [au, ad, iu, idn]
+        countries = {cid: max(v, key=v.get) for cid, v in cc.items() if v} if scope != "internal" else {}
+        return cells, countries, res
+
+    def top_scoped(self, scope: str, window: int, now: float | None = None, points: int = 12) -> dict[str, dict]:
         now = now or time.time()
-        start = now - window
+        since = now - window
+        recent = window <= 3600
+        cells, countries, res = self._cells(scope, since if recent else int(since), recent)
+        step = max(res, window // points) if recent else 3600
+        n = max(1, int(window // step))
         out: dict[str, dict] = {}
-        step = max(RECENT_SLOT, window // points)
-        for (slot, cid, cc), (up, down) in list(self.recent.items()):
-            if slot + RECENT_SLOT <= start:
+        for (t, cid), (u, d, iu, idn) in cells.items():
+            if u <= 0 and d <= 0:
                 continue
-            c = out.setdefault(cid, {"up": 0, "down": 0, "slots": defaultdict(int), "cc": defaultdict(int), "spark": defaultdict(int)})
-            c["up"] += up
-            c["down"] += down
-            c["slots"][slot] += up + down
-            c["cc"][cc] += up + down
-            c["spark"][int((slot - start) // step)] += up + down
-        for c in out.values():
-            c["peak_bps"] = max(c["slots"].values()) * 8 / RECENT_SLOT if c["slots"] else 0
-            n = max(1, int(window // step))
+            c = out.setdefault(cid, {"up": 0, "down": 0, "inet": 0, "peak": 0, "spark": defaultdict(int)})
+            c["up"] += u
+            c["down"] += d
+            c["inet"] += iu + idn
+            c["peak"] = max(c["peak"], u + d)
+            c["spark"][int((t - since) // step)] += u + d
+        for cid, c in out.items():
+            c["peak_bps"] = c.pop("peak") * 8 / res
             c["spark"] = [c["spark"].get(i, 0) * 8 / step for i in range(n)]
-            cc = {k: v for k, v in c["cc"].items() if k}
-            c["country"] = max(cc, key=cc.get) if cc else None
-            del c["slots"], c["cc"]
+            c["country"] = countries.get(cid)
+            c["internet"] = c.pop("inet")
         return out
 
-    def series_recent(self, window: int, step: int, now: float | None = None) -> list[dict]:
-        """Hela nätets trafik per tidssteg ur korttidsminnet (för 5, 15 och 60 minuter)."""
+    def series_scoped(self, scope: str, window: int, step: int, now: float | None = None) -> list[dict]:
         now = now or time.time()
+        recent = window <= 3600
         start = int((now - window) // step * step)
-        acc: dict[int, list[int]] = defaultdict(lambda: [0, 0])
-        for (slot, _cid, _cc), (up, down) in list(self.recent.items()):
-            if slot < start:
+        cells, _, _ = self._cells(scope, start, recent)
+        acc: dict[int, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
+        for (t, _cid), v in cells.items():
+            if t < start:
                 continue
-            b = slot // step * step
-            acc[b][0] += down
-            acc[b][1] += up
+            a = acc[int(t // step * step)]
+            for i in range(4):
+                a[i] += v[i]
         out = []
         t = start
         while t <= now:
-            d, u = acc.get(t, (0, 0))
-            out.append({"t": t, "down": d, "up": u, "down_bps": d * 8 / step, "up_bps": u * 8 / step})
+            u, d, iu, idn = acc.get(t, (0, 0, 0, 0))
+            out.append({"t": t, "down": d, "up": u, "down_bps": d * 8 / step, "up_bps": u * 8 / step,
+                        "internet": iu + idn, "internal": max(0, u + d - iu - idn) if scope == "all" else None})
             t += step
         return out
 
+    # äldre namn (internettrafik)
+    def top_recent(self, window: int, now: float | None = None, points: int = 12) -> dict[str, dict]:
+        return self.top_scoped("internet", window, now, points)
+
     def top_day(self, since: int, now: float | None = None) -> dict[str, dict]:
-        """Samma som top_recent men ur historiken (5-minutershinkar), för 24 timmar."""
         now = now or time.time()
-        tot = self.client_totals(since)
-        peaks = dict(self._q("SELECT cid, max(s) FROM (SELECT cid, ts, sum(up+down) AS s FROM traffic WHERE ts>=? AND res=? "
-                             "GROUP BY cid, ts) GROUP BY cid", (since, BUCKET)))
-        sparks: dict[str, list[float]] = {}
-        for cid, h, s in self._q("SELECT cid, (ts-?)/3600, sum(up+down) FROM traffic WHERE ts>=? GROUP BY cid, (ts-?)/3600",
-                                 (since, since, since)):
-            sparks.setdefault(cid, [0.0] * 24)
-            if 0 <= h < 24:
-                sparks[cid][h] = s * 8 / 3600
-        countries: dict[str, tuple[int, str]] = {}
-        for cid, cc, s in self._q("SELECT cid, cc, sum(up+down) FROM traffic WHERE ts>=? AND cc!='' GROUP BY cid, cc", (since,)):
-            if s > countries.get(cid, (0, ""))[0]:
-                countries[cid] = (s, cc)
-        return {cid: {"up": up, "down": down, "peak_bps": (peaks.get(cid) or 0) * 8 / BUCKET,
-                      "spark": sparks.get(cid, [0.0] * 24), "country": countries.get(cid, (0, None))[1]}
-                for cid, (up, down) in tot.items()}
+        return self.top_scoped("internet", int(now - since), now, 24)
+
+    def series_recent(self, window: int, step: int, now: float | None = None) -> list[dict]:
+        return self.series_scoped("internet", window, step, now)
 
     def add_security(self, source: str, label: str, prio: int, cid: str, remote: str, cc: str, direction: str,
                      ts: float | None = None) -> None:
@@ -171,13 +230,17 @@ class History:
             self.sec_pending.clear()
             rem = [k + tuple(v) for k, v in self.rem_pending.items()]
             self.rem_pending.clear()
+            tot = [(b, BUCKET, cid, v[0], v[1]) for (b, cid), v in self.tot_pending.items()]
+            self.tot_pending.clear()
+            if tot:
+                self.db.executemany("INSERT INTO totals VALUES(?,?,?,?,?)", tot)
             if rem:
                 self.db.executemany("INSERT INTO remotes VALUES(?,?,?,?,?,?,?,?,?)", rem)
             if rows:
                 self.db.executemany("INSERT INTO traffic VALUES(?,?,?,?,?,?,?,?)", rows)
             if sec:
                 self.db.executemany("INSERT INTO security VALUES(?,?,?,?,?,?,?,?,?)", sec)
-            if rows or sec or rem:
+            if rows or sec or rem or tot:
                 self.db.commit()
         return len(rows) + len(sec) + len(rem)
 
@@ -213,6 +276,10 @@ class History:
             cur.execute("DELETE FROM traffic WHERE ts<?", (old,))
             cur.execute("DELETE FROM security WHERE ts<?", (old,))
             cur.execute("DELETE FROM remotes WHERE ts<?", (old,))
+            cur.execute("INSERT INTO totals SELECT (ts/3600)*3600, 3600, cid, sum(up), sum(down) FROM totals "
+                        "WHERE res=? AND ts<? GROUP BY ts/3600, cid", (BUCKET, cut))
+            cur.execute("DELETE FROM totals WHERE res=? AND ts<?", (BUCKET, cut))
+            cur.execute("DELETE FROM totals WHERE ts<?", (old,))
             # slå ihop timrader till dygnsrader efter 48 timmar så att tabellen inte växer för mycket
             day_cut = int((now - HOURLY_AFTER) // 86400 * 86400)
             cur.execute(

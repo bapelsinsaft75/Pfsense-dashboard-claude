@@ -93,6 +93,9 @@ def parse_client(row: dict) -> dict | None:
         "hostname": row.get("hostname"),
         "oui": row.get("oui"),
         "kind": "wired" if wired else "wifi",
+        # räknare för all trafik till och från klienten (även intern)
+        "tx_bytes": to_int(pick(row, "tx_bytes", "wired-tx_bytes")),
+        "rx_bytes": to_int(pick(row, "rx_bytes", "wired-rx_bytes")),
     }
     if wired:
         info["dev"] = norm_mac(pick(row, "sw_mac", "last_uplink_mac", "uplink_mac"))

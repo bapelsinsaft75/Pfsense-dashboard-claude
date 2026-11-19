@@ -396,3 +396,46 @@ def test_top_day(engine):
     d = engine.history.top_day(now - 86400, now)
     assert d["x"]["down"] == 39000 and d["x"]["country"] == "DE" and d["x"]["peak_bps"] == 30000 * 8 / 300
     assert len(d["x"]["spark"]) == 24
+
+
+def test_scopes_internet_internal_all(engine):
+    now = 1_800_000_000.0
+    h = engine.history
+    tv, plex, phone = "aa:00:00:00:00:40", "aa:00:00:00:00:10", "aa:00:00:00:00:34"
+    for c, ip in ((tv, "192.168.1.40"), (plex, "192.168.1.10"), (phone, "192.168.1.34")):
+        engine.clients[c] = {"mac": c, "ip": ip, "descr": c[-2:]}
+    # internet: TV laddar ner 10 MB, mobilen 4 MB (mobilen finns inte i UniFi)
+    h.add_recent(tv, "NL", 0, 10_000_000, now - 100)
+    h.add_recent(phone, "SE", 0, 4_000_000, now - 100)
+    # UniFi: TV har totalt 60 MB ned (50 MB internt från Plex), Plex-servern 50 MB upp internt
+    h.add_total(tv, 100_000, 60_000_000, now - 100)
+    h.add_total(plex, 50_000_000, 200_000, now - 100)
+    inet = h.top_scoped("internet", 300, now)
+    lan = h.top_scoped("internal", 300, now)
+    allt = h.top_scoped("all", 300, now)
+    assert set(inet) == {tv, phone}
+    assert lan[tv]["down"] == 50_000_000 and lan[plex]["up"] == 50_000_000 and phone not in lan
+    assert allt[tv]["down"] == 60_000_000 and allt[tv]["internet"] == 10_000_000
+    assert allt[phone]["down"] == 4_000_000  # klient utanför UniFi räknas ändå med sin internettrafik
+    ser = h.series_scoped("all", 300, 30, now)
+    assert sum(p["internet"] for p in ser) == 14_000_000
+    assert sum(p["internal"] for p in ser) == 100_000 + 50_000_000 + 50_000_000 + 200_000
+    h.flush()
+    d = h.top_scoped("internal", 86400, now + 60)
+    assert d[plex]["up"] == 50_000_000
+
+
+def test_unifi_counters_and_orientation(engine):
+    t = 1_800_000_000.0
+    mac = "aa:00:00:00:00:21"
+    engine.clients[mac] = {"mac": mac, "ip": "192.168.1.21", "descr": "MacBook"}
+    # pfSense ser 300 MB ned mot internet för klienten
+    engine.history.add_recent(mac, "IE", 5_000_000, 300_000_000, t)
+    # UniFi: rx_bytes ökar mest, alltså är rx nedladdning ur klientens synvinkel
+    engine._unifi_traffic({mac: {"tx_bytes": 1_000, "rx_bytes": 1_000}}, t)
+    engine._unifi_traffic({mac: {"tx_bytes": 20_000_000, "rx_bytes": 400_000_000}}, t + 30)
+    assert engine.unifi_tx_is_down is False
+    # nollställd räknare (klienten återanslöt) ger ingen negativ trafik
+    engine._unifi_traffic({mac: {"tx_bytes": 5, "rx_bytes": 5}}, t + 60)
+    total = engine.history.top_scoped("all", 3600, t + 90)[mac]
+    assert total["up"] >= 5_000_000 and total["down"] >= 300_000_000

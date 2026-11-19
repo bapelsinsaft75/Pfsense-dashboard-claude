@@ -593,12 +593,12 @@ function renderCountries(d) {
 }
 
 /* ── över tid: bandbredd och datamängd ── */
-const chartState = (() => { try { return { mode: "bw", win: "60m", ...JSON.parse(localStorage.getItem("chartView") || "{}") }; } catch (e) { return { mode: "bw", win: "60m" }; } })();
+const chartState = (() => { try { return { mode: "bw", win: "60m", scope: "internet", ...JSON.parse(localStorage.getItem("chartView") || "{}") }; } catch (e) { return { mode: "bw", win: "60m", scope: "internet" }; } })();
 let chartData = null;
 const STEP_LABEL = { 30: "30 s", 60: "1 min", 1800: "30 min" };
 async function loadChart() {
   try {
-    const r = await fetch(`api/series?window=${chartState.win}`, { cache: "no-store" });
+    const r = await fetch(`api/series?window=${chartState.win}&scope=${chartState.scope}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     chartData = await r.json();
     renderChart();
@@ -610,6 +610,9 @@ function renderChart() {
   const cd = chartData;
   const el = $("chart");
   if (!cd) return;
+  if (cd.unifi === false && chartState.scope !== "internet") { chartState.scope = "internet"; loadChart(); return; }
+  renderScopeSeg("chartscope", chartState.scope, cd.unifi);
+  const all = (cd.scope || "internet") === "all";
   const bw = chartState.mode === "bw";
   // det pågående tidssteget är inte klart: i kurvan skulle det se ut som ett plötsligt fall
   const nowS = Date.now() / 1000;
@@ -624,10 +627,19 @@ function renderChart() {
   const hms = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { ...tz, hour: "2-digit", minute: "2-digit", second: cd.step < 60 ? "2-digit" : undefined });
   const sumD = cd.total_down, sumU = cd.total_up;
   const pk = pts.reduce((a, p) => (p.down_bps > a.down_bps ? p : a), pts[0] || { down_bps: 0, t: 0 });
-  $("chart-stats").innerHTML = bw
+  const sumAll = sumD + sumU, sumInet = cd.total_internet || 0, sumLan = Math.max(0, sumAll - sumInet);
+  const pkAll = pts.reduce((a, p) => (p.down_bps + p.up_bps > a.down_bps + a.up_bps ? p : a), pts[0] || { down_bps: 0, up_bps: 0, t: 0 });
+  if (all) {
+    $("chart-stats").innerHTML = bw
+      ? `<span><b class="num">${fmtMbit(sumAll * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt totalt</span><span><b class="num">${fmtMbit(sumInet * 8 / cd.seconds)}<small>Mbit/s</small></b>internet · ${fmt(sumAll ? sumInet / sumAll * 100 : 0, 0)} %</span><span><b class="num">${fmtMbit(sumLan * 8 / cd.seconds)}<small>Mbit/s</small></b>internt · ${fmt(sumAll ? sumLan / sumAll * 100 : 0, 0)} %</span><span><b class="num">${fmtMbit(pkAll.down_bps + pkAll.up_bps)}<small>Mbit/s</small></b>topp${pkAll.t ? ` kl ${hm(pkAll.t)}` : ""}</span>`
+      : `<span><b class="num">${bytesParts(sumAll)}</b>totalt</span><span><b class="num">${bytesParts(sumInet)}</b>internet · ${fmt(sumAll ? sumInet / sumAll * 100 : 0, 0)} %</span><span><b class="num">${bytesParts(sumLan)}</b>internt · ${fmt(sumAll ? sumLan / sumAll * 100 : 0, 0)} %</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per stapel</span>`;
+  } else $("chart-stats").innerHTML = bw
     ? `<span><b class="num">${fmtMbit(sumD * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt ned</span><span><b class="num">${fmtMbit(sumU * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt upp</span><span><b class="num">${fmtMbit(pk.down_bps)}<small>Mbit/s</small></b>topp ned${pk.down_bps ? ` kl ${hm(pk.t)}` : ""}</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per punkt</span>`
     : `<span><b class="num">${bytesParts(sumD + sumU)}</b>totalt</span><span><b class="num">${bytesParts(sumD)}</b>ned</span><span><b class="num">${bytesParts(sumU)}</b>upp</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per stapel</span>`;
-  $("chart-legend").innerHTML = `<span><i class="${bw ? "" : "blk"}" style="background:var(--accent)"></i>Nedladdning</span><span><i class="${bw ? "" : "blk"}" style="background:var(--up)"></i>Uppladdning</span><span>· ${bw ? "Mbit/s" : (cd.step >= 1800 ? "per halvtimme" : cd.step >= 60 ? "per minut" : "per 30 sekunder")}, klienter mot internet</span>`;
+  const per = bw ? "Mbit/s" : (cd.step >= 1800 ? "per halvtimme" : cd.step >= 60 ? "per minut" : "per 30 sekunder");
+  $("chart-legend").innerHTML = all
+    ? `<span><i class="blk" style="background:var(--accent)"></i>Mot internet (pfSense)</span><span><i class="blk" style="background:var(--lan)"></i>Internt (UniFi minus internet)</span><span>· ${per}, ned och upp tillsammans</span>`
+    : `<span><i class="${bw ? "" : "blk"}" style="background:var(--accent)"></i>Nedladdning</span><span><i class="${bw ? "" : "blk"}" style="background:var(--up)"></i>Uppladdning</span><span>· ${per}, ${cd.scope === "internal" ? "trafik inne i nätverket" : "klienter mot internet"}</span>`;
   el.innerHTML = "";
   if (!pts.length || (sumD + sumU) === 0) {
     el.innerHTML = `<div class="empty">${cd.seconds > 3600 ? "Ingen data än." : `Ingen trafik registrerad de senaste ${WIN_LABEL[cd.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
@@ -640,7 +652,9 @@ function renderChart() {
   const x = d3.scaleLinear([t0, t1], [m.l, W - m.r]);
   const unit = bw ? 1e6 : (Math.max(...pts.map((p) => p.down + p.up)) >= 1e9 ? 1e9 : 1e6);
   const val = (p, k) => (bw ? p[k + "_bps"] : p[k]) / unit;
-  const maxV = d3.max(pts, (p) => (bw ? Math.max(val(p, "down"), val(p, "up")) : val(p, "down") + val(p, "up"))) || 1;
+  const inetV = (p) => (bw ? p.internet * 8 / cd.step : p.internet) / unit;
+  const totV = (p) => val(p, "down") + val(p, "up");
+  const maxV = d3.max(pts, (p) => (bw && !all ? Math.max(val(p, "down"), val(p, "up")) : totV(p))) || 1;
   const y = d3.scaleLinear([0, maxV * 1.1], [H - m.b, m.t]).nice(4);
   y.ticks(4).forEach((v) => {
     s.append("line").attr("class", "gl").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y(v)).attr("y2", y(v));
@@ -652,7 +666,21 @@ function renderChart() {
     if (x(t) < m.l + 16 || x(t) > W - m.r - 16) continue;
     s.append("text").attr("x", x(t)).attr("y", H - 6).attr("text-anchor", "middle").text(hm(t));
   }
-  if (bw) {
+  if (all) {
+    if (bw) {
+      const cv = d3.curveMonotoneX, X = (p) => x(p.t);
+      s.append("path").attr("d", d3.area().x(X).y0((p) => y(inetV(p))).y1((p) => y(totV(p))).curve(cv)(pts)).attr("fill", "var(--lan)").attr("fill-opacity", 0.55);
+      s.append("path").attr("d", d3.area().x(X).y0(y(0)).y1((p) => y(inetV(p))).curve(cv)(pts)).attr("fill", "var(--accent)").attr("fill-opacity", 0.7);
+      s.append("path").attr("d", d3.line().x(X).y((p) => y(totV(p))).curve(cv)(pts)).attr("fill", "none").attr("stroke", "var(--lan)").attr("stroke-width", 1.6);
+    } else {
+      const bwid = Math.max(1, (x(t0 + cd.step) - x(t0)) - 2);
+      pts.forEach((p) => {
+        const a = inetV(p), b = totV(p);
+        s.append("rect").attr("x", x(p.t) + 1).attr("width", bwid).attr("y", y(a)).attr("height", Math.max(0, y(0) - y(a))).attr("fill", "var(--accent)").attr("fill-opacity", 0.9);
+        s.append("rect").attr("x", x(p.t) + 1).attr("width", bwid).attr("y", y(b)).attr("height", Math.max(0, y(a) - y(b))).attr("fill", "var(--lan)").attr("fill-opacity", 0.85);
+      });
+    }
+  } else if (bw) {
     const cv = d3.curveMonotoneX, X = (p) => x(p.t);
     s.append("path").attr("d", d3.area().x(X).y0(y(0)).y1((p) => y(val(p, "down"))).curve(cv)(pts)).attr("fill", "var(--accent)").attr("fill-opacity", 0.12);
     s.append("path").attr("d", d3.line().x(X).y((p) => y(val(p, "down"))).curve(cv)(pts)).attr("fill", "none").attr("stroke", "var(--accent)").attr("stroke-width", 2);
@@ -685,8 +713,14 @@ function renderChart() {
       guide.attr("x1", gx).attr("x2", gx).style("display", null);
       tip.style("display", null).attr("transform", `translate(${gx + 170 > W ? gx - 168 : gx + 8},${m.t + 2})`);
       tt[0].attr("style", "fill:var(--fg)").text(bw ? hms(p.t) : `${hm(p.t)}–${hm(p.t + cd.step)}`);
-      tt[1].attr("style", "fill:var(--accent)").text(bw ? `ned ${fmtMbit(p.down_bps)} Mbit/s` : `ned ${fmtBytes(p.down)}`);
-      tt[2].attr("style", "fill:var(--up)").text(bw ? `upp ${fmtMbit(p.up_bps)} Mbit/s` : `upp ${fmtBytes(p.up)}`);
+      if (all) {
+        const lan = Math.max(0, p.down + p.up - p.internet);
+        tt[1].attr("style", "fill:var(--accent)").text(bw ? `internet ${fmtMbit(p.internet * 8 / cd.step)} Mbit/s` : `internet ${fmtBytes(p.internet)}`);
+        tt[2].attr("style", "fill:var(--lan)").text(bw ? `internt ${fmtMbit(lan * 8 / cd.step)} Mbit/s` : `internt ${fmtBytes(lan)}`);
+      } else {
+        tt[1].attr("style", "fill:var(--accent)").text(bw ? `ned ${fmtMbit(p.down_bps)} Mbit/s` : `ned ${fmtBytes(p.down)}`);
+        tt[2].attr("style", "fill:var(--up)").text(bw ? `upp ${fmtMbit(p.up_bps)} Mbit/s` : `upp ${fmtBytes(p.up)}`);
+      }
     })
     .on("mouseleave", () => { guide.style("display", "none"); tip.style("display", "none"); });
 }
@@ -694,14 +728,35 @@ document.querySelector("[data-cmode]").closest(".toptabs").addEventListener("cli
   const b = e.target.closest("[data-cmode]"); if (!b) return;
   chartState.mode = b.dataset.cmode; saveChart(); renderChart();
 });
+$("chartscope").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-scope]"); if (!b || b.disabled) return;
+  chartState.scope = b.dataset.scope; saveChart(); loadChart();
+});
 $("chartwin").addEventListener("click", (e) => {
   const b = e.target.closest("[data-cwin]"); if (!b) return;
   chartState.win = b.dataset.cwin; saveChart(); renderChart(); loadChart();
 });
 function saveChart() { try { localStorage.setItem("chartView", JSON.stringify(chartState)); } catch (e) { /* ingen lagring */ } }
 
+/* ── trafikval: internet, internt eller allt ── */
+const SCOPES = {
+  internet: { label: "Internet", path: "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18",
+    tip: "Trafik mellan nätverket och internet. Från pfSense, med land." },
+  internal: { label: "Internt", path: "M4 5h16v14H4z M8 19v-4h8v4 M9 15v-3h6v3 M8 9h1 M11 9h2 M15 9h1",
+    tip: "Trafik inne i nätverket, t.ex. Plex hemma och filkopiering till LillaNasen och Tower. UniFis totala trafik minus internet." },
+  all: { label: "Allt", path: "M12 3l9 5l-9 5l-9-5z M3 13l9 5l9-5 M3 17.5l9 5l9-5",
+    tip: "Klientens totala trafik enligt UniFi, uppdelad i internet och internt." },
+};
+function renderScopeSeg(id, current, unifi) {
+  $(id).innerHTML = Object.entries(SCOPES).map(([k, sc]) => {
+    const off = k !== "internet" && unifi === false;
+    return `<button type="button" data-scope="${k}" aria-pressed="${k === current}" aria-label="${sc.label}" ${off ? "disabled" : ""}><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${sc.path}"/></svg><em class="tip" role="tooltip"><b>${sc.label}</b>${off ? "Kräver UniFi. Fyll i UNIFI_URL, UNIFI_USER och UNIFI_PASS i Unraid-mallen." : sc.tip}</em></button>`;
+  }).join("");
+}
+const SCOPE_WORD = { internet: "mot internet", internal: "internt", all: "totalt" };
+
 /* ── topplista: mest bandbredd och mest data ── */
-const topState = (() => { try { return { mode: "bw", win: "5m", ...JSON.parse(localStorage.getItem("topList") || "{}"), more: false }; } catch (e) { return { mode: "bw", win: "5m", more: false }; } })();
+const topState = (() => { try { return { mode: "bw", win: "5m", scope: "internet", ...JSON.parse(localStorage.getItem("topList") || "{}"), more: false }; } catch (e) { return { mode: "bw", win: "5m", scope: "internet", more: false }; } })();
 let topData = null;
 const WIN_LABEL = { "5m": "5 min", "15m": "15 min", "60m": "60 min", "24h": "24 h" };
 function fmtMbit(bps) { const m = bps / 1e6; return m >= 100 ? fmt(m, 0) : m >= 10 ? fmt(m, 0) : m >= 1 ? fmt(m, 1) : fmt(m, 2); }
@@ -712,7 +767,7 @@ function sparkPath(vals) {
 }
 async function loadTop() {
   try {
-    const r = await fetch(`api/top?window=${topState.win}&limit=${topState.more ? 25 : 10}`, { cache: "no-store" });
+    const r = await fetch(`api/top?window=${topState.win}&scope=${topState.scope}&limit=${topState.more ? 25 : 10}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     topData = await r.json();
     renderTop();
@@ -723,34 +778,41 @@ function renderTop() {
   document.querySelectorAll("[data-twin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.twin === topState.win));
   const t = topData;
   if (!t) return;
+  if (t.unifi === false && topState.scope !== "internet") { topState.scope = "internet"; loadTop(); return; }
+  renderScopeSeg("topscope", topState.scope, t.unifi);
   const bw = topState.mode === "bw";
+  const sc = t.scope || "internet", all = sc === "all";
   const items = t.items.slice().sort((a, b) => (bw ? b.avg_bps - a.avg_bps : b.bytes - a.bytes)).filter((x) => x.bytes > 0);
   const label = t.window === "24h" ? "senaste 24 timmarna" : `senaste ${WIN_LABEL[t.window]}`;
+  const keyAll = `<span class="key"><span><i style="background:var(--accent)"></i>internet</span><span><i style="background:var(--lan)"></i>internt</span></span>`;
   $("topc-s").innerHTML = bw
-    ? `<span>Snitt ${label} · totalt <b>${fmtMbit(t.total_bps)} Mbit/s</b></span><span class="key"><span><i style="background:var(--accent)"></i>ned</span><span><i style="background:var(--up)"></i>upp</span></span>`
-    : `<span>${label[0].toUpperCase() + label.slice(1)} · totalt <b>${fmtBytes(t.total_bytes)}</b></span><span class="key"><span><i style="background:linear-gradient(90deg,#3a5874,#7fb0d8)"></i>andel av totalen</span></span>`;
+    ? `<span>${SCOPES[sc].label} · snitt ${label} · <b>${fmtMbit(t.total_bps)} Mbit/s</b></span>${all ? keyAll : `<span class="key"><span><i style="background:var(--accent)"></i>ned</span><span><i style="background:var(--up)"></i>upp</span></span>`}`
+    : `<span>${SCOPES[sc].label} · ${label} · <b>${fmtBytes(t.total_bytes)}</b></span>${all ? keyAll : `<span class="key"><span><i style="background:${sc === "internal" ? "var(--lan)" : "linear-gradient(90deg,#3a5874,#7fb0d8)"}"></i>andel av totalen</span></span>`}`;
   if (!items.length) {
-    $("topc").innerHTML = `<div class="empty">${t.window === "24h" ? "Ingen data än." : `Ingen trafik registrerad de senaste ${WIN_LABEL[t.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
+    $("topc").innerHTML = `<div class="empty">${t.window === "24h" ? "Ingen data än." : `Ingen ${sc === "internal" ? "intern " : ""}trafik registrerad de senaste ${WIN_LABEL[t.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
     $("topc-more").hidden = true;
     return;
   }
   const mx = bw ? Math.max(...items.map((x) => x.avg_bps)) || 1 : t.total_bytes || 1;
   $("topc").innerHTML = items.map((x, i) => {
+    const connTxt = x.conn ? (x.conn.kind === "wifi" ? `Wi-Fi ${x.conn.band || ""}` : `kabel${x.conn.dev ? " · " + x.conn.dev : ""}${x.conn.port ? " port " + x.conn.port : ""}`) : "";
+    const inetShare = x.bytes ? Math.min(1, x.internet / x.bytes) : 0;
     if (bw) {
-      const dw = x.avg_down_bps / mx * 100, uw = x.avg_up_bps / mx * 100;
+      const dw = all ? x.avg_bps / mx * 100 * inetShare : x.avg_down_bps / mx * 100;
+      const uw = all ? x.avg_bps / mx * 100 * (1 - inetShare) : x.avg_up_bps / mx * 100;
       return `<div class="tr pickable" data-id="${esc(x.id)}">${icon(x.type)}<span class="n" title="${esc(x.ip || "")}">${esc(x.name)}</span><svg class="sp" viewBox="0 0 72 18" preserveAspectRatio="none" aria-hidden="true"><path d="${sparkPath(x.spark)}" fill="none" stroke="var(--accent)" stroke-width="1.4"/></svg><span class="v num">${fmtMbit(x.avg_bps)}<small>Mbit/s</small></span>
-        <div class="bar"><span class="d" style="width:${dw}%"></span><span class="u" style="width:${uw}%"></span></div>
-        <span class="sub"><span>${fmtMbit(x.avg_down_bps)} ned · ${fmtMbit(x.avg_up_bps)} upp</span><span>topp ${fmtMbit(x.peak_bps)} Mbit/s</span></span></div>`;
+        <div class="bar"><span class="d" style="width:${dw}%"></span><span class="${all ? "l" : "u"}" style="width:${uw}%"></span></div>
+        <span class="sub"><span>${all ? `${fmt(inetShare * 100, 0)} % internet · ${fmt((1 - inetShare) * 100, 0)} % internt` : `${fmtMbit(x.avg_down_bps)} ned · ${fmtMbit(x.avg_up_bps)} upp`}</span><span>topp ${fmtMbit(x.peak_bps)} Mbit/s</span>${sc === "internal" && connTxt ? `<span>${esc(connTxt)}</span>` : ""}</span></div>`;
     }
     const share = x.bytes / mx * 100;
     return `<div class="tr pickable" data-id="${esc(x.id)}"><span class="rank">${i + 1}</span><span class="n">${esc(x.name)}${x.ip ? ` <small>${esc(x.ip)}</small>` : ""}</span><span></span><span class="v num">${fmtBytes(x.bytes)}</span>
-      <div class="bar"><span class="t" style="width:${share}%"></span></div>
-      <span class="sub"><span>${fmt(share, 0)} % · ${fmtBytes(x.down)} ned · ${fmtBytes(x.up)} upp</span>${x.country ? `<span>mest till ${esc(countryName(x.country))}</span>` : ""}</span></div>`;
+      <div class="bar">${all ? `<span class="d" style="width:${share * inetShare}%"></span><span class="l" style="width:${share * (1 - inetShare)}%"></span>` : `<span class="${sc === "internal" ? "l" : "t"}" style="width:${share}%"></span>`}</div>
+      <span class="sub"><span>${fmt(share, 0)} % · ${fmtBytes(x.down)} ned · ${fmtBytes(x.up)} upp</span>${all ? `<span>${fmtBytes(x.internet)} internet · ${fmtBytes(Math.max(0, x.bytes - x.internet))} internt</span>` : ""}${sc === "internal" ? (connTxt ? `<span>${esc(connTxt)}</span>` : "") : x.country ? `<span>mest till ${esc(countryName(x.country))}</span>` : ""}</span></div>`;
   }).join("");
   $("topc-more").hidden = !(t.count > items.length || topState.more);
   $("topc-more").textContent = topState.more ? "Visa färre" : `Visa fler (${t.count})`;
 }
-document.querySelector(".toptabs").addEventListener("click", (e) => {
+document.querySelector("[data-tmode]").closest(".toptabs").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tmode]"); if (!b) return;
   topState.mode = b.dataset.tmode; saveTop(); renderTop();
 });
@@ -759,7 +821,11 @@ $("topwin").addEventListener("click", (e) => {
   topState.win = b.dataset.twin; saveTop(); renderTop(); loadTop();
 });
 $("topc-more").addEventListener("click", () => { topState.more = !topState.more; loadTop(); });
-function saveTop() { try { localStorage.setItem("topList", JSON.stringify({ mode: topState.mode, win: topState.win })); } catch (e) { /* ingen lagring */ } }
+$("topscope").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-scope]"); if (!b || b.disabled) return;
+  topState.scope = b.dataset.scope; saveTop(); loadTop();
+});
+function saveTop() { try { localStorage.setItem("topList", JSON.stringify({ mode: topState.mode, win: topState.win, scope: topState.scope })); } catch (e) { /* ingen lagring */ } }
 
 function renderDevices(d) {
   const card = $("unifi-card");

@@ -111,6 +111,21 @@ def setup(engine: Engine) -> None:
                     rows.append((t, res, mac, cc, direction, int(total * ratio), int(total * (1 - ratio)),
                                  max(1, int(rnd.uniform(0, 4) * res / 300))))
     engine.history.insert_raw(rows)
+    # total trafik enligt UniFi: internettrafiken plus intern trafik (Plex hemma, filkopiering, backup)
+    tot: dict[tuple, list[int]] = {}
+    for t, res, mac, _cc, _d, up, down, _n in rows:
+        c = tot.setdefault((t, res, mac), [0, 0])
+        c[0] += up
+        c[1] += down
+    for (t, res, mac), c in tot.items():
+        hour = datetime.fromtimestamp(t, STOCKHOLM).hour
+        iu, idn = _internal_bytes(mac, hour, res)
+        c[0] += iu
+        c[1] += idn
+    with engine.history.lock:
+        engine.history.db.executemany("INSERT INTO totals VALUES(?,?,?,?,?)",
+                                      [(t, res, mac, c[0], c[1]) for (t, res, mac), c in tot.items()])
+        engine.history.db.commit()
     # externa adresser per klient (en rad per timme senaste dygnet)
     rem_rows = []
     for t in range(int((now - 86400) // 3600 * 3600), int(now), 3600):
@@ -292,6 +307,24 @@ def _demo_country(ip: str) -> str | None:
     return _REMOTE_CC.get(ip)
 
 
+# intern trafik per klient i byte per sekund: (upp, ned)
+INTERNAL = {
+    "d0:50:99:3a:11:0c": (2.6e6, 0.2e6),   # Unraid: Plex till TV:n och Apple-TV
+    "a8:23:fe:10:9c:44": (0.02e6, 1.6e6),  # Vardagsrum-TV
+    "90:dd:5d:21:b8:03": (0.01e6, 0.9e6),  # Apple-TV
+    "04:42:1a:c3:7e:90": (0.8e6, 0.6e6),   # Kontor-PC: filkopiering till LillaNasen
+    "f4:d4:88:5b:2e:17": (0.15e6, 0.2e6),  # MacBook: Time Machine
+}
+
+
+def _internal_bytes(mac: str, hour: int, seconds: float) -> tuple[int, int]:
+    up, down = INTERNAL.get(mac, (0, 0))
+    evening = 1.6 if 18 <= hour <= 23 else 0.5 if 7 <= hour < 18 else 0.15
+    if mac == "d0:50:99:3a:11:0c" and 1 <= hour < 4:  # nattlig backup till Unraid
+        return int(up * 0.2 * seconds), int(9e6 * seconds)
+    return int(up * evening * seconds), int(down * evening * seconds)
+
+
 def _demo_recent(engine: Engine, now: float, seconds: float, at: float) -> None:
     for mac, name, _ip, down, up, *_ in CLIENTS:
         if name in IDLE:
@@ -299,7 +332,13 @@ def _demo_recent(engine: Engine, now: float, seconds: float, at: float) -> None:
         burst = 2.2 if name == "Kontor-PC" and int(at // 300) % 3 == 0 else 1
         j = random.uniform(.7, 1.3) * burst
         cc = FLOWS[name][0][0]
-        engine.history.add_recent(mac, cc, int(up * 1e6 * j * seconds / 8), int(down * 1e6 * j * seconds / 8), at)
+        iu, idn = int(up * 1e6 * j * seconds / 8), int(down * 1e6 * j * seconds / 8)
+        engine.history.add_recent(mac, cc, iu, idn, at)
+        hour = datetime.fromtimestamp(at, STOCKHOLM).hour
+        lu, ld = _internal_bytes(mac, hour, seconds)
+        r = engine.history.recent_all[(int(at // 30 * 30), mac)]
+        r[0] += iu + int(lu * random.uniform(.7, 1.3))
+        r[1] += idn + int(ld * random.uniform(.7, 1.3))
 
 
 def tick(engine: Engine) -> None:

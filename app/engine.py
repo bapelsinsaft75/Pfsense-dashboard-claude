@@ -77,6 +77,10 @@ class Engine:
         self._clients_polled = False
         self._pfb_hits: dict[str, deque] = defaultdict(deque)
         self.syslog_lines = 0
+        self._unifi_bytes: dict[str, tuple[float, int, int]] = {}
+        # UniFis tx/rx är ur antingen klientens eller nätverkets synvinkel; avgörs genom jämförelse med pfSense
+        self.unifi_tx_is_down: bool | None = None
+        self._orient = {"tx": 0, "rx": 0, "inet_down": 0}
         self.vpn_ifaces: dict[str, dict] = {}
         self.aliases: dict[str, str] = self.history.aliases()
         self.syslog_last = 0.0
@@ -383,6 +387,7 @@ class Engine:
                 devices[d["id"]] = d
         self.unifi_clients, self.devices = clients, devices
         self._rebuild_ip_map()
+        self._unifi_traffic(clients)
         for d in devices.values():
             key = f"unifi:{d['id']}"
             if self.confirm(key, not d["online"]):
@@ -647,12 +652,13 @@ class Engine:
         return {"cc": cc, "period": period, "clients": sorted(clients.values(), key=lambda c: c["bytes"], reverse=True),
                 "remotes": remotes}
 
-    def top(self, window: str = "5m", limit: int = 10) -> dict:
+    def top(self, window: str = "5m", limit: int = 10, scope: str = "internet") -> dict:
         """Topplista: mest bandbredd och mest data under en kort period (5/15/60 min) eller 24 timmar."""
         seconds = {"5m": 300, "15m": 900, "60m": 3600, "24h": 86400}.get(window, 300)
         now = time.time()
         self.history.prune_recent(now)
-        rows = self.history.top_day(int(now - seconds), now) if seconds > 3600 else self.history.top_recent(seconds, now)
+        scope = scope if scope in ("internet", "internal", "all") else "internet"
+        rows = self.history.top_scoped(scope, seconds, now, 24 if seconds > 3600 else 12)
         items = []
         for cid, r in rows.items():
             c = self.clients.get(cid, {})
@@ -668,25 +674,26 @@ class Engine:
                 "up": r["up"], "down": r["down"], "bytes": total,
                 "avg_bps": total * 8 / seconds, "avg_down_bps": r["down"] * 8 / seconds, "avg_up_bps": r["up"] * 8 / seconds,
                 "peak_bps": max(r["peak_bps"], total * 8 / seconds), "spark": r["spark"], "country": r.get("country"),
+                "internet": r.get("internet", total),
+                "conn": {"kind": u.get("kind"), "dev": (self.devices.get(u.get("dev") or "") or {}).get("name"),
+                         "port": u.get("port"), "band": u.get("band")} if u else None,
             })
         items.sort(key=lambda x: x["bytes"], reverse=True)
         total = sum(x["bytes"] for x in items)
-        return {"window": window, "seconds": seconds, "total_bytes": total, "total_bps": total * 8 / seconds,
-                "count": len(items), "items": items[:limit]}
+        return {"window": window, "scope": scope, "seconds": seconds, "total_bytes": total, "total_bps": total * 8 / seconds,
+                "total_internet": sum(x["internet"] for x in items), "count": len(items), "items": items[:limit],
+                "unifi": self.status["unifi"]["enabled"]}
 
-    def chart_series(self, window: str = "60m") -> dict:
+    def chart_series(self, window: str = "60m", scope: str = "internet") -> dict:
         """Bandbredd och datamängd över tid för grafen."""
         seconds, step = {"5m": (300, 30), "15m": (900, 30), "60m": (3600, 60), "24h": (86400, 1800)}.get(window, (3600, 60))
         now = time.time()
-        if seconds > 3600:
-            pts = self.history.series(int(now - seconds), step, now)
-            for p in pts:
-                p["down"] = p["down_bps"] * step / 8
-                p["up"] = p["up_bps"] * step / 8
-        else:
-            self.history.prune_recent(now)
-            pts = self.history.series_recent(seconds, step, now)
-        return {"window": window, "seconds": seconds, "step": step, "points": pts,
+        scope = scope if scope in ("internet", "internal", "all") else "internet"
+        self.history.prune_recent(now)
+        pts = self.history.series_scoped(scope, seconds, step, now)
+        return {"window": window, "scope": scope, "seconds": seconds, "step": step, "points": pts,
+                "unifi": self.status["unifi"]["enabled"],
+                "total_internet": sum(p["internet"] for p in pts),
                 "total_down": sum(p["down"] for p in pts), "total_up": sum(p["up"] for p in pts)}
 
     def plex_summary(self) -> dict:
@@ -716,6 +723,45 @@ class Engine:
         sec["gateways"] = sorted(self.gateways.values(), key=lambda g: (not g["vpn"], g["name"]))
         sec["vpn_clients"] = list(self.vpn_clients.values())
         return sec
+
+    def _unifi_traffic(self, clients: dict[str, dict], now: float | None = None) -> None:
+        """Lägg till klienternas totala trafik (internet och internt) sedan förra mätningen."""
+        now = now or time.time()
+        seen = {}
+        for mac, c in clients.items():
+            tx, rx = c.get("tx_bytes"), c.get("rx_bytes")
+            if tx is None or rx is None:
+                continue
+            seen[mac] = (now, tx, rx)
+            prev = self._unifi_bytes.get(mac)
+            if not prev:
+                continue
+            dtx, drx = tx - prev[1], rx - prev[2]
+            if dtx < 0 or drx < 0 or now - prev[0] > 600:  # räknaren nollställd eller för gammal mätning
+                continue
+            self._orient["tx"] += dtx
+            self._orient["rx"] += drx
+            tx_down = self.unifi_tx_is_down if self.unifi_tx_is_down is not None else True
+            down, up = (dtx, drx) if tx_down else (drx, dtx)
+            self.history.add_total(mac, up, down, now)
+        self._unifi_bytes = seen
+        self._decide_orientation(now)
+
+    def _decide_orientation(self, now: float) -> None:
+        """Jämför UniFis tx och rx med nedladdningen som pfSense ser, och välj den tolkning som stämmer."""
+        if self.unifi_tx_is_down is not None:
+            return
+        inet = self.history.top_scoped("internet", 3600, now)
+        inet_down = sum(v["down"] for k, v in inet.items() if k in self._unifi_bytes)
+        inet_up = sum(v["up"] for k, v in inet.items() if k in self._unifi_bytes)
+        tx, rx = self._orient["tx"], self._orient["rx"]
+        if inet_down + inet_up < 200e6 or tx + rx < 200e6:
+            return  # för lite data för att avgöra
+        # rätt tolkning är den där UniFis nedladdning täcker pfSense nedladdning bäst
+        score_tx = abs(min(tx, inet_down) - inet_down) + abs(min(rx, inet_up) - inet_up)
+        score_rx = abs(min(rx, inet_down) - inet_down) + abs(min(tx, inet_up) - inet_up)
+        self.unifi_tx_is_down = score_tx <= score_rx
+        log.info("UniFi tx_bytes tolkas som %s", "nedladdning" if self.unifi_tx_is_down else "uppladdning")
 
     # ── svar till webbsidan ──
     def set_alias(self, cid: str, name: str | None) -> None:

@@ -281,15 +281,17 @@ async def plex_thumb(server: int, path: str = Query(..., max_length=300)):
 
 
 @app.get("/api/top")
-async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: int = Query(10, ge=1, le=100)):
+async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: int = Query(10, ge=1, le=100),
+              scope: str = Query("internet", pattern="^(internet|internal|all)$")):
     engine: Engine = app.state.engine
-    return await asyncio.to_thread(engine.top, window, limit)
+    return await asyncio.to_thread(engine.top, window, limit, scope)
 
 
 @app.get("/api/series")
-async def series(window: str = Query("60m", pattern="^(5m|15m|60m|24h)$")):
+async def series(window: str = Query("60m", pattern="^(5m|15m|60m|24h)$"),
+                 scope: str = Query("internet", pattern="^(internet|internal|all)$")):
     engine: Engine = app.state.engine
-    return await asyncio.to_thread(engine.chart_series, window)
+    return await asyncio.to_thread(engine.chart_series, window, scope)
 
 
 @app.get("/api/health")
