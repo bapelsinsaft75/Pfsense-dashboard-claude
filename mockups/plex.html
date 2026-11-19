@@ -1,0 +1,138 @@
+<meta charset="utf-8">
+<title>Plex i dashboarden</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: statusrad med två Plex-servrar och en sektion "Strömmar just nu" längst ner. Samma mörka tema som dashboarden. */
+:root{
+  --bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;
+  --ok:#3ddc84;--err:#ff6b6b;--track:#0b131c;--plex:#e5a00d;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;display:grid;gap:16px}
+.num{font-variant-numeric:tabular-nums}
+.note{border:1px dashed var(--line);padding:8px 12px;color:var(--muted)}
+.note b{color:var(--accent);font-weight:500}
+
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
+.head h1{margin:0;font-family:var(--cond);font-weight:600;font-size:24px;letter-spacing:.06em;text-transform:uppercase}
+.head p{margin:0;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line);font-size:11px;color:var(--muted);background:var(--card)}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.chip.plex{color:var(--fg);border-color:rgba(229,160,13,.45)}
+.chip.plex small{color:var(--plex);font-size:10.5px}
+.chip.new{position:relative}
+.chip.new::after{content:"ny";position:absolute;top:-9px;right:-6px;font-size:9px;padding:0 4px;background:var(--accent);color:#1a1205}
+
+.ghost{border:1px solid var(--line);background:var(--card);height:120px;display:grid;place-items:center;color:var(--muted);font-family:var(--cond);letter-spacing:.12em;text-transform:uppercase}
+
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:14px;min-width:0}
+.card h2{margin:0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 small{font-family:var(--mono);text-transform:none;letter-spacing:.02em;color:var(--fg);font-size:11px;font-weight:400}
+.sum{display:flex;flex-wrap:wrap;gap:12px}
+.sum div{border:1px solid var(--line);background:var(--bg);padding:8px 12px;min-width:150px}
+.sum b{display:block;font-family:var(--cond);font-size:28px;font-weight:600;line-height:1.1}
+.sum div:first-child b{color:var(--plex)}
+.sum span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
+.streams{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px}
+.stream{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:12px;border:1px solid var(--line);background:var(--bg)}
+.poster{width:64px;height:96px;border-radius:2px;display:grid;place-items:center;font-family:var(--cond);font-size:26px;font-weight:600;color:rgba(255,255,255,.85)}
+.info{display:grid;gap:6px;min-width:0}
+.title{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.title b{font-weight:500;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title span{color:var(--muted);font-size:11.5px;white-space:nowrap}
+.sub{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px}
+.who .u{color:var(--fg)}
+.who .u::before{content:"● ";color:var(--plex)}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:11px;padding:0 7px;border:1px solid var(--line);color:var(--muted)}
+.tag.dp{color:var(--ok);border-color:rgba(61,220,132,.4)}
+.tag.tc{color:var(--accent);border-color:rgba(255,181,71,.45)}
+.tag.remote{color:var(--up);border-color:rgba(90,169,255,.4)}
+.prog{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:11px;color:var(--muted)}
+.bar{height:5px;background:var(--track);position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--plex)}
+.bar em{position:absolute;inset:0 auto 0 0;background:rgba(229,160,13,.25)}
+.state{font-size:11px}
+.state.play{color:var(--ok)}
+.state.pause{color:var(--muted)}
+@media (max-width:520px){.streams{grid-template-columns:1fr}.stream{grid-template-columns:52px minmax(0,1fr)}.poster{width:52px;height:78px}}
+</style>
+
+<div class="wrap">
+  <p class="note"><b>Skiss med exempeldata.</b> Överst syns statusraden med två nya markeringar för Plex. Längst ner på sidan kommer den nya sektionen med strömmar från båda servrarna tillsammans.</p>
+
+  <header class="head">
+    <div><h1>Nätverket hemma</h1><p>pfSense · Örebro · data från NetFlow · uppdaterad 20:14:37</p></div>
+    <div class="chips" aria-label="Datakällor">
+      <span class="chip">pfSense</span><span class="chip">VPN</span>
+      <span class="chip plex new" title="Peters Plex · v1.41.3 · 3 strömmar">Peters Plex <small>3</small></span>
+      <span class="chip plex new" title="Alex Plex · v1.41.3 · 1 ström">Alex Plex <small>1</small></span>
+      <span class="chip">UniFi</span><span class="chip">NetFlow</span><span class="chip">Syslog</span><span class="chip">GeoIP</span><span class="chip">E-post</span><span class="chip">Slack</span>
+    </div>
+  </header>
+
+  <div class="ghost">Karta, länder, grafer, säkerhet, UniFi och klienter som i dag</div>
+
+  <section class="card" aria-label="Plex">
+    <h2>Plex · strömmar just nu <small>uppdateras var 10:e sekund</small></h2>
+    <div class="sum">
+      <div><b class="num">4</b><span>strömmar totalt</span></div>
+      <div><b class="num">3</b><span>direktuppspelning</span></div>
+      <div><b class="num">1</b><span>omkodning</span></div>
+      <div><b class="num">41,6</b><span>Mbit/s totalt</span></div>
+      <div><b class="num">1</b><span>utanför hemmet</span></div>
+    </div>
+    <div class="streams">
+      <article class="stream">
+        <div class="poster" style="background:linear-gradient(160deg,#2f5d3a,#0f2416)">BB</div>
+        <div class="info">
+          <div class="title"><b>Breaking Bad</b><span>S03E07</span></div>
+          <div class="sub">One Minute · 2010</div>
+          <div class="who"><span class="u">Alex</span><span>Vardagsrum-TV · Plex för LG</span></div>
+          <div class="tags"><span class="tag dp">Direktuppspelning</span><span class="tag">1080p · H.264</span><span class="tag">EAC3 5.1</span><span class="tag num">12,3 Mbit/s</span></div>
+          <div class="prog"><div class="bar"><em style="width:62%"></em><i style="width:49%"></i></div><span class="state play">▶ 23:14 / 47:02</span></div>
+        </div>
+      </article>
+      <article class="stream">
+        <div class="poster" style="background:linear-gradient(160deg,#5a3a7a,#1b1030)">D2</div>
+        <div class="info">
+          <div class="title"><b>Dune: Part Two</b><span>Film</span></div>
+          <div class="sub">2024 · 2 h 46 min</div>
+          <div class="who"><span class="u">Peter</span><span>Apple-TV · Plex för tvOS</span></div>
+          <div class="tags"><span class="tag dp">Direktuppspelning</span><span class="tag">4K HDR · HEVC</span><span class="tag">TrueHD Atmos</span><span class="tag num">21,8 Mbit/s</span></div>
+          <div class="prog"><div class="bar"><em style="width:34%"></em><i style="width:28%"></i></div><span class="state play">▶ 46:40 / 2:46:00</span></div>
+        </div>
+      </article>
+      <article class="stream">
+        <div class="poster" style="background:linear-gradient(160deg,#7a4a1d,#2a1406)">TB</div>
+        <div class="info">
+          <div class="title"><b>The Bear</b><span>S02E06</span></div>
+          <div class="sub">Fishes · 2023</div>
+          <div class="who"><span class="u">Morfar</span><span>iPad · Plex för iOS</span></div>
+          <div class="tags"><span class="tag tc">Omkodning 4K → 720p (HW)</span><span class="tag remote">Utanför hemmet · Göteborg</span><span class="tag num">4,1 Mbit/s</span></div>
+          <div class="prog"><div class="bar"><em style="width:80%"></em><i style="width:71%"></i></div><span class="state play">▶ 47:55 / 66:00</span></div>
+        </div>
+      </article>
+      <article class="stream">
+        <div class="poster" style="background:linear-gradient(160deg,#1f4a6e,#0a1a2a)">♪</div>
+        <div class="info">
+          <div class="title"><b>Lorde – Melodrama</b><span>Musik</span></div>
+          <div class="sub">Green Light · 2017</div>
+          <div class="who"><span class="u">Peter</span><span>Sonos-Kök · Plexamp</span></div>
+          <div class="tags"><span class="tag dp">Direktuppspelning</span><span class="tag">FLAC 16/44,1</span><span class="tag num">1,4 Mbit/s</span></div>
+          <div class="prog"><div class="bar"><em style="width:100%"></em><i style="width:38%"></i></div><span class="state pause">❚❚ Pausad · 1:31 / 3:54</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
