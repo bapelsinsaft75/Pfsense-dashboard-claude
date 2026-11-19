@@ -136,6 +136,7 @@ def setup(engine: Engine) -> None:
         engine.status[name].update(enabled=True, ok=True, error=None, last=now)
     _seed_alerts(engine, now, rnd)
     _seed_plex(engine, now)
+    _seed_unraid(engine, now)
     tick(engine)
 
 
@@ -169,6 +170,42 @@ def _seed_plex(engine: Engine, now: float) -> None:
         srv.status.update(ok=True, error=None, last=now, version="1.41.3.9314", streams=len(srv.sessions))
     engine.plex_servers = [peter, alex]
     _REMOTE_CC["2.249.115.243"] = "SE"
+
+
+def _seed_unraid(engine: Engine, now: float) -> None:
+    from .unraid import Unraid, build, health
+    u = Unraid("Tower", "http://192.168.2.10", "demo", False)
+    TB = 11_718_885_324  # 12 TB-disk i KiB, som API:et
+    disk = lambda name, dev, used, temp, spin=True: {"name": name, "device": dev, "size": TB, "status": "DISK_OK",  # noqa: E731
+                                                    "temp": temp, "fsSize": TB, "fsUsed": int(TB * used), "fsFree": int(TB * (1 - used)),
+                                                    "isSpinning": spin}
+    sections = {
+        "system": {"info": {"os": {"hostname": "Tower", "uptime": 18 * 86400 + 4 * 3600},
+                            "cpu": {"brand": "Intel Core i5-12400", "threads": 12},
+                            "versions": {"core": {"unraid": "7.2.4"}}},
+                   "metrics": {"cpu": {"percentTotal": 23.4}, "memory": {"total": 34359738368, "used": 19541180416}}},
+        "array": {"array": {"state": "STARTED",
+                            "capacity": {"kilobytes": {"total": str(4 * TB), "used": str(int(2.62 * TB)), "free": str(int(1.38 * TB))}},
+                            "parities": [{"name": "parity", "device": "WDC WD120EFBX", "size": TB, "status": "DISK_OK", "temp": 38,
+                                          "isSpinning": True}],
+                            "disks": [disk("disk1", "WDC WD120EFBX", .82, 39), disk("disk2", "ST12000VN0008", .71, None, False),
+                                      disk("disk3", "ST12000VN0008", .94, 52), disk("disk4", "WDC WD120EFBX", .15, 36)],
+                            "caches": [{"name": "cache", "device": "Samsung 990 Pro", "size": 1_953_514_584, "status": "DISK_OK",
+                                        "temp": 44, "fsSize": 1_953_514_584, "fsUsed": 898_616_708, "isSpinning": True}]}},
+        "parity": {"parityHistory": [{"date": "2026-11-03T03:30:00", "duration": 61200, "errors": 0, "status": "OK"}]},
+        "docker": {"docker": {"containers": [
+            {"names": [f"/{n}"], "state": st, "status": stat, "autoStart": auto} for n, st, stat, auto in (
+                ("plex", "RUNNING", "Up 6 days", True), ("unifi-network-application", "RUNNING", "Up 18 days", True),
+                ("pfsense-dashboard", "RUNNING", "Up 2 hours", True), ("home-assistant", "RUNNING", "Up 18 days", True),
+                ("sonarr", "RUNNING", "Up 6 days", True), ("radarr", "RUNNING", "Up 6 days", True),
+                ("prowlarr", "RUNNING", "Up 6 days", True), ("tautulli", "RUNNING", "Up 6 days", True),
+                ("qbittorrent", "EXITED", "Exited (137) 12 minutes ago", True), ("handbrake", "EXITED", "Exited (0) 3 days ago", False))]}},
+        "vms": {"vms": {"domains": [{"name": "Windows 11", "state": "RUNNING"}, {"name": "Ubuntu test", "state": "SHUTOFF"}]}},
+    }
+    u.data = build(sections)
+    level, reasons = health(u.data)
+    u.status.update(ok=True, last=now, level=level, name="Tower", detail="; ".join(reasons))
+    engine.unraid = u
 
 
 def _seed_alerts(engine: Engine, now: float, rnd: random.Random) -> None:

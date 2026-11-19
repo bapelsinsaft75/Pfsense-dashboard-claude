@@ -7,6 +7,8 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
 - Vilka klienter som använder mest bandbredd just nu och mest data (24 timmar, 7 dagar, 30 dagar).
 - Lista över alla klienter med namn, IP och MAC. Du kan ge klienterna egna namn direkt i listan (pennan vid namnet).
 - Klientlistan kan filtreras på status (online, inaktiva) och anslutning (trådlöst, kabel, okänd).
+- Status för Unraid-servern: array, diskar med temperatur, processor, minne, Docker-containrar och
+  virtuella maskiner (med filter för körs/stoppade).
 - Status för en eller flera Plex-servrar, och vilka som strömmar just nu och vad.
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
   (med värdnamn och organisation) som kommunicerar med landet.
@@ -111,7 +113,18 @@ värdet efter `X-Plex-Token=` i adressfältet. Strömmarna från alla servrar vi
 och varje server får en egen statusmarkering. Omslagsbilderna hämtas via dashboarden, så webbläsaren behöver
 inte nå Plex-servrarna själv.
 
-## 6. Installera på Unraid
+## 6. Unraid-status (valfritt)
+
+1. Skapa en API-nyckel med läsbehörighet under *Settings → Management Access → API Keys*.
+2. Fyll i `UNRAID_URL` (t.ex. `http://192.168.2.10`) och `UNRAID_API_KEY`.
+3. Kör dashboarden på samma Unraid-server med egen IP på br0? Slå då på
+   *Settings → Docker → Host access to custom networks* (Docker måste stoppas medan du ändrar), annars kan
+   containern inte nå servern den körs på.
+
+Unraid-API:ets fältnamn har ändrats mellan versioner. Dashboarden provar flera varianter av varje fråga;
+vad som fungerade, och felen för det som inte gjorde det, syns på `/api/debug/unraid`.
+
+## 7. Installera på Unraid
 
 Imagen byggs automatiskt av GitHub Actions och publiceras som
 `ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest`.
@@ -159,6 +172,8 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `EMAIL_WARNINGS` | `false` | Mejla även varningar (kan ändras på webbsidan) |
 | `SLACK_WEBHOOK_URL` | | Incoming Webhook från Slack |
 | `SLACK_WARNINGS` | `true` | Skicka även varningar till Slack (kan ändras på webbsidan) |
+| `UNRAID_URL`, `UNRAID_API_KEY` | `http://192.168.2.10` | Unraid-servern att övervaka |
+| `UNRAID_NAME` | | Visningsnamn, tomt = serverns namn |
 | `PLEX1_NAME`, `PLEX1_URL`, `PLEX1_TOKEN` | `Peters Plex`, `http://192.168.2.56:32400` | Plex-server 1 (upp till `PLEX4_...`) |
 | `PLEX_VERIFY_SSL` | `false` | `false` för Plex egna certifikat |
 | `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |

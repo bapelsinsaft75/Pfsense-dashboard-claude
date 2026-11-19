@@ -86,6 +86,26 @@
       <th><button type="button" data-sort="name">Namn</button></th><th><button type="button" data-sort="ip">IP-adress</button></th><th><button type="button" data-sort="conn">Anslutning</button></th><th>MAC</th><th>Status</th>
       <th class="r-right"><button type="button" data-sort="now">Nu</button></th><th class="r-right"><button type="button" data-sort="bytes">Data ↓</button></th></tr></thead><tbody></tbody></table></div>
   </section>
+  <section class="card" id="unraid-card" hidden>
+    <h2><span id="ur-title">Unraid</span> <small id="ur-sub"></small></h2>
+    <div class="problems" id="ur-err"></div>
+    <div class="urtop" id="ur-top"></div>
+    <div class="urgrid">
+      <div class="urcol">
+        <h3>Diskar</h3>
+        <div class="tablebox"><table id="ur-disks"><thead><tr><th>Disk</th><th>Enhet</th><th>Status</th><th>Använt</th><th class="r-right">Storlek</th><th class="r-right">Temp</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="urcol">
+        <div class="urhead"><h3 id="ur-docker-h">Docker</h3>
+          <span class="seg small" role="group" aria-label="Filtrera containrar" id="ur-docker-f"><button type="button" aria-pressed="true" data-f="">Alla</button><button type="button" aria-pressed="false" data-f="running">Körs</button><button type="button" aria-pressed="false" data-f="stopped">Stoppade</button></span></div>
+        <div class="ctrs" id="ur-docker"></div>
+        <div class="urhead" id="ur-vm-head"><h3 id="ur-vm-h">Virtuella maskiner</h3>
+          <span class="seg small" role="group" aria-label="Filtrera virtuella maskiner" id="ur-vm-f"><button type="button" aria-pressed="true" data-f="">Alla</button><button type="button" aria-pressed="false" data-f="running">Körs</button><button type="button" aria-pressed="false" data-f="stopped">Stoppade</button></span></div>
+        <div class="ctrs" id="ur-vms"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="card" id="plex-card" hidden>
     <h2>Plex · strömmar just nu <small>alla servrar tillsammans</small></h2>
     <div class="plexsum" id="plex-sum"></div>

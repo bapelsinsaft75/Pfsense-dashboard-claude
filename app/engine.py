@@ -18,6 +18,7 @@ from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
                       parse_state, wan_counters)
 from .plex import PlexServer
+from .unraid import Unraid
 from .settings import Settings
 from .slack import Slack
 from .syslog import parse_filterlog, parse_suricata
@@ -68,6 +69,8 @@ class Engine:
         self.settings = Settings(cfg, persist=not cfg.demo)
         self.mailer = Mailer(cfg)
         self.slack = Slack(cfg)
+        self.unraid = (Unraid(cfg.unraid_name or None, cfg.unraid_url, cfg.unraid_api_key, cfg.unraid_verify_ssl)
+                       if cfg.unraid_url and cfg.unraid_api_key else None)
         self.plex_servers = [PlexServer(i, p["name"], p["url"], p["token"], cfg.plex_verify_ssl)
                              for i, p in enumerate(cfg.plex_servers)]
         self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
@@ -727,6 +730,7 @@ class Engine:
             "series": self.history.series(since, step, now),
             "series_step": step,
             "plex": self.plex_summary(),
+            "unraid": {"status": self.unraid.status, **self.unraid.data} if self.unraid else None,
             "alerts": self.alerts.banner(now),
             "events": self.alerts.recent(25),
             "security": self.security(int(now - 86400)),

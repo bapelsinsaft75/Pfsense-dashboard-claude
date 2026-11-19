@@ -182,6 +182,80 @@ function renderEvents(d) {
     : `<div class="empty">Inga larm. Här visas allt som har hänt, även larm du har stängt.</div>`;
 }
 
+/* ── Unraid ── */
+const urFilter = { docker: "", vm: "" };
+try { Object.assign(urFilter, JSON.parse(localStorage.getItem("urFilter") || "{}")); } catch (e) { /* ingen lagring */ }
+const GB = 1024 ** 3;
+function fmtSize(b) { if (b == null) return "–"; return b >= 1e12 ? fmt(b / 1e12, 1) + " TB" : fmt(b / 1e9, 0) + " GB"; }
+function fmtUptime(sec) {
+  if (sec == null) return null;
+  const d = Math.floor(sec / 86400), h = Math.floor(sec / 3600) % 24, m = Math.floor(sec / 60) % 60;
+  return d ? `${d} ${d === 1 ? "dag" : "dagar"} ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+function dockerStatus(c) {
+  const st = c.status || "";
+  const unit = { second: "s", seconds: "s", minute: "min", minutes: "min", hour: "h", hours: "h", day: "dagar", days: "dagar", week: "veckor", weeks: "veckor", month: "mån", months: "mån" };
+  const up = st.match(/^Up\s+(?:About\s+)?(an?|\d+)\s+(\w+)/i);
+  if (up) { const n = /^an?$/i.test(up[1]) ? 1 : up[1]; return `körs · ${n} ${unit[up[2].toLowerCase()] || up[2]}`; }
+  const ex = st.match(/^Exited\s+\((\d+)\)\s+(?:About\s+)?(an?|\d+)\s+(\w+)\s+ago/i);
+  const when = ex ? ` · för ${/^an?$/i.test(ex[2]) ? 1 : ex[2]} ${unit[ex[3].toLowerCase()] || ex[3]} sedan` : "";
+  if (c.state === "bad") return `stoppad oväntat${when}`;
+  if (c.state === "running") return "körs";
+  return `stoppad${when}`;
+}
+let cpuHistory = [];
+function renderUnraid(d) {
+  const u = d.unraid;
+  $("unraid-card").hidden = !u;
+  if (!u) return;
+  const st = u.status;
+  $("ur-title").textContent = `Unraid · ${st.name || u.hostname || "server"}`;
+  $("ur-sub").textContent = [u.version ? `Unraid ${u.version}` : null, u.uptime != null ? `drifttid ${fmtUptime(u.uptime)}` : null, "uppdateras var 30:e sekund"].filter(Boolean).join(" · ");
+  $("ur-err").innerHTML = !st.ok && st.error ? `<div class="problem"><b>Unraid</b>${esc(st.error)}</div>` : "";
+  if (!st.ok && !u.disks) { $("ur-top").innerHTML = ""; return; }
+  const cap = u.capacity || {}, mem = u.memory || {}, cpu = u.cpu || {};
+  if (cpu.pct != null) { cpuHistory.push(cpu.pct); cpuHistory = cpuHistory.slice(-30); }
+  const spark = cpuHistory.length > 1 ? `<svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"><path d="${cpuHistory.map((v, i) => `${i ? "L" : "M"}${(i / (cpuHistory.length - 1) * 120).toFixed(1)} ${(26 - v / 100 * 24).toFixed(1)}`).join(" ")}" fill="none" stroke="#7fb0d8" stroke-width="1.5"/></svg>` : "";
+  const started = u.array_state === "STARTED";
+  const par = u.parity_last;
+  const parTxt = par ? `senaste paritetskontroll ${esc(new Date(par.date).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }))}, ${par.errors ?? "?"} fel` : "";
+  const parBad = u.disks && u.disks.some((x) => x.role === "parity" && x.status === "err");
+  $("ur-top").innerHTML = `
+    <div class="urtile"><span class="l">Array</span><span class="v${started ? "" : " bad"}">${started ? "Startad" : esc((u.array_state || "Okänd").toLowerCase())}</span><span class="s">${parBad ? '<span class="pill err">Parity ogiltig</span>' : '<span class="pill">Parity giltig</span>'}${parTxt ? " · " + parTxt : ""}</span></div>
+    <div class="urtile"><span class="l">Lagring</span><span class="v num">${cap.used != null ? fmt(cap.used / 1e12, 1) : "–"}<small>av ${cap.total != null ? fmt(cap.total / 1e12, 0) : "–"} TB</small></span><div class="meter"><i class="${cap.pct >= 90 ? "hot" : ""}" style="width:${cap.pct || 0}%"></i></div><span class="s">${cap.free != null ? fmt(cap.free / 1e12, 1) + " TB ledigt" : ""}${cap.pct != null ? " · " + fmt(cap.pct, 0) + " %" : ""}</span></div>
+    <div class="urtile"><span class="l">Processor</span><span class="v num">${cpu.pct != null ? fmt(cpu.pct, 0) : "–"}<small>%</small></span>${spark}<span class="s">${esc([cpu.brand, cpu.threads ? cpu.threads + " trådar" : null].filter(Boolean).join(" · "))}</span></div>
+    <div class="urtile"><span class="l">Minne</span><span class="v num">${mem.used != null ? fmt(mem.used / GB, 1) : "–"}<small>av ${mem.total != null ? fmt(mem.total / GB, 0) : "–"} GB</small></span><div class="meter"><i style="width:${mem.pct || 0}%"></i></div><span class="s">${mem.pct != null ? fmt(mem.pct, 0) + " %" : ""}</span></div>`;
+  const roleName = (x) => x.role === "parity" ? (x.name === "parity" ? "Parity" : x.name.replace(/^parity/, "Parity ")) : x.role === "cache" ? (x.name === "cache" ? "Cache" : x.name) : x.name.replace(/^disk(\d+)$/, "Disk $1");
+  document.querySelector("#ur-disks tbody").innerHTML = (u.disks || []).map((x) => {
+    const pill = x.status === "ok" ? "" : x.status === "idle" ? " idle" : x.status === "warn" ? " warn" : " err";
+    return `<tr><td>${esc(roleName(x))}</td><td class="muted">${esc(x.device || "–")}</td><td><span class="pill${pill}">${esc(x.label)}</span></td><td>${x.used_pct != null ? `<span class="dbar"><i class="${x.used_pct >= 90 ? "hot" : ""}" style="width:${x.used_pct}%"></i></span>${fmt(x.used_pct, 0)} %` : '<span class="muted">–</span>'}</td><td class="r-right num">${fmtSize(x.size_bytes)}</td><td class="r-right num${x.temp >= 50 ? " hot" : ""}">${x.temp != null ? fmt(x.temp, 0) + " °C" : '<span class="muted">–</span>'}</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted">Inga diskar i svaret från Unraid.</td></tr>`;
+  const cs = u.containers || [];
+  const running = cs.filter((c) => c.state === "running").length;
+  $("ur-docker-h").textContent = `Docker · ${running} av ${cs.length} körs`;
+  const cf = cs.filter((c) => !urFilter.docker || (urFilter.docker === "running" ? c.state === "running" : c.state !== "running"));
+  $("ur-docker").innerHTML = cf.length ? cf.map((c) => `<div class="ctr"><i class="${c.state}"></i><span title="${esc(c.image || "")}">${esc(c.name)}</span><small class="${c.state === "bad" ? "bad" : ""}">${esc(dockerStatus(c))}</small></div>`).join("")
+    : `<div class="empty">${cs.length ? "Inga containrar matchar filtret." : "Inga containrar i svaret från Unraid."}</div>`;
+  const vms = u.vms || [];
+  $("ur-vm-head").hidden = !vms.length; $("ur-vms").hidden = !vms.length;
+  $("ur-vm-h").textContent = `Virtuella maskiner · ${vms.filter((v) => v.running).length} av ${vms.length} körs`;
+  const vf = vms.filter((v) => !urFilter.vm || (urFilter.vm === "running" ? v.running : !v.running));
+  const vmState = { running: "körs", idle: "körs", paused: "pausad", shutoff: "avstängd", shutdown: "stängs av", crashed: "kraschad", pmsuspended: "viloläge" };
+  $("ur-vms").innerHTML = vf.length ? vf.map((v) => `<div class="ctr"><i class="${v.running ? "running" : v.state === "crashed" ? "bad" : "stopped"}"></i><span>${esc(v.name)}</span><small>${esc(vmState[v.state] || v.state || "")}</small></div>`).join("")
+    : `<div class="empty">Inga virtuella maskiner matchar filtret.</div>`;
+  for (const [id, key] of [["ur-docker-f", "docker"], ["ur-vm-f", "vm"]]) {
+    $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.f === urFilter[key]));
+  }
+}
+for (const [id, key] of [["ur-docker-f", "docker"], ["ur-vm-f", "vm"]]) {
+  $(id).addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    urFilter[key] = b.dataset.f;
+    try { localStorage.setItem("urFilter", JSON.stringify(urFilter)); } catch (err) { /* ingen lagring */ }
+    if (state.data) renderUnraid(state.data);
+  });
+}
+
 /* ── Plex ── */
 const msToTime = (ms) => {
   if (ms == null) return "–";
@@ -350,8 +424,11 @@ function renderStatus(d) {
     const tip = p.ok ? `${p.name}${p.version ? " · v" + p.version : ""} · ${p.streams} ${p.streams === 1 ? "ström" : "strömmar"}` : (p.error || "Väntar på svar");
     return `<button type="button" class="chip plex ${cls}" data-goto="plex-card" title="${esc(tip)} · Klicka för att se strömmarna">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</button>`;
   });
+  const u = d.unraid && d.unraid.status;
+  const unraidChip = u ? [`<button type="button" class="chip unraid ${u.ok ? (u.level === "ok" ? "ok" : u.level) : (u.error ? "err" : "")}" data-goto="unraid-card" title="${esc((u.name || "Unraid") + " · " + (u.ok ? u.detail : (u.error || "Väntar på svar")) + " · Klicka för detaljer")}">Unraid</button>`] : [];
+  if (u && !u.ok && u.error) problems.push(["Unraid", u.error]);
   const vpnAt = chips.findIndex((c) => c.includes(">VPN<"));
-  chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...plexChips);
+  chips.splice(vpnAt >= 0 ? vpnAt + 1 : 1, 0, ...unraidChip, ...plexChips);
   $("chips").innerHTML = chips.join("");
   $("problems").innerHTML = problems.map(([l, e]) => `<div class="problem"><b>${esc(l)}</b>${esc(e)}</div>`).join("");
   $("demo").hidden = d.mode !== "demo";
@@ -546,7 +623,7 @@ function render() {
   if (!d) return;
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
-  renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d);
+  renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d); renderUnraid(d);
   renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderTop(d); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
   map.flows = d.flows;

@@ -135,6 +135,13 @@ class Config:
         self.plex_verify_ssl = env_bool("PLEX_VERIFY_SSL", False)
         self.plex_poll = max(5, env_int("PLEX_POLL_SECONDS", 10))
 
+        # Unraid (GraphQL-API, Settings → Management Access → API Keys)
+        self.unraid_url = _base_url(env("UNRAID_URL", "") or "", "http")
+        self.unraid_api_key = env("UNRAID_API_KEY", "") or ""
+        self.unraid_name = env("UNRAID_NAME", "") or ""
+        self.unraid_verify_ssl = env_bool("UNRAID_VERIFY_SSL", False)
+        self.unraid_poll = max(10, env_int("UNRAID_POLL_SECONDS", 30))
+
         self.debug_endpoints = env_bool("DEBUG_ENDPOINTS", True)
 
         demo = (env("DEMO", "auto") or "auto").lower()

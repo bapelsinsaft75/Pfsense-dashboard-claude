@@ -70,6 +70,15 @@ async def vpn_loop(engine: Engine, pf: PfSense) -> None:
         await asyncio.sleep(engine.cfg.vpn_poll)
 
 
+async def unraid_loop(engine: Engine) -> None:
+    while True:
+        try:
+            await engine.unraid.poll()
+        except Exception:  # noqa: BLE001
+            log.exception("Unraid-insamling misslyckades")
+        await asyncio.sleep(engine.cfg.unraid_poll)
+
+
 async def plex_loop(engine: Engine) -> None:
     while True:
         await asyncio.gather(*(s.poll() for s in engine.plex_servers), return_exceptions=True)
@@ -137,6 +146,9 @@ async def lifespan(app: FastAPI):
             uf = UniFi(cfg)
             closers.append(uf.close)
             tasks.append(asyncio.create_task(unifi_loop(engine, uf)))
+        if engine.unraid:
+            tasks.append(asyncio.create_task(unraid_loop(engine)))
+            closers.append(engine.unraid.close)
         if engine.plex_servers:
             tasks.append(asyncio.create_task(plex_loop(engine)))
             closers.extend(s.close for s in engine.plex_servers)
@@ -318,6 +330,20 @@ async def test_slack():
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"ok": True}
+
+
+@app.get("/api/debug/unraid")
+async def debug_unraid():
+    engine: Engine = app.state.engine
+    if not engine.cfg.debug_endpoints:
+        raise HTTPException(404)
+    u = engine.unraid
+    if not u:
+        return {"configured": False, "hint": "Fyll i UNRAID_URL och UNRAID_API_KEY."}
+    from .unraid import QUERIES
+    return {"configured": True, "url": u.url, "status": u.status,
+            "chosen_query": {k: QUERIES[k][i] for k, i in u.chosen.items()},
+            "errors": u.errors, "raw": u.raw}
 
 
 @app.get("/api/debug/netflow")
