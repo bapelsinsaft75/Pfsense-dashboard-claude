@@ -143,7 +143,7 @@ svg.chart text{fill:var(--muted);font-size:10px;font-family:var(--mono)}
     s += `<rect x="${(x(i) + 1).toFixed(1)}" width="${(bw - 2).toFixed(1)}" y="${y(wan[i] + lan[i]).toFixed(1)}" height="${(y(wan[i]) - y(wan[i] + lan[i])).toFixed(1)}" fill="#3fd1c2" fill-opacity=".85"/>`;
   }
   const bi = 11;
-  s += `<text x="${x(bi) + bw / 2}" y="${y(wan[bi] + lan[bi]) - 6}" text-anchor="middle" style="fill:#d4e0ec">nattlig backup till Tower</text>`;
+  s += `<text x="${x(bi)}" y="${y(Math.max(...lan.slice(10, 15).map((v, k) => v + wan[10 + k]))) - 6}" text-anchor="start" style="fill:#d4e0ec">nattlig backup till Tower</text>`;
   svg.innerHTML = s;
 })();
 </script>
