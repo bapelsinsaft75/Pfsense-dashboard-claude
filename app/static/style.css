@@ -475,3 +475,30 @@ body[data-layout="sidomeny"] .wrap{max-width:1600px;grid-template-columns:230px 
 body.ldrawer-open{overflow:hidden}
 @media (prefers-reduced-motion:no-preference){.ldrawer{animation:slidein .25s ease-out}}
 @keyframes slidein{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
+
+/* topplista */
+.tophead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.toptabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:1 1 auto}
+.toptabs button{all:unset;cursor:pointer;padding:3px 8px 6px;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.toptabs button[aria-selected="true"]{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.toptabs button:focus-visible{outline:2px solid var(--accent)}
+.topmeta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.topmeta b{color:var(--fg);font-weight:500}
+.topmeta .key{display:flex;gap:12px}
+.topmeta .key i{display:inline-block;width:10px;height:6px;margin-right:5px;vertical-align:1px}
+.topc{display:grid;gap:10px}
+.tr{display:grid;grid-template-columns:22px minmax(0,1fr) 72px auto;gap:3px 10px;align-items:center}
+.tr .ico{color:var(--muted)}
+.tr .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .n small{color:var(--muted);margin-left:6px}
+.tr .v{text-align:right;white-space:nowrap}
+.tr .v small{color:var(--muted);font-size:11px;margin-left:3px}
+.tr .sp{width:72px;height:18px;display:block}
+.tr .bar{grid-column:2/-1;height:8px;background:var(--track);display:flex;overflow:hidden}
+.tr .bar .d{background:var(--accent)}
+.tr .bar .u{background:var(--up)}
+.tr .bar .t{background:linear-gradient(90deg,#3a5874,#7fb0d8)}
+.tr .sub{grid-column:2/-1;color:var(--muted);font-size:11px;display:flex;gap:10px;flex-wrap:wrap}
+.tr .rank{color:var(--muted);font-size:11px;text-align:center}
+.tr.pickable:hover .n{color:var(--accent)}
+#topc-more{justify-self:start}

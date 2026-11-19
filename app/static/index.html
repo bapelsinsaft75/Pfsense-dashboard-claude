@@ -52,8 +52,13 @@
       <div class="legend"><span><i style="background:var(--accent)"></i>Nedladdning</span><span><i style="background:var(--up)"></i>Uppladdning</span></div>
     </div>
     <div class="card">
-      <h2>Mest data <small id="topc-s"></small></h2>
+      <div class="tophead">
+        <div class="toptabs" role="tablist" aria-label="Topplista"><button type="button" role="tab" data-tmode="bw" aria-selected="true">Mest bandbredd</button><button type="button" role="tab" data-tmode="data" aria-selected="false">Mest data</button></div>
+        <div class="seg small" role="group" aria-label="Period" id="topwin"><button type="button" data-twin="5m" aria-pressed="true">5 min</button><button type="button" data-twin="15m" aria-pressed="false">15 min</button><button type="button" data-twin="60m" aria-pressed="false">60 min</button><button type="button" data-twin="24h" aria-pressed="false">24 h</button></div>
+      </div>
+      <div class="topmeta" id="topc-s"></div>
       <div class="topc" id="topc"></div>
+      <button type="button" class="linkbtn" id="topc-more" hidden>Visa fler</button>
     </div>
   </section>
 

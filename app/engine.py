@@ -647,6 +647,33 @@ class Engine:
         return {"cc": cc, "period": period, "clients": sorted(clients.values(), key=lambda c: c["bytes"], reverse=True),
                 "remotes": remotes}
 
+    def top(self, window: str = "5m", limit: int = 10) -> dict:
+        """Topplista: mest bandbredd och mest data under en kort period (5/15/60 min) eller 24 timmar."""
+        seconds = {"5m": 300, "15m": 900, "60m": 3600, "24h": 86400}.get(window, 300)
+        now = time.time()
+        self.history.prune_recent(now)
+        rows = self.history.top_day(int(now - seconds), now) if seconds > 3600 else self.history.top_recent(seconds, now)
+        items = []
+        for cid, r in rows.items():
+            c = self.clients.get(cid, {})
+            u = self.unifi_clients.get(cid, {})
+            ip = c.get("ip") or u.get("ip") or (cid[3:] if cid.startswith("ip-") else None)
+            if ip and not self.cfg.is_lan(ip):
+                continue
+            name = self.display_name(cid)
+            total = r["up"] + r["down"]
+            items.append({
+                "id": cid, "name": name, "ip": ip,
+                "type": guess_type(name, c.get("dhcp_hostname"), u.get("hostname"), u.get("oui"), kind=u.get("kind")),
+                "up": r["up"], "down": r["down"], "bytes": total,
+                "avg_bps": total * 8 / seconds, "avg_down_bps": r["down"] * 8 / seconds, "avg_up_bps": r["up"] * 8 / seconds,
+                "peak_bps": max(r["peak_bps"], total * 8 / seconds), "spark": r["spark"], "country": r.get("country"),
+            })
+        items.sort(key=lambda x: x["bytes"], reverse=True)
+        total = sum(x["bytes"] for x in items)
+        return {"window": window, "seconds": seconds, "total_bytes": total, "total_bps": total * 8 / seconds,
+                "count": len(items), "items": items[:limit]}
+
     def plex_summary(self) -> dict:
         servers = [dict(s.status) for s in self.plex_servers]
         sessions = [dict(x) for s in self.plex_servers for x in s.sessions]

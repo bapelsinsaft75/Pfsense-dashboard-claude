@@ -360,3 +360,39 @@ def test_recipients_per_server(engine):
     assert FakeSMTP.sent[-1]["To"] == "peter@exempel.se"
     engine.alerts.resolve("plex:a", "uppe")
     assert FakeSMTP.sent[-1]["To"] == "alex@exempel.se, alla@exempel.se" and "Löst" in FakeSMTP.sent[-1]["Subject"]
+
+
+def test_top_list(engine):
+    now = 1_800_000_000.0
+    h = engine.history
+    engine.clients["aa:00:00:00:00:01"] = {"mac": "aa:00:00:00:00:01", "ip": "192.168.1.41", "descr": "PS5"}
+    engine.clients["aa:00:00:00:00:02"] = {"mac": "aa:00:00:00:00:02", "ip": "192.168.1.10", "descr": "Unraid"}
+    # PS5: 30 MB per 30 s de senaste 5 minuterna (= 8 Mbit/s), med en topp
+    for i in range(10):
+        h.add_recent("aa:00:00:00:00:01", "DE", 0, 30_000_000 if i != 3 else 60_000_000, now - 290 + i * 30)
+    # Unraid: lite trafik för 10 minuter sedan, inget de senaste 5
+    h.add_recent("aa:00:00:00:00:02", "US", 50_000_000, 0, now - 600)
+    r5 = h.top_recent(300, now)
+    assert set(r5) == {"aa:00:00:00:00:01"} and r5["aa:00:00:00:00:01"]["down"] == 330_000_000
+    assert r5["aa:00:00:00:00:01"]["peak_bps"] == 60_000_000 * 8 / 30 and r5["aa:00:00:00:00:01"]["country"] == "DE"
+    r15 = h.top_recent(900, now)
+    assert set(r15) == {"aa:00:00:00:00:01", "aa:00:00:00:00:02"}
+    import app.engine as eng
+    import time as _t
+    real = _t.time
+    try:
+        eng.time.time = lambda: now
+        t = engine.top("5m")
+    finally:
+        eng.time.time = real
+    assert t["items"][0]["name"] == "PS5" and round(t["items"][0]["avg_bps"] / 1e6, 1) == 8.8
+    h.prune_recent(now + 4000)
+    assert not h.recent
+
+
+def test_top_day(engine):
+    now = 1_800_000_000
+    engine.history.insert_raw([(now - 3600, 300, "x", "SE", "out", 1000, 9000, 1), (now - 1800, 300, "x", "DE", "out", 0, 30000, 1)])
+    d = engine.history.top_day(now - 86400, now)
+    assert d["x"]["down"] == 39000 and d["x"]["country"] == "DE" and d["x"]["peak_bps"] == 30000 * 8 / 300
+    assert len(d["x"]["spark"]) == 24

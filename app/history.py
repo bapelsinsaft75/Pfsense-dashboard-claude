@@ -41,6 +41,8 @@ CREATE INDEX IF NOT EXISTS remotes_ts ON remotes(ts);
 CREATE TABLE IF NOT EXISTS aliases(cid TEXT PRIMARY KEY, name TEXT NOT NULL, updated INTEGER);
 """
 REMOTE_BUCKET = 3600
+RECENT_SLOT = 30          # sekunder per lucka i korttidsminnet
+RECENT_KEEP = 3600 + 120  # hur länge luckorna sparas
 
 
 class History:
@@ -59,6 +61,8 @@ class History:
         self.pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
         self.sec_pending: dict[tuple, int] = defaultdict(int)
         self.rem_pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
+        # korttidsminne för topplistan: (lucka, klient, land) -> [upp, ned]
+        self.recent: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
 
     # ── skrivning ──
     def add(self, cid: str, cc: str | None, direction: str, up: int, down: int, conns: int = 0, ts: float | None = None,
@@ -71,11 +75,69 @@ class History:
             r[0] += max(0, up)
             r[1] += max(0, down)
             r[2] += max(0, conns)
+        self.add_recent(cid, cc, up, down, now)
         bucket = int(now // BUCKET * BUCKET)
         acc = self.pending[(bucket, cid, cc or "", direction)]
         acc[0] += max(0, up)
         acc[1] += max(0, down)
         acc[2] += max(0, conns)
+
+    def add_recent(self, cid: str, cc: str | None, up: int, down: int, ts: float | None = None) -> None:
+        if up <= 0 and down <= 0:
+            return
+        now = ts or time.time()
+        r = self.recent[(int(now // RECENT_SLOT * RECENT_SLOT), cid, cc or "")]
+        r[0] += max(0, up)
+        r[1] += max(0, down)
+
+    def prune_recent(self, now: float | None = None) -> None:
+        cut = (now or time.time()) - RECENT_KEEP
+        for k in [k for k in self.recent if k[0] < cut]:
+            del self.recent[k]
+
+    def top_recent(self, window: int, now: float | None = None, points: int = 12) -> dict[str, dict]:
+        """Per klient: upp/ned, toppbandbredd och en kurva för de senaste `window` sekunderna."""
+        now = now or time.time()
+        start = now - window
+        out: dict[str, dict] = {}
+        step = max(RECENT_SLOT, window // points)
+        for (slot, cid, cc), (up, down) in list(self.recent.items()):
+            if slot + RECENT_SLOT <= start:
+                continue
+            c = out.setdefault(cid, {"up": 0, "down": 0, "slots": defaultdict(int), "cc": defaultdict(int), "spark": defaultdict(int)})
+            c["up"] += up
+            c["down"] += down
+            c["slots"][slot] += up + down
+            c["cc"][cc] += up + down
+            c["spark"][int((slot - start) // step)] += up + down
+        for c in out.values():
+            c["peak_bps"] = max(c["slots"].values()) * 8 / RECENT_SLOT if c["slots"] else 0
+            n = max(1, int(window // step))
+            c["spark"] = [c["spark"].get(i, 0) * 8 / step for i in range(n)]
+            cc = {k: v for k, v in c["cc"].items() if k}
+            c["country"] = max(cc, key=cc.get) if cc else None
+            del c["slots"], c["cc"]
+        return out
+
+    def top_day(self, since: int, now: float | None = None) -> dict[str, dict]:
+        """Samma som top_recent men ur historiken (5-minutershinkar), för 24 timmar."""
+        now = now or time.time()
+        tot = self.client_totals(since)
+        peaks = dict(self._q("SELECT cid, max(s) FROM (SELECT cid, ts, sum(up+down) AS s FROM traffic WHERE ts>=? AND res=? "
+                             "GROUP BY cid, ts) GROUP BY cid", (since, BUCKET)))
+        sparks: dict[str, list[float]] = {}
+        for cid, h, s in self._q("SELECT cid, (ts-?)/3600, sum(up+down) FROM traffic WHERE ts>=? GROUP BY cid, (ts-?)/3600",
+                                 (since, since, since)):
+            sparks.setdefault(cid, [0.0] * 24)
+            if 0 <= h < 24:
+                sparks[cid][h] = s * 8 / 3600
+        countries: dict[str, tuple[int, str]] = {}
+        for cid, cc, s in self._q("SELECT cid, cc, sum(up+down) FROM traffic WHERE ts>=? AND cc!='' GROUP BY cid, cc", (since,)):
+            if s > countries.get(cid, (0, ""))[0]:
+                countries[cid] = (s, cc)
+        return {cid: {"up": up, "down": down, "peak_bps": (peaks.get(cid) or 0) * 8 / BUCKET,
+                      "spark": sparks.get(cid, [0.0] * 24), "country": countries.get(cid, (0, None))[1]}
+                for cid, (up, down) in tot.items()}
 
     def add_security(self, source: str, label: str, prio: int, cid: str, remote: str, cc: str, direction: str,
                      ts: float | None = None) -> None:

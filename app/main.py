@@ -280,6 +280,12 @@ async def plex_thumb(server: int, path: str = Query(..., max_length=300)):
     return Response(hit[0], media_type=hit[1], headers={"Cache-Control": "max-age=3600"})
 
 
+@app.get("/api/top")
+async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: int = Query(10, ge=1, le=100)):
+    engine: Engine = app.state.engine
+    return await asyncio.to_thread(engine.top, window, limit)
+
+
 @app.get("/api/health")
 async def health():
     engine: Engine = app.state.engine

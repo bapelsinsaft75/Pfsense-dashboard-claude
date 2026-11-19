@@ -626,13 +626,66 @@ function renderChart(d) {
   $("chart-s").textContent = `Mbit/s, klienter mot internet, ${PERIOD_LABEL[d.period]}`;
 }
 
-function renderTop(d) {
-  const top = d.clients.filter((c) => c.bytes > 0).slice(0, 7);
-  const mx = top.length ? top[0].bytes : 1;
-  $("topc-s").textContent = PERIOD_LABEL[d.period];
-  $("topc").innerHTML = top.length ? top.map((c) => `<div class="r pickable" data-id="${esc(c.id)}">${icon(c.type)}<span class="n">${esc(c.name)}</span><span class="num">${fmtBytes(c.bytes)}</span><div class="t"><div style="width:${c.bytes / mx * 100}%"></div></div></div>`).join("")
-    : `<div class="empty">Ingen data än. Den första mätningen kommer inom några minuter.</div>`;
+/* ── topplista: mest bandbredd och mest data ── */
+const topState = (() => { try { return { mode: "bw", win: "5m", ...JSON.parse(localStorage.getItem("topList") || "{}"), more: false }; } catch (e) { return { mode: "bw", win: "5m", more: false }; } })();
+let topData = null;
+const WIN_LABEL = { "5m": "5 min", "15m": "15 min", "60m": "60 min", "24h": "24 h" };
+function fmtMbit(bps) { const m = bps / 1e6; return m >= 100 ? fmt(m, 0) : m >= 10 ? fmt(m, 0) : m >= 1 ? fmt(m, 1) : fmt(m, 2); }
+function sparkPath(vals) {
+  if (!vals || vals.length < 2) return "";
+  const mx = Math.max(...vals) || 1;
+  return vals.map((v, i) => `${i ? "L" : "M"}${(i / (vals.length - 1) * 72).toFixed(1)} ${(16 - v / mx * 14).toFixed(1)}`).join(" ");
 }
+async function loadTop() {
+  try {
+    const r = await fetch(`api/top?window=${topState.win}&limit=${topState.more ? 25 : 10}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    topData = await r.json();
+    renderTop();
+  } catch (e) { $("topc").innerHTML = `<div class="empty">Kunde inte hämta topplistan (${esc(e.message)}).</div>`; }
+}
+function renderTop() {
+  document.querySelectorAll("[data-tmode]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tmode === topState.mode));
+  document.querySelectorAll("[data-twin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.twin === topState.win));
+  const t = topData;
+  if (!t) return;
+  const bw = topState.mode === "bw";
+  const items = t.items.slice().sort((a, b) => (bw ? b.avg_bps - a.avg_bps : b.bytes - a.bytes)).filter((x) => x.bytes > 0);
+  const label = t.window === "24h" ? "senaste 24 timmarna" : `senaste ${WIN_LABEL[t.window]}`;
+  $("topc-s").innerHTML = bw
+    ? `<span>Snitt ${label} · totalt <b>${fmtMbit(t.total_bps)} Mbit/s</b></span><span class="key"><span><i style="background:var(--accent)"></i>ned</span><span><i style="background:var(--up)"></i>upp</span></span>`
+    : `<span>${label[0].toUpperCase() + label.slice(1)} · totalt <b>${fmtBytes(t.total_bytes)}</b></span><span class="key"><span><i style="background:linear-gradient(90deg,#3a5874,#7fb0d8)"></i>andel av totalen</span></span>`;
+  if (!items.length) {
+    $("topc").innerHTML = `<div class="empty">${t.window === "24h" ? "Ingen data än." : `Ingen trafik registrerad de senaste ${WIN_LABEL[t.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
+    $("topc-more").hidden = true;
+    return;
+  }
+  const mx = bw ? Math.max(...items.map((x) => x.avg_bps)) || 1 : t.total_bytes || 1;
+  $("topc").innerHTML = items.map((x, i) => {
+    if (bw) {
+      const dw = x.avg_down_bps / mx * 100, uw = x.avg_up_bps / mx * 100;
+      return `<div class="tr pickable" data-id="${esc(x.id)}">${icon(x.type)}<span class="n" title="${esc(x.ip || "")}">${esc(x.name)}</span><svg class="sp" viewBox="0 0 72 18" preserveAspectRatio="none" aria-hidden="true"><path d="${sparkPath(x.spark)}" fill="none" stroke="var(--accent)" stroke-width="1.4"/></svg><span class="v num">${fmtMbit(x.avg_bps)}<small>Mbit/s</small></span>
+        <div class="bar"><span class="d" style="width:${dw}%"></span><span class="u" style="width:${uw}%"></span></div>
+        <span class="sub"><span>${fmtMbit(x.avg_down_bps)} ned · ${fmtMbit(x.avg_up_bps)} upp</span><span>topp ${fmtMbit(x.peak_bps)} Mbit/s</span></span></div>`;
+    }
+    const share = x.bytes / mx * 100;
+    return `<div class="tr pickable" data-id="${esc(x.id)}"><span class="rank">${i + 1}</span><span class="n">${esc(x.name)}${x.ip ? ` <small>${esc(x.ip)}</small>` : ""}</span><span></span><span class="v num">${fmtBytes(x.bytes)}</span>
+      <div class="bar"><span class="t" style="width:${share}%"></span></div>
+      <span class="sub"><span>${fmt(share, 0)} % · ${fmtBytes(x.down)} ned · ${fmtBytes(x.up)} upp</span>${x.country ? `<span>mest till ${esc(countryName(x.country))}</span>` : ""}</span></div>`;
+  }).join("");
+  $("topc-more").hidden = !(t.count > items.length || topState.more);
+  $("topc-more").textContent = topState.more ? "Visa färre" : `Visa fler (${t.count})`;
+}
+document.querySelector(".toptabs").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-tmode]"); if (!b) return;
+  topState.mode = b.dataset.tmode; saveTop(); renderTop();
+});
+$("topwin").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-twin]"); if (!b) return;
+  topState.win = b.dataset.twin; saveTop(); renderTop(); loadTop();
+});
+$("topc-more").addEventListener("click", () => { topState.more = !topState.more; loadTop(); });
+function saveTop() { try { localStorage.setItem("topList", JSON.stringify({ mode: topState.mode, win: topState.win })); } catch (e) { /* ingen lagring */ } }
 
 function renderDevices(d) {
   const card = $("unifi-card");
@@ -751,7 +804,7 @@ function render() {
   byId = Object.fromEntries(d.clients.map((c) => [c.id, c]));
   if (state.mapFilter && !byId[state.mapFilter]) state.mapFilter = null;
   renderAlerts(d); renderSecurity(d); renderEvents(d); renderPlex(d); renderUnraids(d);
-  renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderTop(d); renderDevices(d); renderTable(d); renderMapFilter();
+  renderStatus(d); renderKpis(d); renderCountries(d); renderChart(d); renderDevices(d); renderTable(d); renderMapFilter();
   map.home = d.home;
   map.flows = d.flows;
   map.filter = state.mapFilter;
@@ -767,6 +820,7 @@ async function load() {
     if (!r.ok) throw new Error(r.status);
     state.data = await r.json();
     render();
+    loadTop();
   } catch (e) {
     $("problems").innerHTML = `<div class="problem"><b>Dashboard</b>Får inget svar från servern (${esc(e.message)}). Försöker igen …</div>`;
   }

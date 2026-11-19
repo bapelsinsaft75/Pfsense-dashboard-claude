@@ -292,8 +292,24 @@ def _demo_country(ip: str) -> str | None:
     return _REMOTE_CC.get(ip)
 
 
+def _demo_recent(engine: Engine, now: float, seconds: float, at: float) -> None:
+    for mac, name, _ip, down, up, *_ in CLIENTS:
+        if name in IDLE:
+            continue
+        burst = 2.2 if name == "Kontor-PC" and int(at // 300) % 3 == 0 else 1
+        j = random.uniform(.7, 1.3) * burst
+        cc = FLOWS[name][0][0]
+        engine.history.add_recent(mac, cc, int(up * 1e6 * j * seconds / 8), int(down * 1e6 * j * seconds / 8), at)
+
+
 def tick(engine: Engine) -> None:
     now = time.time()
+    if not getattr(engine, "_demo_recent_seeded", False):
+        for t in range(int(now - 3600), int(now), 30):
+            _demo_recent(engine, now, 30, t)
+        engine._demo_recent_seeded = True
+    else:
+        _demo_recent(engine, now, 2, now)
     rates = {}
     for mac, name, _ip, down, up, *_ in CLIENTS:
         if name in IDLE:
