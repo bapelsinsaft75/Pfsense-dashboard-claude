@@ -674,6 +674,21 @@ class Engine:
         return {"window": window, "seconds": seconds, "total_bytes": total, "total_bps": total * 8 / seconds,
                 "count": len(items), "items": items[:limit]}
 
+    def chart_series(self, window: str = "60m") -> dict:
+        """Bandbredd och datamängd över tid för grafen."""
+        seconds, step = {"5m": (300, 30), "15m": (900, 30), "60m": (3600, 60), "24h": (86400, 1800)}.get(window, (3600, 60))
+        now = time.time()
+        if seconds > 3600:
+            pts = self.history.series(int(now - seconds), step, now)
+            for p in pts:
+                p["down"] = p["down_bps"] * step / 8
+                p["up"] = p["up_bps"] * step / 8
+        else:
+            self.history.prune_recent(now)
+            pts = self.history.series_recent(seconds, step, now)
+        return {"window": window, "seconds": seconds, "step": step, "points": pts,
+                "total_down": sum(p["down"] for p in pts), "total_up": sum(p["up"] for p in pts)}
+
     def plex_summary(self) -> dict:
         servers = [dict(s.status) for s in self.plex_servers]
         sessions = [dict(x) for s in self.plex_servers for x in s.sessions]

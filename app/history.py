@@ -119,6 +119,25 @@ class History:
             del c["slots"], c["cc"]
         return out
 
+    def series_recent(self, window: int, step: int, now: float | None = None) -> list[dict]:
+        """Hela nätets trafik per tidssteg ur korttidsminnet (för 5, 15 och 60 minuter)."""
+        now = now or time.time()
+        start = int((now - window) // step * step)
+        acc: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+        for (slot, _cid, _cc), (up, down) in list(self.recent.items()):
+            if slot < start:
+                continue
+            b = slot // step * step
+            acc[b][0] += down
+            acc[b][1] += up
+        out = []
+        t = start
+        while t <= now:
+            d, u = acc.get(t, (0, 0))
+            out.append({"t": t, "down": d, "up": u, "down_bps": d * 8 / step, "up_bps": u * 8 / step})
+            t += step
+        return out
+
     def top_day(self, since: int, now: float | None = None) -> dict[str, dict]:
         """Samma som top_recent men ur historiken (5-minutershinkar), för 24 timmar."""
         now = now or time.time()
