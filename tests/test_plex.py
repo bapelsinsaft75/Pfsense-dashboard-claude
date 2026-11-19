@@ -54,3 +54,31 @@ def test_poll_with_mock_server():
         assert not bad.status["ok"] and "token" in bad.status["error"]
 
     asyncio.run(run())
+
+
+def test_plex_down_alert(tmp_path, monkeypatch):
+    import time
+    from app.config import Config
+    from app.engine import Engine
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PFSENSE_URL", "http://127.0.0.1:9")
+    e = Engine(Config())
+    assert e.settings.kind_enabled("plex_down")  # på från början
+    e.settings.update({"confirm_count": 2, "confirm_interval": 10})
+    p = PlexServer(0, "Alex Plex", "http://plex.test:32400", "t", False)
+    p.status.update(ok=False, error="Kan inte nå Alex Plex (ConnectError).")
+    clock = {"t": time.time()}
+    orig = e.confirm
+
+    def confirm(key, bad, now=None):  # varje kontroll räknas som en minut senare
+        clock["t"] += 60
+        return orig(key, bad, clock["t"])
+    e.confirm = confirm
+    e.check_plex(p)
+    assert not e.alerts.is_active("plex:http://plex.test:32400")
+    e.check_plex(p)
+    banner = e.alerts.banner()
+    assert banner and banner[0]["title"] == "Alex Plex svarar inte" and banner[0]["level"] == "critical"
+    p.status.update(ok=True, error=None)
+    e.check_plex(p)
+    assert not e.alerts.is_active("plex:http://plex.test:32400")

@@ -33,7 +33,7 @@ ALERT_KINDS = {
     "unraid_problem": ("Unraid: disk med fel, array stoppad eller varm disk", False, True),
     "unraid_watch": ("Övervakad container har stannat", True, True),
     "unraid_vm": ("Övervakad virtuell maskin har stannat", True, True),
-    "plex_down": ("Plex-server svarar inte", False, True),
+    "plex_down": ("Plex-server svarar inte", True, True),
 }
 
 # Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
