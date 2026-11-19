@@ -522,3 +522,17 @@ body.ldrawer-open{overflow:hidden}
 .scopeseg .tip b{display:block;color:var(--lan);font-weight:500}
 .scopeseg button:hover .tip,.scopeseg button:focus-visible .tip{display:block}
 .tr .bar .l{background:var(--lan)}
+
+/* anslutningsikon i topplistan */
+.tr .n{display:flex;align-items:center;gap:6px;min-width:0}
+.tr .n .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tr .n small{margin-left:2px;flex:none}
+.link{display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:help}
+.link .ico{width:15px;height:15px}
+.tr .link.wifi,.tr .link.wifi .ico{color:var(--lan)}
+.tr .link.wired,.tr .link.wired .ico{color:var(--up)}
+.link.unk{width:14px;height:14px;border:1px solid var(--muted);border-radius:50%;font-size:9px;line-height:1;color:var(--muted)}
+
+/* mest bandbredd: ingen kolumn för typikon */
+.tr.bwrow{grid-template-columns:minmax(0,1fr) 72px auto}
+.tr.bwrow .bar,.tr.bwrow .sub{grid-column:1/-1}

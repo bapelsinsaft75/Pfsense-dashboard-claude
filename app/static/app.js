@@ -756,6 +756,16 @@ function renderScopeSeg(id, current, unifi) {
 const SCOPE_WORD = { internet: "mot internet", internal: "internt", all: "totalt" };
 
 /* ── topplista: mest bandbredd och mest data ── */
+function linkIcon(x) {
+  const c = x.conn;
+  if (!c) return `<span class="link unk" title="Okänd anslutning: UniFi känner inte till klienten">?</span>`;
+  if (c.kind === "wifi") {
+    const tip = ["Trådlös", c.band ? `Wi-Fi ${c.band}` : "Wi-Fi", c.rssi != null ? `${c.rssi} dBm` : null].filter(Boolean).join(" · ");
+    return `<span class="link wifi" title="${esc(tip)}" aria-label="${esc(tip)}">${icon("wifi")}</span>`;
+  }
+  const tip = ["Trådbunden", c.dev ? `${c.dev}${c.port ? ", port " + c.port : ""}` : null].filter(Boolean).join(" · ");
+  return `<span class="link wired" title="${esc(tip)}" aria-label="${esc(tip)}">${icon("cable")}</span>`;
+}
 const topState = (() => { try { return { mode: "bw", win: "5m", scope: "internet", ...JSON.parse(localStorage.getItem("topList") || "{}"), more: false }; } catch (e) { return { mode: "bw", win: "5m", scope: "internet", more: false }; } })();
 let topData = null;
 const WIN_LABEL = { "5m": "5 min", "15m": "15 min", "60m": "60 min", "24h": "24 h" };
@@ -800,12 +810,12 @@ function renderTop() {
     if (bw) {
       const dw = all ? x.avg_bps / mx * 100 * inetShare : x.avg_down_bps / mx * 100;
       const uw = all ? x.avg_bps / mx * 100 * (1 - inetShare) : x.avg_up_bps / mx * 100;
-      return `<div class="tr pickable" data-id="${esc(x.id)}">${icon(x.type)}<span class="n" title="${esc(x.ip || "")}">${esc(x.name)}</span><svg class="sp" viewBox="0 0 72 18" preserveAspectRatio="none" aria-hidden="true"><path d="${sparkPath(x.spark)}" fill="none" stroke="var(--accent)" stroke-width="1.4"/></svg><span class="v num">${fmtMbit(x.avg_bps)}<small>Mbit/s</small></span>
+      return `<div class="tr bwrow pickable" data-id="${esc(x.id)}"><span class="n" title="${esc(x.ip || "")}">${linkIcon(x)}<span class="nm">${esc(x.name)}</span></span><svg class="sp" viewBox="0 0 72 18" preserveAspectRatio="none" aria-hidden="true"><path d="${sparkPath(x.spark)}" fill="none" stroke="var(--accent)" stroke-width="1.4"/></svg><span class="v num">${fmtMbit(x.avg_bps)}<small>Mbit/s</small></span>
         <div class="bar"><span class="d" style="width:${dw}%"></span><span class="${all ? "l" : "u"}" style="width:${uw}%"></span></div>
         <span class="sub"><span>${all ? `${fmt(inetShare * 100, 0)} % internet · ${fmt((1 - inetShare) * 100, 0)} % internt` : `${fmtMbit(x.avg_down_bps)} ned · ${fmtMbit(x.avg_up_bps)} upp`}</span><span>topp ${fmtMbit(x.peak_bps)} Mbit/s</span>${sc === "internal" && connTxt ? `<span>${esc(connTxt)}</span>` : ""}</span></div>`;
     }
     const share = x.bytes / mx * 100;
-    return `<div class="tr pickable" data-id="${esc(x.id)}"><span class="rank">${i + 1}</span><span class="n">${esc(x.name)}${x.ip ? ` <small>${esc(x.ip)}</small>` : ""}</span><span></span><span class="v num">${fmtBytes(x.bytes)}</span>
+    return `<div class="tr pickable" data-id="${esc(x.id)}"><span class="rank">${i + 1}</span><span class="n">${linkIcon(x)}<span class="nm">${esc(x.name)}</span>${x.ip ? `<small>${esc(x.ip)}</small>` : ""}</span><span></span><span class="v num">${fmtBytes(x.bytes)}</span>
       <div class="bar">${all ? `<span class="d" style="width:${share * inetShare}%"></span><span class="l" style="width:${share * (1 - inetShare)}%"></span>` : `<span class="${sc === "internal" ? "l" : "t"}" style="width:${share}%"></span>`}</div>
       <span class="sub"><span>${fmt(share, 0)} % · ${fmtBytes(x.down)} ned · ${fmtBytes(x.up)} upp</span>${all ? `<span>${fmtBytes(x.internet)} internet · ${fmtBytes(Math.max(0, x.bytes - x.internet))} internt</span>` : ""}${sc === "internal" ? (connTxt ? `<span>${esc(connTxt)}</span>` : "") : x.country ? `<span>mest till ${esc(countryName(x.country))}</span>` : ""}</span></div>`;
   }).join("");

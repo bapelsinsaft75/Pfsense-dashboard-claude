@@ -676,7 +676,7 @@ class Engine:
                 "peak_bps": max(r["peak_bps"], total * 8 / seconds), "spark": r["spark"], "country": r.get("country"),
                 "internet": r.get("internet", total),
                 "conn": {"kind": u.get("kind"), "dev": (self.devices.get(u.get("dev") or "") or {}).get("name"),
-                         "port": u.get("port"), "band": u.get("band")} if u else None,
+                         "port": u.get("port"), "band": u.get("band"), "rssi": u.get("rssi")} if u else None,
             })
         items.sort(key=lambda x: x["bytes"], reverse=True)
         total = sum(x["bytes"] for x in items)
