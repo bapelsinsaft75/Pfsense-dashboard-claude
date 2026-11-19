@@ -365,3 +365,20 @@ dialog#settings{max-width:min(640px,calc(100vw - 32px))}
 @media (hover:none){.bell{opacity:.7}}
 .chip.quiet{color:var(--fg);border-color:#3a4a8a}
 .chip.quiet::before{background:#8a9cff;box-shadow:none;border-radius:50% 50% 50% 0}
+
+/* e-postmottagare */
+.recips{display:grid;gap:8px}
+.recip{border:1px solid var(--line);background:var(--bg);padding:8px 10px;display:grid;gap:6px}
+.rtop{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rtop input{font:inherit;background:var(--track);color:var(--fg);border:1px solid var(--line);padding:5px 8px;min-width:0}
+.rtop .r-email{flex:2 1 200px}
+.rtop .r-name{flex:1 1 120px}
+.rtop input:focus-visible{outline:2px solid var(--accent)}
+.rtop input:invalid:not(:placeholder-shown){border-color:var(--err)}
+.recip summary{cursor:pointer;color:var(--muted);font-size:12px}
+.recip summary b{color:var(--fg);font-weight:500}
+.rquick{display:flex;gap:12px;margin:6px 0}
+.linkbtn{all:unset;cursor:pointer;color:var(--accent);font-size:12px;text-decoration:underline}
+.linkbtn:focus-visible{outline:2px solid var(--accent)}
+.rkinds{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px 12px}
+.rkinds .check{font-size:12px}

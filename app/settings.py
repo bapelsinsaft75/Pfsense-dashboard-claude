@@ -31,9 +31,15 @@ ALERT_KINDS = {
     "new_device": ("Ny enhet i nätverket", True, False),
     "unraid_down": ("Unraid-server svarar inte", False, True),
     "unraid_problem": ("Unraid: disk med fel, array stoppad eller varm disk", False, True),
-    "unraid_watch": ("Övervakad container eller virtuell maskin har stannat", True, True),
+    "unraid_watch": ("Övervakad container har stannat", True, True),
+    "unraid_vm": ("Övervakad virtuell maskin har stannat", True, True),
     "plex_down": ("Plex-server svarar inte", False, True),
 }
+
+# Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
+CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_problem",
+                  "unraid_watch", "unraid_vm", "plex_down"}
+EMAIL_RE = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 
 # namn: (typ, min, max)
 SCHEMA = {
@@ -58,6 +64,8 @@ SCHEMA = {
     # vilka larm som används, och vilka containrar/VM som övervakas per Unraid-server
     "alert_kinds": ("kinds", None, None),
     "watch": ("watch", None, None),
+    # e-postmottagare och vilka larmtyper var och en får. None = använd MAIL_TO
+    "recipients": ("recipients", None, None),
 }
 
 
@@ -82,6 +90,7 @@ class Settings:
             "quiet_digest": True,
             "alert_kinds": {k: v[1] for k, v in ALERT_KINDS.items()},
             "watch": {},
+            "recipients": None,
         }
         self.path = os.path.join(cfg.data_dir, "settings.json") if persist else None
         self.saved: dict = {}
@@ -184,6 +193,22 @@ class Settings:
                     if not isinstance(raw, dict):
                         raise ValueError
                     val = {k: bool(v) for k, v in raw.items() if k in ALERT_KINDS}
+                elif typ == "recipients":
+                    if raw is None:
+                        val = None
+                    else:
+                        if not isinstance(raw, list) or len(raw) > 20:
+                            raise ValueError
+                        val, seen = [], set()
+                        for r in raw:
+                            email = str((r or {}).get("email", "")).strip()
+                            if not EMAIL_RE.fullmatch(email):
+                                raise ValueError(f"Ogiltig e-postadress: {email or '(tom)'}")
+                            if email.lower() in seen:
+                                raise ValueError(f"{email} finns redan")
+                            seen.add(email.lower())
+                            val.append({"email": email, "name": str(r.get("name") or "").strip()[:60],
+                                        "kinds": sorted({k for k in r.get("kinds", []) if k in ALERT_KINDS})})
                 elif typ == "watch":
                     if not isinstance(raw, dict):
                         raise ValueError
@@ -194,7 +219,14 @@ class Settings:
                     val = typ(raw)
                     if val < lo or val > hi:
                         raise ValueError
-            except (TypeError, ValueError):
+            except ValueError as exc:
+                if strict and str(exc):
+                    raise ValueError(str(exc)) from None
+                if strict:
+                    rng = f" (tillåtet {lo}–{hi})" if lo is not None else ""
+                    raise ValueError(f"Ogiltigt värde för {key}: {raw!r}{rng}") from None
+                continue
+            except TypeError:
                 if strict:
                     rng = f" (tillåtet {lo}–{hi})" if lo is not None else ""
                     raise ValueError(f"Ogiltigt värde för {key}: {raw!r}{rng}") from None

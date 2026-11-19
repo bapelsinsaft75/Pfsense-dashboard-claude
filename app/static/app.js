@@ -371,6 +371,65 @@ document.querySelector(".stabs").addEventListener("click", (e) => {
   document.querySelectorAll(".stabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll(".spane").forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
 });
+let recips = [], mailConfigured = false;
+function readRecips() {
+  return [...$("s-recips").querySelectorAll(".recip")].map((row) => ({
+    email: row.querySelector(".r-email").value.trim(), name: row.querySelector(".r-name").value.trim(),
+    kinds: [...row.querySelectorAll("[data-rkind]:checked")].map((c) => c.dataset.rkind),
+  }));
+}
+function renderRecips() {
+  $("s-recips").innerHTML = recips.length ? recips.map((r, i) => {
+    const n = r.kinds.length;
+    return `<div class="recip" data-i="${i}">
+      <div class="rtop"><input type="email" class="r-email" value="${esc(r.email)}" placeholder="namn@exempel.se" aria-label="E-postadress" required>
+        <input type="text" class="r-name" value="${esc(r.name || "")}" placeholder="Namn (valfritt)" aria-label="Namn">
+        <button type="button" class="btn" data-rtest="${i}" ${mailConfigured ? "" : "disabled"}>Testa</button>
+        <button type="button" class="btn" data-rdel="${i}" aria-label="Ta bort mottagare">Ta bort</button></div>
+      <details ${r.open ? "open" : ""}><summary>Larm som skickas hit: <b>${n} av ${alertKinds.length}</b></summary>
+        <div class="rquick"><button type="button" class="linkbtn" data-rall="${i}">Alla</button><button type="button" class="linkbtn" data-rcrit="${i}">Bara kritiska</button><button type="button" class="linkbtn" data-rnone="${i}">Inga</button></div>
+        <div class="rkinds">${alertKinds.map((k) => `<label class="check"><input type="checkbox" data-rkind="${k.id}" ${r.kinds.includes(k.id) ? "checked" : ""}> ${esc(k.label)}</label>`).join("")}</div>
+      </details></div>`;
+  }).join("") : '<p class="muted">Inga mottagare. Lägg till en för att få larm via e-post.</p>';
+}
+function syncRecips() {
+  const opened = [...$("s-recips").querySelectorAll(".recip details")].map((d) => d.open);
+  recips = readRecips().map((r, i) => ({ ...r, open: opened[i] }));
+}
+$("s-add-recip").addEventListener("click", () => {
+  syncRecips();
+  recips.push({ email: "", name: "", kinds: alertKinds.filter((k) => k.critical).map((k) => k.id), open: true });
+  renderRecips();
+  const rows = $("s-recips").querySelectorAll(".r-email"); rows[rows.length - 1].focus();
+});
+$("s-recips").addEventListener("change", (e) => {
+  if (!e.target.matches("[data-rkind]")) return;
+  const row = e.target.closest(".recip");
+  row.querySelector("summary b").textContent = `${row.querySelectorAll("[data-rkind]:checked").length} av ${alertKinds.length}`;
+});
+$("s-recips").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const i = +(b.dataset.rdel ?? b.dataset.rall ?? b.dataset.rcrit ?? b.dataset.rnone ?? b.dataset.rtest ?? -1);
+  if (i < 0) return;
+  syncRecips();
+  if (b.dataset.rdel != null) { recips.splice(i, 1); renderRecips(); return; }
+  if (b.dataset.rall != null) recips[i].kinds = alertKinds.map((k) => k.id);
+  if (b.dataset.rcrit != null) recips[i].kinds = alertKinds.filter((k) => k.critical).map((k) => k.id);
+  if (b.dataset.rnone != null) recips[i].kinds = [];
+  if (b.dataset.rtest != null) {
+    const to = recips[i].email;
+    $("s-msg").textContent = `Skickar testmejl till ${to} …`; $("s-msg").className = "formmsg";
+    try {
+      const r = await fetch("api/test-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || r.status);
+      $("s-msg").textContent = `Testmejl skickat till ${to}.`; $("s-msg").className = "formmsg ok";
+    } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
+    return;
+  }
+  recips[i].open = true;
+  renderRecips();
+});
 async function openSettings() {
   const dlg = $("settings");
   $("s-msg").textContent = ""; $("s-msg").className = "formmsg";
@@ -386,13 +445,16 @@ async function openSettings() {
     $("s-quiet").checked = !!st.quiet_enabled; $("s-qstart").value = st.quiet_start; $("s-qend").value = st.quiet_end;
     $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
-    $("s-mailwarn").checked = !!st.email_warnings; $("s-slackwarn").checked = !!st.slack_warnings;
+    $("s-slackwarn").checked = !!st.slack_warnings;
+    mailConfigured = j.email.enabled;
+    recips = st.recipients ? st.recipients.map((r) => ({ ...r }))
+      : j.email.to.map((email) => ({ email, name: "", kinds: alertKinds.filter((k) => k.critical || (st.email_warnings && st.alert_kinds[k.id])).map((k) => k.id) }));
+    renderRecips();
     $("s-slack").innerHTML = j.slack.enabled ? "Larm skickas till Slack via webhooken i Unraid-mallen."
       : "Slack är inte konfigurerat. Fyll i SLACK_WEBHOOK_URL i Unraid-mallen.";
     $("s-test-slack").disabled = !j.slack.enabled;
-    $("s-mail").innerHTML = j.email.enabled ? `E-post skickas via <b>${esc(j.email.host)}</b> till <b>${esc(j.email.to.join(", "))}</b>.`
-      : "E-post är inte konfigurerat. Fyll i SMTP_USER, SMTP_TOKEN och MAIL_TO i Unraid-mallen.";
-    $("s-test").disabled = !j.email.enabled;
+    $("s-mail").innerHTML = j.email.enabled ? `E-post skickas via <b>${esc(j.email.host)}</b>.`
+      : "E-post är inte konfigurerat. Fyll i SMTP_USER och SMTP_TOKEN i Unraid-mallen. Mottagarna lägger du till här.";
   } catch (e) { $("s-msg").textContent = "Kunde inte läsa inställningarna."; $("s-msg").className = "formmsg err"; }
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
 }
@@ -409,7 +471,8 @@ $("settings-form").addEventListener("submit", async (e) => {
     quiet_enabled: $("s-quiet").checked, quiet_start: $("s-qstart").value, quiet_end: $("s-qend").value,
     quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
     quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
-    email_warnings: $("s-mailwarn").checked, slack_warnings: $("s-slackwarn").checked,
+    slack_warnings: $("s-slackwarn").checked,
+    recipients: readRecips(),
   };
   try {
     const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -419,15 +482,6 @@ $("settings-form").addEventListener("submit", async (e) => {
     setTimeout(() => $("settings").close(), 700);
     load();
   } catch (err) { $("s-msg").textContent = `Kunde inte spara: ${err.message}`; $("s-msg").className = "formmsg err"; }
-});
-$("s-test").addEventListener("click", async () => {
-  $("s-msg").textContent = "Skickar …"; $("s-msg").className = "formmsg";
-  try {
-    const r = await fetch("api/test-email", { method: "POST" });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || r.status);
-    $("s-msg").textContent = `Testmejl skickat till ${j.to.join(", ")}.`; $("s-msg").className = "formmsg ok";
-  } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
 });
 $("s-test-slack").addEventListener("click", async () => {
   $("s-msg").textContent = "Skickar …"; $("s-msg").className = "formmsg";

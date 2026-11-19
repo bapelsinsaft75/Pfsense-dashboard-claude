@@ -31,7 +31,16 @@ class Alerts:
         self.settings = settings
         self._last_mail: dict[str, float] = {}
         self._last_slack: dict[str, float] = {}
-        self.quiet_queue: list[tuple[str, str, str, str, float]] = []  # (händelse, nivå, titel, text, tid)
+        self.quiet_queue: list[tuple] = []  # (händelse, nivå, titel, text, tid, typ)
+
+    def recipients_for(self, kind: str, level: str) -> list[str]:
+        """Vilka e-postadresser som ska få ett larm av den här typen."""
+        if not self.mailer.configured:
+            return []
+        rec = self.settings.get("recipients")
+        if rec is None:  # inga mottagare sparade i inställningarna: MAIL_TO som tidigare
+            return list(self.mailer.to) if self._should_mail(level) else []
+        return [r["email"] for r in rec if kind in r["kinds"]]
 
     def _quiet_blocks(self, level: str) -> bool:
         quiet, _ = self.settings.quiet_now()
@@ -44,16 +53,25 @@ class Alerts:
         items, self.quiet_queue = self.quiet_queue, []
         if not self.settings.get("quiet_digest"):
             return False
-        raised = [i for i in items if i[0] == "raised"]
-        still = [i for i in raised if self.is_active_title(i[2])]
-        lines = [f"{_when(t)}  {'Löst: ' if ev == 'resolved' else ''}{LEVEL_LABEL.get(lv, lv)}: {title}"
-                 for ev, lv, title, _m, t in items]
-        head = (f"Under den tysta tiden kom {len(raised)} larm"
-                + (f", varav {len(still)} fortfarande aktiva." if still else ", alla är lösta nu." if raised else "."))
-        body = head + "\n\n" + "\n".join(lines) + "\n"
+        def digest(subset):
+            raised = [i for i in subset if i[0] == "raised"]
+            still = [i for i in raised if self.is_active_title(i[2])]
+            lines = [f"{_when(i[4])}  {'Löst: ' if i[0] == 'resolved' else ''}{LEVEL_LABEL.get(i[1], i[1])}: {i[2]}"
+                     for i in subset]
+            head = (f"Under den tysta tiden kom {len(raised)} larm"
+                    + (f", varav {len(still)} fortfarande aktiva." if still else ", alla är lösta nu." if raised else "."))
+            return raised, still, lines, head
+
+        per_addr: dict[str, list] = {}
+        for item in items:
+            for addr in self.recipients_for(item[5], item[1]):
+                per_addr.setdefault(addr, []).append(item)
+        for addr, subset in per_addr.items():
+            raised, _still, lines, head = digest(subset)
+            self.mailer.send_background(f"Sammanfattning av tysta tiden: {len(raised)} larm",
+                                        head + "\n\n" + "\n".join(lines) + "\n", [addr])
+        raised, still, lines, head = digest(items)
         subject = f"Sammanfattning av tysta tiden: {len(raised)} larm"
-        if self.mailer.enabled:
-            self.mailer.send_background(subject, body)
         if self.slack and self.slack.enabled:
             level = "critical" if any(i[1] == "critical" for i in still) else "warning" if still else "info"
             self.slack.send_background(level, subject, head + "\n" + "\n".join(lines[:25]), _when(time.time()))
@@ -79,14 +97,14 @@ class Alerts:
         self.slack.send_background(level, title, message, when)
         return True
 
-    def _mail(self, key: str, subject: str, body: str, force: bool = False) -> bool:
-        if not self.mailer.enabled:
+    def _mail(self, key: str, subject: str, body: str, to: list[str], force: bool = False) -> bool:
+        if not to:
             return False
         now = time.time()
         if not force and now - self._last_mail.get(key, 0) < MAIL_COOLDOWN:
             return False
         self._last_mail[key] = now
-        self.mailer.send_background(subject, body)
+        self.mailer.send_background(subject, body, to)
         return True
 
     def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None) -> int | None:
@@ -108,14 +126,15 @@ class Alerts:
             self.h.db.commit()
             alert_id = cur.lastrowid
         log.info("Larm (%s): %s – %s", level, title, message)
-        if self._quiet_blocks(level) and (self._should_mail(level) or self._should_slack(level)):
-            self.quiet_queue.append(("raised", level, title, message, now))
+        to = self.recipients_for(kind, level)
+        if self._quiet_blocks(level) and (to or self._should_slack(level)):
+            self.quiet_queue.append(("raised", level, title, message, now, kind))
             return alert_id
-        if self._should_mail(level):
+        if to:
             body = f"{LEVEL_LABEL.get(level, level)}: {title}\n\n{message}\n\nTid: {_when(now)}\n"
             if self.slack and self.slack.dashboard_url:
                 body += f"Dashboard: {self.slack.dashboard_url}\n"
-            if self._mail(key, title, body):
+            if self._mail(key, title, body, to):
                 with self.h.lock:
                     self.h.db.execute("UPDATE alerts SET emailed=1 WHERE id=?", (alert_id,))
                     self.h.db.commit()
@@ -129,18 +148,18 @@ class Alerts:
         now = now or time.time()
         with self.h.lock:
             rows = self.h.db.execute(
-                "SELECT id, level, title, created, emailed, slacked FROM alerts WHERE key=? AND resolved IS NULL", (key,)
+                "SELECT id, level, title, created, emailed, slacked, kind FROM alerts WHERE key=? AND resolved IS NULL", (key,)
             ).fetchall()
             if not rows:
                 return
             self.h.db.execute("UPDATE alerts SET resolved=?, updated=? WHERE key=? AND resolved IS NULL",
                               (int(now), int(now), key))
             self.h.db.commit()
-        for _id, level, title, created, emailed, slacked in rows:
+        for _id, level, title, created, emailed, slacked, kind in rows:
             log.info("Löst: %s", title)
             mins = max(1, int((now - created) / 60))
             if (slacked or emailed) and level == "critical" and self._quiet_blocks(level):
-                self.quiet_queue.append(("resolved", level, title, message or "", now))
+                self.quiet_queue.append(("resolved", level, title, message or "", now, kind))
                 continue
             if slacked and level == "critical":
                 self._post_slack(key + ":resolved", "resolved", f"Löst: {title}",
@@ -149,7 +168,7 @@ class Alerts:
             if emailed and level == "critical":
                 body = (f"Löst: {title}\n\n{message or 'Problemet är inte längre aktivt.'}\n\n"
                         f"Varade i cirka {mins} minuter ({_when(created)} – {_when(now)}).\n")
-                self._mail(key + ":resolved", f"Löst: {title}", body, force=True)
+                self._mail(key + ":resolved", f"Löst: {title}", body, self.recipients_for(kind, level), force=True)
 
     def expire(self, kinds: tuple[str, ...], quiet_seconds: int, now: float | None = None) -> None:
         """Avsluta händelselarm (t.ex. Suricata) som varit tysta en tid, utan att mejla."""

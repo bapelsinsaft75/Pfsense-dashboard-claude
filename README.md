@@ -56,6 +56,9 @@ Under *Inställningar* (kugghjulet):
 - **Larm → Larmtyper:** slå av och på varje typ av larm. Larmen för Unraid-server och Plex är avstängda från början.
 - **Aviseringar → Tysta tider:** inga mejl eller Slack-meddelanden mellan två klockslag på valda veckodagar.
   Larmen syns ändå i bannern. Valfritt: släpp igenom kritiska larm, och få en sammanfattning när tiden är slut.
+- **Aviseringar → E-postmottagare:** lägg till flera adresser och välj vilka larmtyper var och en ska få,
+  t.ex. att larm om virtuella maskiner bara går till en viss adress. `MAIL_TO` blir första mottagare tills du
+  sparar listan här. Varje rad har en knapp för testmejl.
 - **Övervaka containrar och virtuella maskiner:** klicka på klockan vid en container eller VM i Unraid-sektionen.
   Stannar den blir det ett kritiskt larm (efter bekräftelsen ovan).
 

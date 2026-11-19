@@ -540,7 +540,8 @@ class Engine:
                 wkey = f"watch:{name}:{kind}:{item}"
                 if self.confirm(wkey, not up):
                     why = "finns inte längre" if not obj else (obj.get("status") or obj.get("state") or "har stannat")
-                    self.alerts.raise_(wkey, "critical", "unraid_watch", f"{label} {item} på {name} har stannat",
+                    self.alerts.raise_(wkey, "critical", "unraid_watch" if kind == "containers" else "unraid_vm",
+                                       f"{label} {item} på {name} har stannat",
                                        f"{label} {item} på {name} är inte igång ({why}).{self.confirm_note(wkey)}")
                 elif up:
                     self.alerts.resolve(wkey, f"{item} på {name} är igång igen.")

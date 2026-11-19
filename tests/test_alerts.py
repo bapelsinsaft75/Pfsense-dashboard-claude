@@ -62,7 +62,7 @@ def engine(tmp_path, monkeypatch):
     e.settings.update({"confirm_count": 2, "confirm_interval": 10})
     _fast_confirm(e)
     # skicka e-post synkront i testerna
-    e.mailer.send_background = lambda s, b: e.mailer.send(s, b)
+    e.mailer.send_background = lambda s, b, to=None: e.mailer.send(s, b, to)
     e.geo.country = lambda ip: {"45.148.10.5": "NL", "47.88.0.12": "CN"}.get(ip)
     return e
 
@@ -286,6 +286,8 @@ def test_quiet_hours_and_digest(engine, monkeypatch):
 def test_disabled_kind_and_watch(engine):
     from app.unraid import Unraid
     engine.settings.update({"alert_kinds": {"new_device": False}})
+    engine.settings.update({"recipients": [{"email": "vm@exempel.se", "kinds": ["unraid_vm"]},
+                                           {"email": "jag@exempel.se", "kinds": ["unraid_watch"]}]})
     assert engine.alerts.raise_("n", "warning", "new_device", "Ny", "x") is None
     u = Unraid("LillaNasen", "http://u.test", "k", False)
     u.status.update(ok=True, level="ok", name="LillaNasen", detail="ok")
@@ -297,9 +299,49 @@ def test_disabled_kind_and_watch(engine):
     engine.check_unraid(u)
     titles = sorted(a["title"] for a in engine.alerts.banner())
     assert titles == ["Containern qbit på LillaNasen har stannat", "Den virtuella maskinen Win på LillaNasen har stannat"]
+    by_subject = {m["Subject"].split("] ", 1)[-1]: m["To"] for m in FakeSMTP.sent}
+    assert by_subject["Den virtuella maskinen Win på LillaNasen har stannat"] == "vm@exempel.se"
+    assert by_subject["Containern qbit på LillaNasen har stannat"] == "jag@exempel.se"
     engine.settings.set_watch("LillaNasen", "vms", "Win", False)
     engine.check_unraid(u)
     assert not engine.alerts.is_active("watch:LillaNasen:vms:Win")
     u.data["containers"][1]["state"] = "running"
     engine.check_unraid(u)
     assert not engine.alerts.is_active("watch:LillaNasen:containers:qbit")
+
+
+def test_recipients_per_kind(engine):
+    s = engine.settings
+    s.update({"recipients": [
+        {"email": "jag@exempel.se", "name": "Peter", "kinds": ["vpn_down", "data_anomaly"]},
+        {"email": "alex@exempel.se", "kinds": ["vpn_down", "unraid_watch"]},
+    ]})
+    engine.alerts.raise_("ovpn:A", "critical", "vpn_down", "VPN-anslutningen A är nere", "nere")
+    assert FakeSMTP.sent[-1]["To"] == "jag@exempel.se, alex@exempel.se"
+    engine.alerts.raise_("data:x", "warning", "data_anomaly", "PS5 använder ovanligt mycket data", "mycket")
+    assert FakeSMTP.sent[-1]["To"] == "jag@exempel.se"  # varning går till den som valt typen
+    n = len(FakeSMTP.sent)
+    engine.alerts.raise_("gw:W", "critical", "gateway_down", "Gatewayen W är nere", "nere")
+    assert len(FakeSMTP.sent) == n  # ingen har valt gateway_down
+    engine.alerts.resolve("ovpn:A", "uppe")
+    assert FakeSMTP.sent[-1]["To"] == "jag@exempel.se, alex@exempel.se" and "Löst" in FakeSMTP.sent[-1]["Subject"]
+    with pytest.raises(ValueError, match="Ogiltig e-postadress"):
+        s.update({"recipients": [{"email": "inte-en-adress", "kinds": []}]})
+    with pytest.raises(ValueError, match="finns redan"):
+        s.update({"recipients": [{"email": "a@b.se", "kinds": []}, {"email": "A@b.se", "kinds": []}]})
+
+
+def test_digest_per_recipient(engine, monkeypatch):
+    s = engine.settings
+    s.update({"recipients": [{"email": "jag@exempel.se", "kinds": ["vpn_down", "new_device"]},
+                             {"email": "alex@exempel.se", "kinds": ["vpn_down"]}]})
+    quiet = {"on": True}
+    monkeypatch.setattr(s, "quiet_now", lambda now=None: (quiet["on"], "07:00" if quiet["on"] else None))
+    engine.alerts.raise_("ovpn:A", "critical", "vpn_down", "VPN-anslutningen A är nere", "nere")
+    engine.alerts.raise_("new:x", "warning", "new_device", "Ny enhet i nätverket: X", "x")
+    assert FakeSMTP.sent == []
+    quiet["on"] = False
+    engine.alerts.flush_quiet_digest()
+    by_to = {m["To"]: m.get_content() for m in FakeSMTP.sent}
+    assert "Ny enhet" in by_to["jag@exempel.se"] and "VPN-anslutningen A" in by_to["jag@exempel.se"]
+    assert "Ny enhet" not in by_to["alex@exempel.se"] and "VPN-anslutningen A" in by_to["alex@exempel.se"]

@@ -155,12 +155,17 @@
         <label class="check"><input type="checkbox" id="s-qdigest"> Skicka en sammanfattning när den tysta tiden är slut</label>
       </fieldset>
       <fieldset>
-        <legend>Kanaler</legend>
-        <label class="check"><input type="checkbox" id="s-mailwarn"> Mejla även varningar <span class="muted">(kritiska larm mejlas alltid)</span></label>
-        <label class="check"><input type="checkbox" id="s-slackwarn"> Skicka även varningar till Slack <span class="muted">(kritiska larm skickas alltid)</span></label>
+        <legend>E-postmottagare</legend>
         <div class="mailbox" id="s-mail"></div>
+        <p class="hint">Välj vilka larm varje adress ska få. Det gäller både kritiska larm och varningar.</p>
+        <div class="recips" id="s-recips"></div>
+        <div class="actions"><button type="button" class="btn" id="s-add-recip">+ Lägg till mottagare</button></div>
+      </fieldset>
+      <fieldset>
+        <legend>Slack</legend>
         <div class="mailbox" id="s-slack"></div>
-        <div class="actions"><button type="button" class="btn" id="s-test">Skicka testmejl</button><button type="button" class="btn" id="s-test-slack">Testa Slack</button></div>
+        <label class="check"><input type="checkbox" id="s-slackwarn"> Skicka även varningar till Slack <span class="muted">(kritiska larm skickas alltid)</span></label>
+        <div class="actions"><button type="button" class="btn" id="s-test-slack">Testa Slack</button></div>
       </fieldset>
     </div>
 

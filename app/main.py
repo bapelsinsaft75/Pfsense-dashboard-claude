@@ -297,7 +297,7 @@ async def rename_client(cid: str, body: dict = Body(...)):
 @app.get("/api/settings")
 async def get_settings():
     engine: Engine = app.state.engine
-    return {"settings": engine.settings.all(), "email": {"enabled": engine.mailer.enabled, "to": engine.mailer.to,
+    return {"settings": engine.settings.all(), "email": {"enabled": engine.mailer.configured, "to": engine.mailer.to,
                                                          "host": engine.mailer.host},
             "slack": {"enabled": engine.slack.enabled}}
 
@@ -317,15 +317,22 @@ async def put_settings(values: dict = Body(...)):
 
 
 @app.post("/api/test-email")
-async def test_email():
+async def test_email(body: dict | None = Body(None)):
     engine: Engine = app.state.engine
+    from .settings import EMAIL_RE
+    to = [(body or {}).get("to")] if (body or {}).get("to") else None
+    if to and not EMAIL_RE.fullmatch(str(to[0])):
+        raise HTTPException(400, "Ogiltig e-postadress")
+    if not to:
+        rec = engine.settings.get("recipients")
+        to = [r["email"] for r in rec] if rec else engine.mailer.to
     try:
         await asyncio.to_thread(
             engine.mailer.send, "Testmejl",
-            "Det här är ett testmejl från din pfSense-dashboard. Om du läser det fungerar e-postlarmen.\n")
+            "Det här är ett testmejl från din pfSense-dashboard. Om du läser det fungerar e-postlarmen.\n", to)
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"ok": True, "to": engine.mailer.to}
+    return {"ok": True, "to": to}
 
 
 @app.put("/api/unraid/watch")
@@ -342,7 +349,9 @@ async def set_watch(body: dict = Body(...)):
 @app.get("/api/alert-kinds")
 async def alert_kinds():
     from .settings import ALERT_KINDS
-    return [{"id": k, "label": v[0], "default": v[1], "confirmed": v[2]} for k, v in ALERT_KINDS.items()]
+    from .settings import CRITICAL_KINDS
+    return [{"id": k, "label": v[0], "default": v[1], "confirmed": v[2], "critical": k in CRITICAL_KINDS}
+            for k, v in ALERT_KINDS.items()]
 
 
 @app.post("/api/test-slack")

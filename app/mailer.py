@@ -23,20 +23,28 @@ class Mailer:
         self.sender = cfg.mail_from or cfg.smtp_user
         self.to = [a.strip() for a in cfg.mail_to.split(",") if a.strip()]
         self.prefix = cfg.mail_subject_prefix
-        self.status = {"enabled": self.enabled, "ok": False, "error": None, "last": None}
+        self.status = {"enabled": self.configured, "ok": False, "error": None, "last": None}
         self._lock = threading.Lock()
 
     @property
-    def enabled(self) -> bool:
-        return bool(self.host and self.user and self.token and self.to)
+    def configured(self) -> bool:
+        """SMTP-server och inloggning finns. Mottagare kommer från inställningarna eller MAIL_TO."""
+        return bool(self.host and self.user and self.token)
 
-    def send(self, subject: str, body: str) -> None:
-        if not self.enabled:
-            raise RuntimeError("E-post är inte konfigurerat (SMTP_USER, SMTP_TOKEN och MAIL_TO krävs).")
+    @property
+    def enabled(self) -> bool:
+        return self.configured
+
+    def send(self, subject: str, body: str, to: list[str] | None = None) -> None:
+        if not self.configured:
+            raise RuntimeError("E-post är inte konfigurerat (SMTP_USER och SMTP_TOKEN krävs).")
+        to = to or self.to
+        if not to:
+            raise RuntimeError("Det finns ingen mottagare. Lägg till en under Inställningar → Aviseringar.")
         msg = EmailMessage()
         msg["Subject"] = f"{self.prefix} {subject}".strip()
         msg["From"] = self.sender
-        msg["To"] = ", ".join(self.to)
+        msg["To"] = ", ".join(to)
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid(domain=self.sender.split("@")[-1] if "@" in self.sender else None)
         msg.set_content(body)
@@ -61,13 +69,13 @@ class Mailer:
         self.status.update(ok=True, error=None, last=time.time())
         log.info("Skickade e-post: %s", subject)
 
-    def send_background(self, subject: str, body: str) -> None:
-        if not self.enabled:
+    def send_background(self, subject: str, body: str, to: list[str] | None = None) -> None:
+        if not self.configured:
             return
 
         def run():
             try:
-                self.send(subject, body)
+                self.send(subject, body, to)
             except RuntimeError as exc:
                 log.warning("%s", exc)
 
