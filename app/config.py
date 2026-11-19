@@ -118,6 +118,12 @@ class Config:
         self.mail_to = env("MAIL_TO", "") or ""
         self.mail_subject_prefix = env("MAIL_SUBJECT_PREFIX", "[Nätverket hemma]") or ""
 
+        # Slack (Incoming Webhook)
+        self.slack_webhook_url = env("SLACK_WEBHOOK_URL", "") or ""
+        self.slack_warnings = env_bool("SLACK_WARNINGS", True)
+        # Adress till dashboarden, för länkar i Slack och e-post, t.ex. http://192.168.2.30:8080
+        self.public_url = (env("PUBLIC_URL", "") or "").rstrip("/")
+
         self.debug_endpoints = env_bool("DEBUG_ENDPOINTS", True)
 
         demo = (env("DEMO", "auto") or "auto").lower()

@@ -48,6 +48,10 @@ class History:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL" if path != ":memory:" else "PRAGMA journal_mode=MEMORY")
         self.db.executescript(SCHEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(alerts)")}
+        if "slacked" not in cols:  # tillagd i en senare version
+            self.db.execute("ALTER TABLE alerts ADD COLUMN slacked INTEGER DEFAULT 0")
+            self.db.commit()
         self.lock = threading.Lock()
         self.pending: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
         self.sec_pending: dict[tuple, int] = defaultdict(int)

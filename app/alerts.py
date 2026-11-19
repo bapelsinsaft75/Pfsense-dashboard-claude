@@ -1,4 +1,4 @@
-"""Larm: sparas i SQLite, visas som banner och skickas via e-post när det är viktigt."""
+"""Larm: sparas i SQLite, visas som banner och skickas via e-post och Slack när det är viktigt."""
 from __future__ import annotations
 
 import datetime as dt
@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from .history import History
 from .mailer import Mailer
 from .settings import Settings
+from .slack import Slack
 
 log = logging.getLogger("alerts")
 TZ = ZoneInfo("Europe/Stockholm")
@@ -23,14 +24,29 @@ def _when(ts: float) -> str:
 
 
 class Alerts:
-    def __init__(self, history: History, mailer: Mailer, settings: Settings) -> None:
+    def __init__(self, history: History, mailer: Mailer, settings: Settings, slack: Slack | None = None) -> None:
         self.h = history
         self.mailer = mailer
+        self.slack = slack
         self.settings = settings
         self._last_mail: dict[str, float] = {}
+        self._last_slack: dict[str, float] = {}
 
     def _should_mail(self, level: str) -> bool:
         return level == "critical" or (level == "warning" and self.settings.get("email_warnings"))
+
+    def _should_slack(self, level: str) -> bool:
+        return level == "critical" or (level == "warning" and self.settings.get("slack_warnings"))
+
+    def _post_slack(self, key: str, level: str, title: str, message: str, when: str, force: bool = False) -> bool:
+        if not self.slack or not self.slack.enabled:
+            return False
+        now = time.time()
+        if not force and now - self._last_slack.get(key, 0) < MAIL_COOLDOWN:
+            return False
+        self._last_slack[key] = now
+        self.slack.send_background(level, title, message, when)
+        return True
 
     def _mail(self, key: str, subject: str, body: str, force: bool = False) -> bool:
         if not self.mailer.enabled:
@@ -61,27 +77,37 @@ class Alerts:
         log.info("Larm (%s): %s – %s", level, title, message)
         if self._should_mail(level):
             body = f"{LEVEL_LABEL.get(level, level)}: {title}\n\n{message}\n\nTid: {_when(now)}\n"
+            if self.slack and self.slack.dashboard_url:
+                body += f"Dashboard: {self.slack.dashboard_url}\n"
             if self._mail(key, title, body):
                 with self.h.lock:
                     self.h.db.execute("UPDATE alerts SET emailed=1 WHERE id=?", (alert_id,))
                     self.h.db.commit()
+        if self._should_slack(level) and self._post_slack(key, level, title, message, _when(now)):
+            with self.h.lock:
+                self.h.db.execute("UPDATE alerts SET slacked=1 WHERE id=?", (alert_id,))
+                self.h.db.commit()
         return alert_id
 
     def resolve(self, key: str, message: str | None = None, now: float | None = None) -> None:
         now = now or time.time()
         with self.h.lock:
             rows = self.h.db.execute(
-                "SELECT id, level, title, created, emailed FROM alerts WHERE key=? AND resolved IS NULL", (key,)
+                "SELECT id, level, title, created, emailed, slacked FROM alerts WHERE key=? AND resolved IS NULL", (key,)
             ).fetchall()
             if not rows:
                 return
             self.h.db.execute("UPDATE alerts SET resolved=?, updated=? WHERE key=? AND resolved IS NULL",
                               (int(now), int(now), key))
             self.h.db.commit()
-        for _id, level, title, created, emailed in rows:
+        for _id, level, title, created, emailed, slacked in rows:
             log.info("Löst: %s", title)
+            mins = max(1, int((now - created) / 60))
+            if slacked and level == "critical":
+                self._post_slack(key + ":resolved", "resolved", f"Löst: {title}",
+                                 f"{message or 'Problemet är inte längre aktivt.'} Varade i cirka {mins} minuter.",
+                                 f"{_when(created)} – {_when(now)}", force=True)
             if emailed and level == "critical":
-                mins = max(1, int((now - created) / 60))
                 body = (f"Löst: {title}\n\n{message or 'Problemet är inte längre aktivt.'}\n\n"
                         f"Varade i cirka {mins} minuter ({_when(created)} – {_when(now)}).\n")
                 self._mail(key + ":resolved", f"Löst: {title}", body, force=True)

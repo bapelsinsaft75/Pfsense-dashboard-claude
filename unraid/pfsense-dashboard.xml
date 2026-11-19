@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Support>
   <Project>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude</Project>
-  <Overview>Grafisk dashboard för pfSense: karta med trafik per land från hemstaden, vilka klienter som använder mest bandbredd och data, samt klientlista med IP. Larmbanner och e-post (t.ex. Proton SMTP) när VPN går ner, Suricata larmar eller en klient använder ovanligt mycket data. Med UniFi visas även om klienter är trådlösa eller trådbundna, switchport och Wi-Fi-signal. Utan PFSENSE_URL startar den i demoläge med exempeldata.</Overview>
+  <Overview>Grafisk dashboard för pfSense: karta med trafik per land från hemstaden, vilka klienter som använder mest bandbredd och data, samt klientlista med IP. Larmbanner, e-post (t.ex. Proton SMTP) och Slack när VPN går ner, Suricata larmar eller en klient använder ovanligt mycket data. Med UniFi visas även om klienter är trådlösa eller trådbundna, switchport och Wi-Fi-signal. Utan PFSENSE_URL startar den i demoläge med exempeldata.</Overview>
   <Category>Network:Management Tools: Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <Icon>https://raw.githubusercontent.com/bapelsinsaft75/Pfsense-dashboard-claude/main/unraid/icon.png</Icon>
@@ -35,6 +35,9 @@
   <Config Name="E-post: SMTP-server" Target="SMTP_HOST" Default="smtp.protonmail.ch" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">smtp.protonmail.ch</Config>
   <Config Name="E-post: SMTP-port" Target="SMTP_PORT" Default="587" Mode="" Description="587 (STARTTLS) eller 465 (SSL)." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
   <Config Name="E-post: avsändare" Target="MAIL_FROM" Default="" Mode="" Description="Tomt = samma som SMTP-användare." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Slack: webhook-adress" Target="SLACK_WEBHOOK_URL" Default="" Mode="" Description="Incoming Webhook från Slack, börjar med https://hooks.slack.com/services/..." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Dashboardens adress" Target="PUBLIC_URL" Default="http://192.168.2.30:8080" Mode="" Description="Används för länkar i Slack och e-post." Type="Variable" Display="advanced" Required="false" Mask="false">http://192.168.2.30:8080</Config>
 
   <Config Name="Hemstad" Target="HOME_CITY" Default="Örebro" Mode="" Description="Namn vid hus-ikonen på kartan." Type="Variable" Display="advanced" Required="false" Mask="false">Örebro</Config>
   <Config Name="Hemstad latitud" Target="HOME_LAT" Default="59.2741" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">59.2741</Config>

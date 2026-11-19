@@ -109,10 +109,13 @@
     <div class="inline"><input type="number" id="s-pfb" name="pfblocker_threshold" min="1" max="10000" step="1" required><span>blockerade försök från samma klient på 10 minuter</span></div>
     <label class="check"><input type="checkbox" id="s-newdev" name="new_device_alerts"> Larma när en ny enhet ansluter</label>
     <label class="check"><input type="checkbox" id="s-mailwarn" name="email_warnings"> Mejla även varningar <span class="muted">(kritiska larm mejlas alltid)</span></label>
+    <label class="check"><input type="checkbox" id="s-slackwarn" name="slack_warnings"> Skicka även varningar till Slack <span class="muted">(kritiska larm skickas alltid)</span></label>
     <div class="mailbox" id="s-mail"></div>
+    <div class="mailbox" id="s-slack"></div>
     <p class="formmsg" id="s-msg" role="status"></p>
     <div class="actions">
       <button type="button" class="btn" id="s-test">Skicka testmejl</button>
+      <button type="button" class="btn" id="s-test-slack">Testa Slack</button>
       <span class="spacer"></span>
       <button type="button" class="btn" id="s-cancel">Avbryt</button>
       <button type="submit" class="btn primary" id="s-save">Spara</button>

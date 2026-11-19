@@ -184,3 +184,43 @@ def test_netflow_diagnostics(engine):
     engine.tick()
     assert "väntar på mallen" in engine.status["netflow"]["error"]
     assert engine.nf_parser.stats()["received"] == 1
+
+
+def test_slack(tmp_path, monkeypatch):
+    for k in list(os.environ):
+        if k.startswith(("PFSENSE", "UNIFI", "SMTP", "MAIL", "ALERT", "RETENTION", "SLACK", "PUBLIC")):
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PFSENSE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T000/B000/XXXX")
+    monkeypatch.setenv("PUBLIC_URL", "http://192.168.2.30:8080/")
+    posts = []
+
+    class Resp:
+        def __init__(self, code=200, text="ok"):
+            self.status_code, self.text = code, text
+
+    import app.slack as slackmod
+    monkeypatch.setattr(slackmod.httpx, "post", lambda url, json, timeout: posts.append((url, json)) or Resp())
+    e = Engine(Config())
+    e.slack.send_background = lambda *a: e.slack.send(*a)
+    # kritiskt: skickas, och löst skickas också
+    e.update_openvpn([{"name": "Littorin VPN UDP4", "status": "down"}])
+    e.update_openvpn([{"name": "Littorin VPN UDP4", "status": "down"}])
+    assert len(posts) == 1
+    url, body = posts[0]
+    assert url.startswith("https://hooks.slack.com/") and body["attachments"][0]["color"] == "#e5484d"
+    assert "Littorin VPN UDP4" in body["text"] and "http://192.168.2.30:8080|" in str(body)
+    e.update_openvpn([{"name": "Littorin VPN UDP4", "status": "up", "state": "CONNECTED"}])
+    assert len(posts) == 2 and posts[1][1]["text"].startswith("Löst:") and posts[1][1]["attachments"][0]["color"] == "#3ddc84"
+    # varningar skickas som standard men kan stängas av
+    e.alerts.raise_("x1", "warning", "test", "Varning 1", "a < b & c")
+    assert len(posts) == 3 and "a &lt; b &amp; c" in str(posts[2][1])
+    e.settings.update({"slack_warnings": False})
+    e.alerts.raise_("x2", "warning", "test", "Varning 2", "")
+    assert len(posts) == 3
+    # fel från Slack syns i statusen
+    monkeypatch.setattr(slackmod.httpx, "post", lambda url, json, timeout: Resp(404, "no_service"))
+    with pytest.raises(RuntimeError, match="Webhooken finns inte"):
+        e.slack.send("info", "t", "m", "nu")
+    assert e.status["slack"]["error"]

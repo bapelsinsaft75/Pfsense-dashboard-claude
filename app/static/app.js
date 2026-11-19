@@ -232,6 +232,10 @@ async function openSettings() {
     $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
     $("s-newdev").checked = !!st.new_device_alerts; $("s-mailwarn").checked = !!st.email_warnings;
+    $("s-slackwarn").checked = !!st.slack_warnings;
+    $("s-slack").innerHTML = j.slack.enabled ? "Larm skickas till Slack via webhooken i Unraid-mallen."
+      : "Slack är inte konfigurerat. Fyll i SLACK_WEBHOOK_URL i Unraid-mallen.";
+    $("s-test-slack").disabled = !j.slack.enabled;
     $("s-mail").innerHTML = j.email.enabled ? `E-post skickas via <b>${esc(j.email.host)}</b> till <b>${esc(j.email.to.join(", "))}</b>.`
       : "E-post är inte konfigurerat. Fyll i SMTP_USER, SMTP_TOKEN och MAIL_TO i Unraid-mallen.";
     $("s-test").disabled = !j.email.enabled;
@@ -246,6 +250,7 @@ $("settings-form").addEventListener("submit", async (e) => {
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
     new_device_alerts: $("s-newdev").checked, email_warnings: $("s-mailwarn").checked,
+    slack_warnings: $("s-slackwarn").checked,
   };
   try {
     const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -265,6 +270,15 @@ $("s-test").addEventListener("click", async () => {
     $("s-msg").textContent = `Testmejl skickat till ${j.to.join(", ")}.`; $("s-msg").className = "formmsg ok";
   } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
 });
+$("s-test-slack").addEventListener("click", async () => {
+  $("s-msg").textContent = "Skickar …"; $("s-msg").className = "formmsg";
+  try {
+    const r = await fetch("api/test-slack", { method: "POST" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.status);
+    $("s-msg").textContent = "Testmeddelande skickat till Slack."; $("s-msg").className = "formmsg ok";
+  } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
+});
 $("alerts").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-ack]"); if (!b) return;
   b.disabled = true;
@@ -274,7 +288,7 @@ $("alerts").addEventListener("click", async (e) => {
 
 /* ── rendering ── */
 function renderStatus(d) {
-  const names = { pfsense: "pfSense", vpn: "VPN", unifi: "UniFi", netflow: "NetFlow", syslog: "Syslog", geoip: "GeoIP", email: "E-post" };
+  const names = { pfsense: "pfSense", vpn: "VPN", unifi: "UniFi", netflow: "NetFlow", syslog: "Syslog", geoip: "GeoIP", email: "E-post", slack: "Slack" };
   const chips = [], problems = [];
   for (const [k, baseLabel] of Object.entries(names)) {
     const s = d.status[k] || {};
@@ -282,7 +296,8 @@ function renderStatus(d) {
     if (k === "vpn" && !s.enabled && !(d.status.pfsense || {}).ok) continue;
     const enabled = k === "geoip" ? true : s.enabled;
     let cls = "off", title = "Inte konfigurerat";
-    if (k === "email" && enabled && !s.ok && !s.error) { cls = "ok"; title = "Konfigurerat"; }
+    if (k === "slack" && !enabled) continue;
+    if ((k === "email" || k === "slack") && enabled && !s.ok && !s.error) { cls = "ok"; title = "Konfigurerat"; }
     else if (enabled && s.ok) { cls = "ok"; title = (s.detail ? s.detail + " · " : "") + (s.last ? `Senast ${clock(s.last)}` : "OK"); }
     else if (k === "vpn" && !enabled) { cls = "off"; title = "Ingen OpenVPN-klient hittad i pfSense"; }
     else if (enabled && s.error) { cls = "err"; title = s.error; if (k !== "vpn") problems.push([label, s.error]); }

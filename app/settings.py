@@ -21,6 +21,7 @@ SCHEMA = {
     "suricata_min_priority": (int, 1, 3),
     "pfblocker_threshold": (int, 1, 10000),
     "email_warnings": (bool, None, None),
+    "slack_warnings": (bool, None, None),
     "new_device_alerts": (bool, None, None),
 }
 
@@ -34,6 +35,7 @@ class Settings:
             "suricata_min_priority": cfg.suricata_min_priority,
             "pfblocker_threshold": cfg.pfblocker_threshold,
             "email_warnings": cfg.email_warnings,
+            "slack_warnings": cfg.slack_warnings,
             "new_device_alerts": True,
         }
         self.path = os.path.join(cfg.data_dir, "settings.json") if persist else None

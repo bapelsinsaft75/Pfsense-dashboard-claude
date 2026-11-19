@@ -249,7 +249,8 @@ async def rename_client(cid: str, body: dict = Body(...)):
 async def get_settings():
     engine: Engine = app.state.engine
     return {"settings": engine.settings.all(), "email": {"enabled": engine.mailer.enabled, "to": engine.mailer.to,
-                                                         "host": engine.mailer.host}}
+                                                         "host": engine.mailer.host},
+            "slack": {"enabled": engine.slack.enabled}}
 
 
 @app.put("/api/settings")
@@ -276,6 +277,18 @@ async def test_email():
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"ok": True, "to": engine.mailer.to}
+
+
+@app.post("/api/test-slack")
+async def test_slack():
+    engine: Engine = app.state.engine
+    try:
+        await asyncio.to_thread(
+            engine.slack.send, "info", "Testmeddelande från pfSense-dashboarden",
+            "Om du ser det här fungerar larmen till Slack.", time.strftime("%Y-%m-%d %H:%M"))
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True}
 
 
 @app.get("/api/debug/netflow")

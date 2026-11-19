@@ -10,7 +10,7 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,
   samt en vy över switchar och accesspunkter.
-- **Larm** som en banner överst på sidan, och **e-post** (t.ex. Proton Mail med SMTP-token) vid viktiga händelser.
+- **Larm** som en banner överst på sidan, och **e-post** (t.ex. Proton Mail med SMTP-token) och **Slack** vid viktiga händelser.
 - Säkerhetsvy med Suricata-larm, pfBlockerNG-blockeringar och status för gateways och VPN.
 - Historik äldre än 14 dagar raderas. Antalet dagar går att ändra under *Inställningar* på webbsidan.
 
@@ -33,7 +33,7 @@ Utan inställningar startar containern i **demoläge** med exempeldata.
 
 ## Larm
 
-| Larm | Nivå | Mejlas |
+| Larm | Nivå | Mejlas / Slack |
 | --- | --- | --- |
 | OpenVPN-klient inte ansluten, eller gateway nere (två kontroller i rad, var 30:e sekund) | Kritiskt | Ja, och när den är uppe igen |
 | pfSense svarar inte på 5 minuter | Kritiskt | Ja, och när det fungerar igen |
@@ -91,7 +91,17 @@ t.ex. `dashboard`. Kontot måste vara lokalt, inte ett UI.com-konto.
 
 Fungerar även med andra SMTP-tjänster: ändra `SMTP_HOST` och `SMTP_PORT`.
 
-## 4. Installera på Unraid
+## 4. Slack (valfritt)
+
+1. Gå till https://api.slack.com/apps → *Create New App* → *From scratch*. Välj namn (t.ex. *Nätverket hemma*) och din arbetsyta.
+2. Under *Incoming Webhooks*: slå på *Activate Incoming Webhooks* och tryck *Add New Webhook to Workspace*.
+3. Välj kanalen som larmen ska skickas till och kopiera webhook-adressen (`https://hooks.slack.com/services/...`).
+4. Fyll i `SLACK_WEBHOOK_URL` i Unraid-mallen och tryck *Testa Slack* under *Inställningar* på webbsidan.
+
+Kritiska larm skickas alltid, och ett nytt meddelande när de är lösta. Varningar skickas också som standard;
+det stängs av under *Inställningar*. Webhook-adressen fungerar som ett lösenord: den som har den kan skriva i kanalen.
+
+## 5. Installera på Unraid
 
 Imagen byggs automatiskt av GitHub Actions och publiceras som
 `ghcr.io/bapelsinsaft75/pfsense-dashboard-claude:latest`.
@@ -137,6 +147,9 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `SMTP_USER`, `SMTP_TOKEN` | | Proton-adress och SMTP-token |
 | `MAIL_TO`, `MAIL_FROM` | | Mottagare (kommaseparerade) och avsändare (standard: `SMTP_USER`) |
 | `EMAIL_WARNINGS` | `false` | Mejla även varningar (kan ändras på webbsidan) |
+| `SLACK_WEBHOOK_URL` | | Incoming Webhook från Slack |
+| `SLACK_WARNINGS` | `true` | Skicka även varningar till Slack (kan ändras på webbsidan) |
+| `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |
 | `PFBLOCKER_TRACKER_PREFIX` | `177` | Hur pfBlockerNG-regler känns igen i brandväggsloggen |
 | `PFSENSE_VERIFY_SSL`, `UNIFI_VERIFY_SSL` | `false` | `false` för självsignerade certifikat |
 | `GEOIP_DB_PATH` | | Egen MMDB-fil, t.ex. MaxMind GeoLite2-Country |

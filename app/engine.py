@@ -18,6 +18,7 @@ from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
                       parse_state, wan_counters)
 from .settings import Settings
+from .slack import Slack
 from .syslog import parse_filterlog, parse_suricata
 from .unifi import parse_client, parse_device
 
@@ -65,7 +66,8 @@ class Engine:
         self.history = History(db_path)
         self.settings = Settings(cfg, persist=not cfg.demo)
         self.mailer = Mailer(cfg)
-        self.alerts = Alerts(self.history, self.mailer, self.settings)
+        self.slack = Slack(cfg)
+        self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
         self.gateways: dict[str, dict] = {}
         self.vpn_clients: dict[str, dict] = {}
         self._gw_streak: dict[str, int] = defaultdict(int)
@@ -107,6 +109,7 @@ class Engine:
             "syslog": {"enabled": cfg.syslog_port > 0, "ok": False, "error": None, "last": None},
             "geoip": self.geo.status,
             "email": self.mailer.status,
+            "slack": self.slack.status,
         }
         self.raw: dict[str, list] = {}
 
