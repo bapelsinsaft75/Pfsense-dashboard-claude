@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 import re
 import sys
+import time
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,8 +36,12 @@ INTERVALL = int(env("INTERVALL_SEK", "300"))
 TORR = env("TORRKORNING", "0").lower() in ("1", "true", "ja", "yes")
 NTFY_URL = env("NTFY_URL")
 AVBRYT_TEXT = env("AVBRYT_TEXT", r"avbryt\s+uppsägning")
-BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(bekräfta|ja|ok|avbryt uppsägning)\b")
+BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(ja|bekräfta|ok)\s*$")
+BEKRAFTA_FRAGA = env("BEKRAFTA_FRAGA", r"vill du ta bort.*uppsägning")
 UPPSAGD_TEXT = env("UPPSAGD_TEXT", r"pågående\s+uppsägning")
+START_URL = env("START_URL", "https://minasidor.k2a.se/mypages")
+AVTAL_MENY_TEXT = env("AVTAL_MENY_TEXT", r"^\s*mina\s+avtal\s*$")
+AVTAL_NAMN = env("AVTAL_NAMN")  # texten under Mina avtal, t.ex. Klaffgatan 2
 LOGGA_IN_TEXT = env("LOGGA_IN_TEXT", r"^\s*logga\s*in\s*$")
 # Valfria CSS-selektorer om automatiken inte hittar inloggningsfälten
 SEL_ANVANDARE = env("SEL_ANVANDARE")
@@ -130,8 +135,11 @@ def logga_in(sida) -> bool:
         knapp.click()
     else:
         pw.press("Enter")
-    sida.wait_for_load_state("networkidle", timeout=60_000)
-    sida.wait_for_timeout(1500)
+    try:
+        sida.wait_for_load_state("networkidle", timeout=30_000)
+    except PWTimeout:
+        pass
+    sida.wait_for_timeout(3000)
 
     if losenordsfalt(sida) is not None:
         skarmdump(sida, "inloggning-misslyckades")
@@ -139,20 +147,86 @@ def logga_in(sida) -> bool:
     return True
 
 
-def oppna_avtal(sida) -> None:
-    sida.goto(URL, wait_until="networkidle", timeout=60_000)
-    if logga_in(sida):
-        # Efter inloggning hamnar man inte alltid på avtalssidan – gå dit igen.
-        sida.goto(URL, wait_until="networkidle", timeout=60_000)
-        if losenordsfalt(sida) is not None:
-            raise RuntimeError("Fortfarande på inloggningssidan efter inloggning")
-    # Vänta tills avtalsinnehållet har ritats upp av JavaScript (max 30 s).
+AVTAL_MONSTER = re.compile(rf"{AVBRYT_TEXT}|{UPPSAGD_TEXT}|uppsägningstid|avtal fr\.?o\.?m", re.I)
+SENAST_FUNNEN = {"url": None}
+
+
+def vanta_pa(sida, timeout_ms: int = 30_000, extra: str = "") -> str:
+    """Väntar tills inloggningsformulär, avtalsinnehåll eller (extra) syns."""
+    pw = sida.locator(SEL_LOSENORD or "input[type=password]")
+    avtal = sida.get_by_text(AVTAL_MONSTER)
+    ovrigt = sida.get_by_text(re.compile(extra, re.I)) if extra else None
+    slut = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < slut:
+        if synlig(pw) is not None:
+            return "inloggning"
+        if synlig(avtal) is not None:
+            sida.wait_for_timeout(1500)  # låt knapparna ritas klart
+            return "avtal"
+        if ovrigt is not None and synlig(ovrigt) is not None:
+            sida.wait_for_timeout(1000)
+            return "extra"
+        sida.wait_for_timeout(500)
+    return "okant"
+
+
+def ga_till(sida, url: str, extra: str = "") -> str:
+    sida.goto(url, wait_until="domcontentloaded", timeout=60_000)
     try:
-        sida.get_by_text(re.compile(rf"{AVBRYT_TEXT}|{UPPSAGD_TEXT}|uppsägningstid|avtal fr\.?o\.?m", re.I)) \
-            .first.wait_for(state="visible", timeout=30_000)
+        sida.wait_for_load_state("networkidle", timeout=20_000)
     except PWTimeout:
-        logg(f"Avtalsinnehållet syntes inte inom 30 s (adress nu: {sida.url})")
-    sida.wait_for_timeout(2000)
+        pass
+    lage = vanta_pa(sida, extra=extra)
+    if lage == "inloggning":
+        logga_in(sida)
+        sida.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        lage = vanta_pa(sida, extra=extra)
+        if lage == "inloggning":
+            raise RuntimeError("Fortfarande på inloggningssidan efter inloggning")
+    return lage
+
+
+def prova_klicka_avtal(sida) -> bool:
+    """Klickar på avtalet i menyn (t.ex. 'Klaffgatan 2'). True om avtalssidan visas."""
+    if AVTAL_NAMN:
+        kandidater = sida.get_by_text(re.compile(re.escape(AVTAL_NAMN), re.I))
+    else:
+        kandidater = sida.locator("a[href*='/contract/']")
+    for i in range(kandidater.count()):
+        el = kandidater.nth(i)
+        if not el.is_visible():
+            continue
+        try:
+            el.click(timeout=5_000)
+        except Exception:
+            continue
+        if vanta_pa(sida, 15_000) == "avtal":
+            return True
+    return False
+
+
+def oppna_avtal(sida) -> None:
+    for url in dict.fromkeys(u for u in (SENAST_FUNNEN["url"], URL) if u):
+        if ga_till(sida, url) == "avtal":
+            return
+        logg(f"Avtalet syntes inte på {url} (hamnade på {sida.url})")
+
+    # Via menyn: Mina avtal -> <AVTAL_NAMN>
+    logg(f"Letar upp avtalet via menyn på {START_URL} …")
+    ga_till(sida, START_URL, extra=AVTAL_MENY_TEXT)
+    for forsok in range(3):
+        if prova_klicka_avtal(sida):
+            SENAST_FUNNEN["url"] = sida.url
+            logg(f"Avtalet hittat: {sida.url}")
+            return
+        meny = klickbar(sida, AVTAL_MENY_TEXT)
+        if meny is None:
+            break
+        logg("Klickar på 'Mina avtal'")
+        meny.click()
+        sida.wait_for_timeout(1500)
+    skarmdump(sida, "hittar-inte-avtalet")
+    raise RuntimeError(f"Hittade inte avtalssidan (står på {sida.url})")
 
 
 def spara_senaste(sida) -> None:
@@ -185,21 +259,26 @@ def kontrollera(sida) -> str:
     knapp.click()
     logg("Klickade 'Avbryt uppsägning', väntar på bekräftelse …")
 
-    # Bekräftelsen kan vara en webbläsardialog (hanteras automatiskt) eller en modal.
+    # Bekräftelsen: "Vill du ta bort den här uppsägningen?"  [Nej] [Ja]
     try:
-        sida.get_by_role("dialog").first.wait_for(state="visible", timeout=8_000)
-        omrade = sida.get_by_role("dialog").first
+        sida.get_by_text(re.compile(BEKRAFTA_FRAGA, re.I)).first.wait_for(state="visible", timeout=10_000)
     except PWTimeout:
-        omrade = sida
-    sida.wait_for_timeout(1000)
-
-    bekrafta = klickbar(omrade, BEKRAFTA_TEXT)
+        logg("Bekräftelsefrågan syntes inte (kan ha varit en webbläsardialog)")
+    sida.wait_for_timeout(800)
+    dialog = sida.get_by_role("dialog")
+    omrade = dialog.first if synlig(dialog) is not None else sida
+    bekrafta = klickbar(omrade, BEKRAFTA_TEXT) or klickbar(sida, BEKRAFTA_TEXT)
     if bekrafta is not None:
         logg(f"Bekräftar med knappen {bekrafta.inner_text().strip()!r}")
+        skarmdump(sida, "bekraftelse")
         bekrafta.click()
-        sida.wait_for_load_state("networkidle")
+        try:
+            sida.wait_for_load_state("networkidle", timeout=20_000)
+        except PWTimeout:
+            pass
     else:
-        logg("Ingen bekräfta-knapp syntes (kan ha varit en webbläsardialog)")
+        skarmdump(sida, "ingen-ja-knapp")
+        logg("Hittade ingen Ja-knapp")
     sida.wait_for_timeout(2000)
     skarmdump(sida, "efter-bekraftelse")
 
@@ -345,8 +424,8 @@ def main() -> int:
     ap.add_argument("--visa", action="store_true", help="visa webbläsarfönstret (ej i Docker)")
     a = ap.parse_args()
 
-    if not URL:
-        print("AVTAL_URL saknas", file=sys.stderr)
+    if not URL and not AVTAL_NAMN:
+        print("Ange AVTAL_URL eller AVTAL_NAMN", file=sys.stderr)
         return 2
     if not a.en_gang:
         starta_webb()
