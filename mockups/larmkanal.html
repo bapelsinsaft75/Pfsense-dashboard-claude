@@ -83,8 +83,15 @@ tr.hl td{background:rgba(255,181,71,.05)}
 <tr class="hl"><td><span class="chev">▾</span>Unraid svarar inte<span class="crit">kritiskt</span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x part"></span></td><td><span class="x part"></span></td><td></td></tr>
 <tr class="sub hl"><td>Tower</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
 <tr class="sub hl"><td>LillaNasen</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td></td></tr>
-<tr><td><span class="chev">▸</span>Container har stannat</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
-<tr><td><span class="chev">▸</span>Virtuell maskin har stannat</td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td></td></tr>
+<tr class="hl"><td><span class="chev">▾</span>Container har stannat</td><td><span class="x on"></span></td><td><span class="x part"></span></td><td><span class="x part"></span></td><td><span class="x part"></span></td><td></td></tr>
+<tr class="sub hl"><td>Tower · plex</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
+<tr class="sub hl"><td>Tower · immich</td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
+<tr class="sub hl"><td>LillaNasen · nextcloud</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td></td></tr>
+<tr class="sub hl"><td><span class="add">🔔 + bevaka fler containrar</span></td><td colspan="5"></td></tr>
+<tr class="hl"><td><span class="chev">▾</span>Virtuell maskin har stannat</td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x part"></span></td><td><span class="x part"></span></td><td></td></tr>
+<tr class="sub hl"><td>LillaNasen · Windows11</td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td></td></tr>
+<tr class="sub hl"><td>Tower · HomeAssistant</td><td><span class="x on"></span></td><td><span class="x"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
+<tr class="sub hl"><td><span class="add">🔔 + bevaka fler VM:ar</span></td><td colspan="5"></td></tr>
 <tr><td><span class="chev">▸</span>Plex svarar inte</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x part"></span></td><td><span class="x"></span></td><td></td></tr>
 <tr><td>Pi-hole svarar inte<span class="crit">kritiskt</span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td><td></td></tr>
 </table>
@@ -117,7 +124,13 @@ tr.hl td{background:rgba(255,181,71,.05)}
 <div class="li"><span class="x part"></span><span>Unraid svarar inte<span class="crit">kritiskt</span></span><span class="m">servrar</span></div>
 <div class="li sub"><span class="x on"></span><span>Tower</span><span></span></div>
 <div class="li sub"><span class="x"></span><span>LillaNasen</span><span></span></div>
-<div class="li"><span class="x on"></span><span>Container har stannat</span><span class="m">servrar</span></div>
+<div class="li"><span class="x part"></span><span>Container har stannat</span><span class="m">servrar</span></div>
+<div class="li sub"><span class="x on"></span><span>Tower · plex</span><span></span></div>
+<div class="li sub"><span class="x on"></span><span>Tower · immich</span><span></span></div>
+<div class="li sub"><span class="x"></span><span>LillaNasen · nextcloud</span><span></span></div>
+<div class="li"><span class="x part"></span><span>Virtuell maskin har stannat</span><span class="m">servrar</span></div>
+<div class="li sub"><span class="x"></span><span>LillaNasen · Windows11</span><span></span></div>
+<div class="li sub"><span class="x on"></span><span>Tower · HomeAssistant</span><span></span></div>
 <div class="li"><span class="x part"></span><span>Plex svarar inte</span><span class="m">servrar</span></div>
 <div class="li sub"><span class="x on"></span><span>Peters Plex</span><span></span></div>
 <div class="li sub"><span class="x"></span><span>Alex Plex</span><span></span></div>
@@ -131,6 +144,7 @@ tr.hl td{background:rgba(255,181,71,.05)}
 
 <div class="note">
 <span><b>I båda förslagen:</b> Banner och Slack styrs per larm, e-post per adress. Larm som gäller en viss server (Unraid, container, VM, Plex) kan väljas per server för alla kanaler – inte bara för e-post som i dag.</span>
+<span><b>Enskilda containrar och VM:ar:</b> de du bevakar (klockan 🔔 på Unraid-korten, eller ”+ bevaka fler” här) får en egen rad, och du väljer per container/VM vilka kanaler och adresser som larmas.</span>
 <span><b>Tysta tider, bekräftelse och gränser</b> ligger kvar som i dag. Det du redan valt följer med.</span>
 </div>
 </div>
