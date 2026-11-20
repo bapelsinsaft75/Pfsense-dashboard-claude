@@ -557,7 +557,7 @@ class Engine:
                     self.alerts.raise_(wkey, "critical", "unraid_watch" if kind == "containers" else "unraid_vm",
                                        f"{label} {item} på {name} har stannat",
                                        f"{label} {item} på {name} är inte igång ({why}).{self.confirm_note(wkey)}",
-                                       source=name)
+                                       source=f"{name}|{item}")
                 elif up:
                     self.alerts.resolve(wkey, f"{item} på {name} är igång igen.")
         # sluta larma för sådant som inte längre övervakas
@@ -576,6 +576,49 @@ class Engine:
                                source=p.name)
         elif p.status["ok"]:
             self.alerts.resolve(key, f"{p.name} svarar igen.")
+
+    def alert_matrix(self) -> list[dict]:
+        """Raderna i larmtabellen: grupp, larmtyp och (för serverlarm) en rad per server eller container/VM."""
+        from .settings import ALERT_GROUPS, ALERT_KINDS, CRITICAL_KINDS
+        unraid = [u.status.get("name") or u.url for u in self.unraids]
+        plex = [p.name for p in self.plex_servers]
+        avail: dict[str, dict[str, list[str]]] = {}
+        for u in self.unraids:
+            n = u.status.get("name") or u.url
+            avail[n] = {"containers": sorted(c["name"] for c in u.data.get("containers", [])),
+                        "vms": sorted(v["name"] for v in u.data.get("vms", []))}
+        rows = []
+        for group, kinds in ALERT_GROUPS:
+            for kind in kinds:
+                label, _default, confirmed = ALERT_KINDS[kind]
+                children = []
+                if kind in ("unraid_down", "unraid_problem"):
+                    children = [{"key": f"{kind}|{s}", "label": s, "source": s} for s in unraid]
+                elif kind == "plex_down":
+                    children = [{"key": f"{kind}|{s}", "label": s, "source": s} for s in plex]
+                elif kind in ("unraid_watch", "unraid_vm"):
+                    what = "containers" if kind == "unraid_watch" else "vms"
+                    for s in unraid:
+                        for item in sorted(self.settings.watched(s, what)):
+                            children.append({"key": f"{kind}|{s}|{item}", "label": f"{s} · {item}", "source": f"{s}|{item}",
+                                             "server": s, "item": item})
+                if kind in ("unraid_down", "unraid_problem", "unraid_watch", "unraid_vm") and not unraid:
+                    continue
+                if kind == "plex_down" and not plex:
+                    continue
+                if kind == "pihole_down" and not self.pihole:
+                    continue
+                for c in children:
+                    c["route"] = self.settings.route(kind, c["source"])
+                row = {"key": kind, "kind": kind, "group": group, "label": label, "confirmed": confirmed,
+                       "critical": kind in CRITICAL_KINDS, "route": self.settings.route(kind), "children": children}
+                if kind in ("unraid_watch", "unraid_vm"):
+                    what = "containers" if kind == "unraid_watch" else "vms"
+                    row["watch"] = what
+                    row["available"] = {s: [x for x in avail.get(s, {}).get(what, []) if x not in self.settings.watched(s, what)]
+                                        for s in unraid}
+                rows.append(row)
+        return rows
 
     def check_pihole(self) -> None:
         p = self.pihole

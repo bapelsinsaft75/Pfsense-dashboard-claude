@@ -466,3 +466,39 @@ def test_channels_follow_old_off_kinds(engine):
     assert ch["unraid_down"] == {"email": False, "slack": False}  # var avstängd från början
     assert ch["vpn_down"] == {"email": True, "slack": True}
     assert engine.alerts.raise_("unraid:x", "critical", "unraid_down", "Tower svarar inte", "x") is None
+
+
+def test_routes_per_server_and_container(engine):
+    sent_slack = []
+    engine.alerts.slack = type("S", (), {"enabled": True, "dashboard_url": "", "send_background": lambda self, *a: sent_slack.append(a)})()
+    engine.settings.update({
+        "recipients": [{"email": "peter@exempel.se", "kinds": []}, {"email": "ida@exempel.se", "kinds": []}],
+        "routes": {
+            "unraid_watch": {"banner": True, "slack": False, "emails": ["peter@exempel.se"]},
+            "unraid_watch|Tower|plex": {"banner": True, "slack": True, "emails": ["peter@exempel.se"]},
+            "unraid_vm|LillaNasen": {"banner": False, "slack": False, "emails": ["ida@exempel.se"]},
+            "unraid_vm|LillaNasen|Windows11": {"banner": True, "slack": False, "emails": ["ida@exempel.se"]},
+            "vpn_down": {"banner": False, "slack": False, "emails": []},
+        }})
+    s = engine.settings
+    # mest specifika raden gäller, annars föräldern
+    assert s.route("unraid_watch", "Tower|plex")["slack"] is True
+    assert s.route("unraid_watch", "Tower|immich") == {"banner": True, "slack": False, "emails": ["peter@exempel.se"]}
+    assert s.route("unraid_vm", "LillaNasen|Ubuntu") == {"banner": False, "slack": False, "emails": ["ida@exempel.se"]}
+    # en typ utan rader följer de äldre inställningarna
+    assert s.route("gateway_down")["banner"] is True
+    # larmen går till rätt mottagare
+    engine.alerts.raise_("watch:Tower:containers:plex", "critical", "unraid_watch", "plex har stannat", "x", source="Tower|plex")
+    assert len(sent_slack) == 1 and FakeSMTP.sent[-1]["To"] == "peter@exempel.se"
+    engine.alerts.raise_("watch:LillaNasen:vms:Windows11", "critical", "unraid_vm", "Windows11 har stannat", "x",
+                         source="LillaNasen|Windows11")
+    assert len(sent_slack) == 1 and FakeSMTP.sent[-1]["To"] == "ida@exempel.se"
+    # alla kanaler av: avstängd
+    assert engine.alerts.raise_("ovpn:A", "critical", "vpn_down", "VPN nere", "x") is None
+
+
+def test_alert_matrix_rows(engine):
+    rows = {r["key"]: r for r in engine.alert_matrix()}
+    assert rows["vpn_down"]["group"] == "Nätverk" and rows["vpn_down"]["critical"]
+    assert "plex_down" not in rows  # ingen Plex konfigurerad
+    assert rows["vpn_down"]["route"]["emails"] == ["jag@exempel.se"]  # MAIL_TO som tidigare

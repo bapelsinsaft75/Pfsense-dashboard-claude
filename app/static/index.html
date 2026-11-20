@@ -190,9 +190,10 @@
         <p class="hint" id="s-confirm-hint"></p>
       </fieldset>
       <fieldset>
-        <legend>Larmtyper</legend>
-        <p class="hint">Välj per larmtyp om den ska visas i bannern, skickas med e-post och skickas till Slack. Är alla tre urkryssade är larmet avstängt. Vilka e-postadresser som får larmet väljer du under Aviseringar. Typer märkta ↻ bekräftas med kontrollerna ovan.</p>
-        <div class="tablebox"><table class="kindtable"><thead><tr><th>Larmtyp</th><th>Banner</th><th>E-post</th><th>Slack</th></tr></thead><tbody id="s-kinds"></tbody></table></div>
+        <legend>Vem får vilka larm</legend>
+        <p class="hint">Bocka i per larm om det ska visas i bannern, skickas till Slack och till vilka e-postadresser. Larm som gäller en viss server, container eller virtuell maskin kan fällas ut med ▸ och väljas var för sig. Är alla rutor tomma är larmet avstängt. Typer märkta ↻ bekräftas med kontrollerna ovan.</p>
+        <div class="tablebox"><table class="kindtable mtx" id="s-mtx"></table></div>
+        <p class="hint"><span class="mtxpart"></span> = valt för en del av raderna under. Klicka för att välja alla.</p>
       </fieldset>
       <fieldset>
         <legend>Gränser</legend>
@@ -218,14 +219,14 @@
       <fieldset>
         <legend>E-postmottagare</legend>
         <div class="mailbox" id="s-mail"></div>
-        <p class="hint">Välj vilka larm varje adress ska få. Det gäller både kritiska larm och varningar.</p>
+        <p class="hint">Vilka larm varje adress får väljer du under Larm, där varje adress har en egen kolumn.</p>
         <div class="recips" id="s-recips"></div>
         <div class="actions"><button type="button" class="btn" id="s-add-recip">+ Lägg till mottagare</button></div>
       </fieldset>
       <fieldset>
         <legend>Slack</legend>
         <div class="mailbox" id="s-slack"></div>
-        <p class="hint">Vilka larm som skickas till Slack väljer du under Larm → Larmtyper.</p>
+        <p class="hint">Vilka larm som skickas till Slack väljer du under Larm.</p>
         <div class="actions"><button type="button" class="btn" id="s-test-slack">Testa Slack</button></div>
       </fieldset>
     </div>

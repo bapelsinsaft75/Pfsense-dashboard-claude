@@ -37,6 +37,15 @@ ALERT_KINDS = {
     "pihole_down": ("Pi-hole svarar inte", True, True),
 }
 
+# Grupper i larmtabellen
+ALERT_GROUPS = [
+    ("Nätverk", ["vpn_down", "gateway_down", "gateway_degraded", "source_down", "unifi_offline"]),
+    ("Säkerhet", ["suricata", "pfblocker"]),
+    ("Klienter", ["new_device", "data_anomaly"]),
+    ("Servrar", ["unraid_down", "unraid_problem", "unraid_watch", "unraid_vm", "plex_down", "pihole_down"]),
+]
+ROUTE_SEP = "|"  # larmtyp|server|container – mer specifika rader går före mindre specifika
+
 # Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
 CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_problem",
                   "unraid_watch", "unraid_vm", "plex_down", "pihole_down"}
@@ -69,6 +78,8 @@ SCHEMA = {
     "recipients": ("recipients", None, None),
     # vilka larmtyper som skickas med e-post och till Slack: typ -> {"email": bool, "slack": bool}
     "channels": ("channels", None, None),
+    # vem som får vilka larm: "typ", "typ|server" eller "typ|server|container" -> banner, slack, e-postadresser
+    "routes": ("routes", None, None),
 }
 
 
@@ -95,7 +106,9 @@ class Settings:
             "watch": {},
             "recipients": None,
             "channels": {},
+            "routes": {},
         }
+        self.mail_to: list[str] = [a.strip() for a in (cfg.mail_to or "").split(",") if a.strip()]
         self.path = os.path.join(cfg.data_dir, "settings.json") if persist else None
         self.saved: dict = {}
         self.lock = threading.Lock()
@@ -131,6 +144,30 @@ class Settings:
         if ch is None:  # okänd larmtyp: e-post som vanligt, Slack enligt valet för varningar
             return True if channel == "email" else bool(self.get("slack_warnings"))
         return bool(ch.get(channel, True))
+
+    def route(self, kind: str, source: str | None = None) -> dict:
+        """Vart ett larm ska: {"banner", "slack", "emails"}. source kan vara "server" eller "server|container"."""
+        routes = self.saved.get("routes") or {}
+        parts = [p for p in (source or "").split(ROUTE_SEP) if p]
+        for n in range(len(parts), -1, -1):
+            key = ROUTE_SEP.join([kind, *parts[:n]])
+            if key in routes:
+                return copy.deepcopy(routes[key])
+        return self._legacy_route(kind, parts[0] if parts else None)
+
+    def _legacy_route(self, kind: str, server: str | None) -> dict:
+        """Det som gällde innan tabellen fanns: larmtyp på/av, kanal per typ och mottagare per typ och server."""
+        ch = self.get("channels").get(kind) or {"email": True, "slack": bool(self.get("slack_warnings"))}
+        emails: list[str] = []
+        if ch.get("email", True):
+            rec = self.get("recipients")
+            if rec is None:
+                if kind in CRITICAL_KINDS or self.get("email_warnings"):
+                    emails = list(self.mail_to)
+            else:
+                emails = [r["email"] for r in rec if kind in r["kinds"]
+                          and (server is None or r.get("servers") is None or server in r["servers"])]
+        return {"banner": self.kind_enabled(kind), "slack": bool(ch.get("slack", True)), "emails": emails}
 
     def kind_enabled(self, kind: str) -> bool:
         return bool(self.get("alert_kinds").get(kind, True))
@@ -235,6 +272,17 @@ class Settings:
                         raise ValueError
                     val = {k: {"email": bool((v or {}).get("email", True)), "slack": bool((v or {}).get("slack", True))}
                            for k, v in raw.items() if k in ALERT_KINDS}
+                elif typ == "routes":
+                    if not isinstance(raw, dict) or len(raw) > 2000:
+                        raise ValueError
+                    val = {}
+                    for k, v in raw.items():
+                        k = str(k)[:300]
+                        if k.split(ROUTE_SEP)[0] not in ALERT_KINDS or not isinstance(v, dict):
+                            continue
+                        emails = [str(e).strip() for e in (v.get("emails") or []) if EMAIL_RE.fullmatch(str(e).strip())]
+                        val[k] = {"banner": bool(v.get("banner")), "slack": bool(v.get("slack")),
+                                  "emails": sorted(set(emails), key=str.lower)}
                 elif typ == "watch":
                     if not isinstance(raw, dict):
                         raise ValueError

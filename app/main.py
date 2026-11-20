@@ -438,7 +438,8 @@ async def get_settings():
             "slack": {"enabled": engine.slack.enabled},
             "servers": {"plex": [p.name for p in engine.plex_servers],
                         "pihole": [engine.pihole.name] if engine.pihole else [],
-                        "unraid": [u.status.get("name") or u.url for u in engine.unraids]}}
+                        "unraid": [u.status.get("name") or u.url for u in engine.unraids]},
+            "matrix": engine.alert_matrix()}
 
 
 @app.put("/api/settings")

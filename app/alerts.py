@@ -35,13 +35,9 @@ class Alerts:
 
     def recipients_for(self, kind: str, level: str, source: str | None = None) -> list[str]:
         """Vilka e-postadresser som ska få ett larm av den här typen (och från den här servern)."""
-        if not self.mailer.configured or not self.settings.channel(kind, "email"):
+        if not self.mailer.configured:
             return []
-        rec = self.settings.get("recipients")
-        if rec is None:  # inga mottagare sparade i inställningarna: MAIL_TO som tidigare
-            return list(self.mailer.to) if self._should_mail(level) else []
-        return [r["email"] for r in rec if kind in r["kinds"]
-                and (source is None or r.get("servers") is None or source in r["servers"])]
+        return self.settings.route(kind, source)["emails"]
 
     def _quiet_blocks(self, level: str) -> bool:
         quiet, _ = self.settings.quiet_now()
@@ -71,7 +67,7 @@ class Alerts:
             raised, _still, lines, head = digest(subset)
             self.mailer.send_background(f"Sammanfattning av tysta tiden: {len(raised)} larm",
                                         head + "\n\n" + "\n".join(lines) + "\n", [addr])
-        slack_items = [i for i in items if self._should_slack(i[5], i[1])]
+        slack_items = [i for i in items if self._should_slack(i[5], i[1], i[6] if len(i) > 6 else None)]
         raised, still, lines, head = digest(slack_items)
         subject = f"Sammanfattning av tysta tiden: {len(raised)} larm"
         if self.slack and self.slack.enabled and slack_items:
@@ -86,8 +82,8 @@ class Alerts:
     def _should_mail(self, level: str) -> bool:
         return level == "critical" or (level == "warning" and self.settings.get("email_warnings"))
 
-    def _should_slack(self, kind: str, level: str) -> bool:
-        return self.settings.channel(kind, "slack")
+    def _should_slack(self, kind: str, level: str, source: str | None = None) -> bool:
+        return bool(self.settings.route(kind, source)["slack"])
 
     def _post_slack(self, key: str, level: str, title: str, message: str, when: str, force: bool = False) -> bool:
         if not self.slack or not self.slack.enabled:
@@ -112,8 +108,9 @@ class Alerts:
     def raise_(self, key: str, level: str, kind: str, title: str, message: str, now: float | None = None,
                source: str | None = None) -> int | None:
         """Skapa ett larm, eller uppdatera det om samma larm redan är aktivt. Avstängda larmtyper ignoreras."""
-        banner = self.settings.kind_enabled(kind)
-        if not (banner or self.settings.channel(kind, "email") or self.settings.channel(kind, "slack")):
+        route = self.settings.route(kind, source)
+        banner = route["banner"]
+        if not (banner or route["slack"] or route["emails"]):
             return None  # helt avstängd larmtyp
         now = now or time.time()
         with self.h.lock:
@@ -134,7 +131,7 @@ class Alerts:
                 self.h.db.commit()
         log.info("Larm (%s): %s – %s", level, title, message)
         to = self.recipients_for(kind, level, source)
-        if self._quiet_blocks(level) and (to or self._should_slack(kind, level)):
+        if self._quiet_blocks(level) and (to or self._should_slack(kind, level, source)):
             self.quiet_queue.append(("raised", level, title, message, now, kind, source))
             return alert_id
         if to:
@@ -145,7 +142,7 @@ class Alerts:
                 with self.h.lock:
                     self.h.db.execute("UPDATE alerts SET emailed=1 WHERE id=?", (alert_id,))
                     self.h.db.commit()
-        if self._should_slack(kind, level) and self._post_slack(key, level, title, message, _when(now)):
+        if self._should_slack(kind, level, source) and self._post_slack(key, level, title, message, _when(now)):
             with self.h.lock:
                 self.h.db.execute("UPDATE alerts SET slacked=1 WHERE id=?", (alert_id,))
                 self.h.db.commit()

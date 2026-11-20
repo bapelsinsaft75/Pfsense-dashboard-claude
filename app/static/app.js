@@ -388,65 +388,46 @@ $("s-interval").addEventListener("input", confirmHint);
 $("s-count").addEventListener("input", confirmHint);
 document.querySelector(".stabs").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tab]"); if (!b) return;
-  document.querySelectorAll(".stabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", x === b));
-  document.querySelectorAll(".spane").forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+  showTab(b.dataset.tab);
 });
-let recips = [], mailConfigured = false, serverList = [];
-function readRecips() {
-  return [...$("s-recips").querySelectorAll(".recip")].map((row) => ({
-    email: row.querySelector(".r-email").value.trim(), name: row.querySelector(".r-name").value.trim(),
-    kinds: [...row.querySelectorAll("[data-rkind]:checked")].map((c) => c.dataset.rkind),
-    servers: !serverList.length || row.querySelector(".r-allsrv").checked ? null
-      : [...row.querySelectorAll("[data-rsrv]:checked")].map((c) => c.dataset.rsrv),
-  }));
+let recips = [], mailConfigured = false, serverList = [], nextRid = 1;
+let mtxRows = [], mtxState = {}, mtxOpen = new Set();
+const newRid = () => "r" + nextRid++;
+function syncRecips() {
+  $("s-recips").querySelectorAll(".recip").forEach((row) => {
+    const r = recips.find((x) => x.rid === row.dataset.rid);
+    if (r) { r.email = row.querySelector(".r-email").value.trim(); r.name = row.querySelector(".r-name").value.trim(); }
+  });
 }
 function renderRecips() {
-  $("s-recips").innerHTML = recips.length ? recips.map((r, i) => {
-    const n = r.kinds.length;
-    return `<div class="recip" data-i="${i}">
+  $("s-recips").innerHTML = recips.length ? recips.map((r) => `<div class="recip" data-rid="${r.rid}">
       <div class="rtop"><input type="email" class="r-email" value="${esc(r.email)}" placeholder="namn@exempel.se" aria-label="E-postadress" required>
         <input type="text" class="r-name" value="${esc(r.name || "")}" placeholder="Namn (valfritt)" aria-label="Namn">
-        <button type="button" class="btn" data-rtest="${i}" ${mailConfigured ? "" : "disabled"}>Testa</button>
-        <button type="button" class="btn" data-rdel="${i}" aria-label="Ta bort mottagare">Ta bort</button></div>
-      <details ${r.open ? "open" : ""}><summary>Larm som skickas hit: <b>${n} av ${alertKinds.length}</b></summary>
-        <div class="rquick"><button type="button" class="linkbtn" data-rall="${i}">Alla</button><button type="button" class="linkbtn" data-rcrit="${i}">Bara kritiska</button><button type="button" class="linkbtn" data-rnone="${i}">Inga</button></div>
-        <div class="rkinds">${alertKinds.map((k) => `<label class="check"><input type="checkbox" data-rkind="${k.id}" ${r.kinds.includes(k.id) ? "checked" : ""}> ${esc(k.label)}</label>`).join("")}</div>
-        ${serverList.length ? `<div class="rsrv"><div><b>Servrar</b> <span class="muted">· gäller larm om Plex och Unraid</span></div>
-          <label class="check"><input type="checkbox" class="r-allsrv" ${r.servers == null ? "checked" : ""}> Alla servrar</label>
-          <div class="rsrvlist">${serverList.map((sv) => `<label class="check"><input type="checkbox" data-rsrv="${esc(sv.name)}" ${r.servers == null || r.servers.includes(sv.name) ? "checked" : ""} ${r.servers == null ? "disabled" : ""}> ${esc(sv.name)} <span class="muted">${sv.type}</span></label>`).join("")}</div></div>` : ""}
-      </details></div>`;
-  }).join("") : '<p class="muted">Inga mottagare. Lägg till en för att få larm via e-post.</p>';
+        <button type="button" class="btn" data-rtest="${r.rid}" ${mailConfigured ? "" : "disabled"}>Testa</button>
+        <button type="button" class="btn" data-rdel="${r.rid}" aria-label="Ta bort mottagare">Ta bort</button></div></div>`).join("")
+    : '<p class="muted">Inga mottagare. Lägg till en för att få larm via e-post.</p>';
 }
-function syncRecips() {
-  const opened = [...$("s-recips").querySelectorAll(".recip details")].map((d) => d.open);
-  recips = readRecips().map((r, i) => ({ ...r, open: opened[i] }));
-}
-$("s-add-recip").addEventListener("click", () => {
+function addRecip() {
   syncRecips();
-  recips.push({ email: "", name: "", kinds: alertKinds.filter((k) => k.critical).map((k) => k.id), open: true });
+  const rid = newRid();
+  recips.push({ rid, email: "", name: "" });
+  // en ny adress får de kritiska larmen från början
+  for (const row of mtxRows) if (row.critical) for (const k of [row.key, ...row.children.map((c) => c.key)]) mtxState[k].emails.add(rid);
   renderRecips();
   const rows = $("s-recips").querySelectorAll(".r-email"); rows[rows.length - 1].focus();
-});
-$("s-recips").addEventListener("change", (e) => {
-  if (e.target.matches(".r-allsrv")) {
-    e.target.closest(".recip").querySelectorAll("[data-rsrv]").forEach((c) => { c.disabled = e.target.checked; if (e.target.checked) c.checked = true; });
-    return;
-  }
-  if (!e.target.matches("[data-rkind]")) return;
-  const row = e.target.closest(".recip");
-  row.querySelector("summary b").textContent = `${row.querySelectorAll("[data-rkind]:checked").length} av ${alertKinds.length}`;
-});
+}
+$("s-add-recip").addEventListener("click", addRecip);
 $("s-recips").addEventListener("click", async (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  const i = +(b.dataset.rdel ?? b.dataset.rall ?? b.dataset.rcrit ?? b.dataset.rnone ?? b.dataset.rtest ?? -1);
-  if (i < 0) return;
   syncRecips();
-  if (b.dataset.rdel != null) { recips.splice(i, 1); renderRecips(); return; }
-  if (b.dataset.rall != null) recips[i].kinds = alertKinds.map((k) => k.id);
-  if (b.dataset.rcrit != null) recips[i].kinds = alertKinds.filter((k) => k.critical).map((k) => k.id);
-  if (b.dataset.rnone != null) recips[i].kinds = [];
-  if (b.dataset.rtest != null) {
-    const to = recips[i].email;
+  if (b.dataset.rdel) {
+    recips = recips.filter((r) => r.rid !== b.dataset.rdel);
+    for (const st of Object.values(mtxState)) st.emails.delete(b.dataset.rdel);
+    renderRecips(); return;
+  }
+  if (b.dataset.rtest) {
+    const to = (recips.find((r) => r.rid === b.dataset.rtest) || {}).email;
+    if (!to) return;
     $("s-msg").textContent = `Skickar testmejl till ${to} …`; $("s-msg").className = "formmsg";
     try {
       const r = await fetch("api/test-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) });
@@ -454,11 +435,124 @@ $("s-recips").addEventListener("click", async (e) => {
       if (!r.ok) throw new Error(j.detail || r.status);
       $("s-msg").textContent = `Testmejl skickat till ${to}.`; $("s-msg").className = "formmsg ok";
     } catch (err) { $("s-msg").textContent = err.message; $("s-msg").className = "formmsg err"; }
+  }
+});
+
+/* ── larmtabellen: banner, Slack och en kolumn per e-postadress ── */
+function mtxCols() {
+  return [{ id: "banner", label: "Banner" }, { id: "slack", label: "Slack" },
+    ...recips.map((r) => ({ id: r.rid, label: r.name || (r.email ? r.email.split("@")[0] : "ny adress"), title: r.email || "Ny adress, fyll i under Aviseringar", mail: true }))];
+}
+const mtxGet = (key, col) => { const st = mtxState[key]; return col === "banner" || col === "slack" ? st[col] : st.emails.has(col); };
+function mtxSet(key, col, on) {
+  const st = mtxState[key];
+  if (col === "banner" || col === "slack") st[col] = on; else if (on) st.emails.add(col); else st.emails.delete(col);
+}
+function renderMatrix() {
+  const cols = mtxCols();
+  let html = `<thead><tr><th>Larm</th>${cols.map((c) => `<th class="${c.mail ? "mail" : ""}" title="${esc(c.title || "")}">${esc(c.label)}</th>`).join("")}<th><button type="button" class="linkbtn" data-mtxadd>+ e-post</button></th></tr></thead><tbody>`;
+  let group = null;
+  const box = (key, col, label, ind) => {
+    const on = ind ? ind.all : mtxGet(key, col);
+    return `<td class="c"><input type="checkbox" data-mk="${esc(key)}" data-mc="${col}" ${on ? "checked" : ""} ${ind && ind.some && !ind.all ? "data-ind" : ""} aria-label="${esc(label)}"></td>`;
+  };
+  for (const row of mtxRows) {
+    if (row.group !== group) { group = row.group; html += `<tr class="mgrp"><td colspan="${cols.length + 2}">${esc(group)}</td></tr>`; }
+    const kids = row.children;
+    const open = mtxOpen.has(row.key);
+    const canOpen = kids.length || row.watch;
+    html += `<tr class="mrow${open ? " open" : ""}"><td>${canOpen ? `<button type="button" class="mchev" data-mopen="${esc(row.key)}" aria-expanded="${open}">${open ? "▾" : "▸"}</button>` : '<span class="mchev"></span>'}${esc(row.label)}${row.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}${row.critical ? ' <span class="kcrit">kritiskt</span>' : ""}${kids.length ? ` <span class="muted">· ${kids.length}</span>` : ""}</td>${cols.map((c) => {
+      if (!kids.length) return box(row.key, c.id, `${c.label}: ${row.label}`);
+      const v = kids.map((k) => mtxGet(k.key, c.id));
+      return box(row.key, c.id, `${c.label}: ${row.label}`, { all: v.every(Boolean), some: v.some(Boolean) });
+    }).join("")}<td></td></tr>`;
+    if (!open) continue;
+    for (const k of kids) {
+      html += `<tr class="msub"><td><span class="mtree">└</span>${esc(k.label)}${k.item ? ` <button type="button" class="linkbtn mstop" data-unwatch="${esc(k.key)}" title="Sluta bevaka ${esc(k.item)}">✕</button>` : ""}</td>${cols.map((c) => box(k.key, c.id, `${c.label}: ${k.label}`)).join("")}<td></td></tr>`;
+    }
+    if (row.watch) {
+      const opts = Object.entries(row.available || {}).flatMap(([srv, items]) => items.map((it) => `<option value="${esc(srv)}|${esc(it)}">${esc(srv)} · ${esc(it)}</option>`));
+      html += `<tr class="msub"><td colspan="${cols.length + 2}"><span class="mtree">└</span>${opts.length
+        ? `<select class="mwatch" data-addwatch="${esc(row.key)}" aria-label="Börja bevaka"><option value="">🔔 + bevaka ${row.watch === "vms" ? "en virtuell maskin" : "en container"} …</option>${opts.join("")}</select>`
+        : `<span class="muted">Inga fler ${row.watch === "vms" ? "virtuella maskiner" : "containrar"} att bevaka.</span>`}</td></tr>`;
+    }
+  }
+  $("s-mtx").innerHTML = html + "</tbody>";
+  $("s-mtx").querySelectorAll("[data-ind]").forEach((x) => { x.indeterminate = true; });
+}
+$("s-mtx").addEventListener("change", async (e) => {
+  const t = e.target;
+  if (t.matches("[data-mk]")) {
+    const key = t.dataset.mk, col = t.dataset.mc;
+    const row = mtxRows.find((r) => r.key === key);
+    if (row && row.children.length) {
+      for (const k of [row.key, ...row.children.map((c) => c.key)]) mtxSet(k, col, t.checked);
+    } else {
+      mtxSet(key, col, t.checked);
+      const parent = mtxRows.find((r) => r.children.some((c) => c.key === key));
+      if (parent) mtxSet(parent.key, col, parent.children.every((c) => mtxGet(c.key, col)));
+    }
+    renderMatrix();
     return;
   }
-  recips[i].open = true;
-  renderRecips();
+  if (t.matches("[data-addwatch]") && t.value) {
+    const row = mtxRows.find((r) => r.key === t.dataset.addwatch);
+    const [server, ...rest] = t.value.split("|"); const item = rest.join("|");
+    try {
+      const r = await fetch("api/unraid/watch", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ server, kind: row.watch, name: item, on: true }) });
+      if (!r.ok) throw new Error(r.status);
+    } catch (err) { $("s-msg").textContent = `Kunde inte börja bevaka ${item}.`; $("s-msg").className = "formmsg err"; return; }
+    const key = `${row.key}|${server}|${item}`;
+    const p = mtxState[row.key];
+    mtxState[key] = { banner: p.banner, slack: p.slack, emails: new Set(p.emails) };
+    row.children.push({ key, label: `${server} · ${item}`, source: `${server}|${item}`, server, item });
+    row.children.sort((a, b) => a.label.localeCompare(b.label, "sv"));
+    row.available[server] = (row.available[server] || []).filter((x) => x !== item);
+    renderMatrix();
+  }
 });
+$("s-mtx").addEventListener("click", async (e) => {
+  const o = e.target.closest("[data-mopen]");
+  if (o) { const k = o.dataset.mopen; if (mtxOpen.has(k)) mtxOpen.delete(k); else mtxOpen.add(k); renderMatrix(); return; }
+  if (e.target.closest("[data-mtxadd]")) { showTab("notify"); addRecip(); return; }
+  const u = e.target.closest("[data-unwatch]");
+  if (u) {
+    const key = u.dataset.unwatch;
+    const row = mtxRows.find((r) => r.children.some((c) => c.key === key));
+    const k = row.children.find((c) => c.key === key);
+    try {
+      const r = await fetch("api/unraid/watch", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ server: k.server, kind: row.watch, name: k.item, on: false }) });
+      if (!r.ok) throw new Error(r.status);
+    } catch (err) { $("s-msg").textContent = `Kunde inte sluta bevaka ${k.item}.`; $("s-msg").className = "formmsg err"; return; }
+    row.children = row.children.filter((c) => c.key !== key);
+    delete mtxState[key];
+    (row.available[k.server] = row.available[k.server] || []).push(k.item);
+    row.available[k.server].sort();
+    renderMatrix();
+  }
+});
+function showTab(tab) {
+  document.querySelectorAll(".stabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", x.dataset.tab === tab));
+  document.querySelectorAll(".spane").forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+  if (tab === "alerts") { syncRecips(); renderMatrix(); }
+}
+function readRoutes() {
+  syncRecips();
+  const mail = Object.fromEntries(recips.filter((r) => r.email).map((r) => [r.rid, r.email]));
+  const routes = {}, alertKindsOut = {}, channels = {};
+  for (const row of mtxRows) {
+    for (const k of [row, ...row.children]) {
+      const st = mtxState[k.key];
+      routes[k.key] = { banner: st.banner, slack: st.slack, emails: [...st.emails].map((rid) => mail[rid]).filter(Boolean) };
+    }
+    const all = [row, ...row.children].map((k) => routes[k.key]);
+    alertKindsOut[row.kind] = all.some((x) => x.banner);
+    channels[row.kind] = { email: all.some((x) => x.emails.length), slack: all.some((x) => x.slack) };
+  }
+  const recipients = recips.filter((r) => r.email || r.name).map((r) => ({ email: r.email, name: r.name,
+    kinds: mtxRows.filter((row) => [row, ...row.children].some((k) => mtxState[k.key].emails.has(r.rid))).map((row) => row.kind), servers: null }));
+  return { routes, alert_kinds: alertKindsOut, channels, recipients };
+}
 async function openSettings() {
   const dlg = $("settings");
   $("s-msg").textContent = ""; $("s-msg").className = "formmsg";
@@ -470,20 +564,22 @@ async function openSettings() {
     $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
     $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
-    $("s-kinds").innerHTML = alertKinds.map((k) => {
-      const ch = (st.channels || {})[k.id] || { email: true, slack: true };
-      const box = (attr, on, label) => `<td class="c"><input type="checkbox" ${attr} ${on ? "checked" : ""} aria-label="${label}: ${esc(k.label)}"></td>`;
-      return `<tr><td>${esc(k.label)}${k.confirmed ? ' <span class="muted" title="Bekräftas med upprepade kontroller">↻</span>' : ""}${k.critical ? ' <span class="kcrit" title="Kritiskt larm">kritiskt</span>' : ""}</td>${box(`data-kind="${k.id}"`, st.alert_kinds[k.id], "Banner")}${box(`data-ch="email" data-k="${k.id}"`, ch.email, "E-post")}${box(`data-ch="slack" data-k="${k.id}"`, ch.slack, "Slack")}</tr>`;
-    }).join("");
     $("s-quiet").checked = !!st.quiet_enabled; setTime("s-qstart", st.quiet_start); setTime("s-qend", st.quiet_end);
     $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
     $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
 
     mailConfigured = j.email.enabled;
     serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" })), ...(j.servers?.pihole || []).map((n) => ({ name: n, type: "Pi-hole" }))];
-    recips = st.recipients ? st.recipients.map((r) => ({ ...r }))
-      : j.email.to.map((email) => ({ email, name: "", kinds: alertKinds.filter((k) => k.critical || (st.email_warnings && st.alert_kinds[k.id])).map((k) => k.id) }));
+    recips = (st.recipients ? st.recipients.map((r) => ({ email: r.email, name: r.name || "" })) : j.email.to.map((email) => ({ email, name: "" })))
+      .map((r) => ({ ...r, rid: newRid() }));
+    const ridOf = Object.fromEntries(recips.map((r) => [r.email.toLowerCase(), r.rid]));
+    mtxRows = j.matrix || [];
+    mtxState = {};
+    for (const row of mtxRows) for (const k of [row, ...row.children]) {
+      mtxState[k.key] = { banner: !!k.route.banner, slack: !!k.route.slack, emails: new Set((k.route.emails || []).map((e) => ridOf[e.toLowerCase()]).filter(Boolean)) };
+    }
     renderRecips();
+    renderMatrix();
     $("s-slack").innerHTML = j.slack.enabled ? "Larm skickas till Slack via webhooken i Unraid-mallen."
       : "Slack är inte konfigurerat. Fyll i SLACK_WEBHOOK_URL i Unraid-mallen.";
     $("s-test-slack").disabled = !j.slack.enabled;
@@ -496,19 +592,17 @@ $("open-settings").addEventListener("click", openSettings);
 $("s-cancel").addEventListener("click", () => $("settings").close());
 $("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const kinds = {};
-  $("s-kinds").querySelectorAll("[data-kind]").forEach((c) => { kinds[c.dataset.kind] = c.checked; });
-  const channels = {};
-  $("s-kinds").querySelectorAll("[data-ch]").forEach((c) => { (channels[c.dataset.k] = channels[c.dataset.k] || {})[c.dataset.ch] = c.checked; });
+  const rt = readRoutes();
   const body = {
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
-    confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: kinds,
+    confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: rt.alert_kinds,
     quiet_enabled: $("s-quiet").checked, quiet_start: getTime("s-qstart"), quiet_end: getTime("s-qend"),
     quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
     quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
-    channels,
-    recipients: readRecips(),
+    channels: rt.channels,
+    recipients: rt.recipients,
+    routes: rt.routes,
   };
   try {
     const r = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

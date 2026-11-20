@@ -664,3 +664,20 @@ body.ldrawer-open{overflow:hidden}
 .clmore{all:unset;box-sizing:border-box;cursor:pointer;display:flex;justify-content:center;width:100%;padding:9px;border:1px dashed #2a3d52;color:var(--accent);font-family:var(--cond);font-size:14px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
 .clmore:hover{background:var(--sel)}
 .clmore:focus-visible{outline:2px solid var(--accent)}
+
+/* larmtabellen */
+dialog#settings{max-width:min(900px,calc(100vw - 32px))}
+.mtx th.mail{color:var(--up);text-transform:none;letter-spacing:0;font-size:10.5px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtx th:last-child{width:auto;text-align:right}
+.mtx .mgrp td{color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding-top:12px;border:0}
+.mtx .mrow.open td{background:rgba(255,181,71,.04)}
+.mtx .msub td{background:rgba(255,181,71,.04)}
+.mtx .msub td:first-child{padding-left:26px;color:var(--muted)}
+.mtree{color:#2a3d52;margin-right:6px}
+.mchev{all:unset;cursor:pointer;display:inline-block;width:16px;color:var(--accent)}
+.mchev:focus-visible{outline:2px solid var(--accent)}
+.mstop{color:var(--muted);margin-left:6px;text-decoration:none}
+.mstop:hover{color:var(--err)}
+.mwatch{font:inherit;font-size:11.5px;background:var(--track);color:var(--accent);border:1px dashed #2a3d52;padding:3px 6px}
+.mtxpart{display:inline-block;width:12px;height:12px;background:var(--accent);position:relative;vertical-align:-1px}
+.mtxpart::after{content:"";position:absolute;left:2px;right:2px;top:5px;height:2px;background:#1a1205}
