@@ -3,9 +3,11 @@ services:
     build: .
     container_name: k2a-bevakare
     env_file: .env
+    environment:
+      WEBB_PORT: "8080"   # porten inne i containern, ändra inte
     restart: unless-stopped
-    ipc: host          # Chromium behöver delat minne
+    ipc: host             # Chromium behöver delat minne
     volumes:
       - ./skarmdumpar:/data/skarmdumpar
     ports:
-      - "${WEBB_PORT:-8080}:${WEBB_PORT:-8080}"
+      - "7373:8080"       # vänster siffra = porten på servern
