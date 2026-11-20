@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Till toppen</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: fyra sätt att snabbt komma till toppen av dashboarden. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--ok:#3ddc84;--err:#ff6b6b;
+  --track:#0b131c;--sel:#1a2c40;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12px;line-height:1.5}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 16px 40px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+@media (max-width:1000px){.wrap{grid-template-columns:1fr}}
+.opt{display:grid;gap:8px;align-content:start}
+.opt h2{margin:0;font-family:var(--cond);font-size:22px;letter-spacing:.06em;text-transform:uppercase}
+.opt h2 span{color:var(--accent)}
+.opt p{margin:0;color:var(--muted)}
+.screen{position:relative;height:330px;border:1px solid #2a3d52;background:var(--bg);overflow:hidden}
+.page{position:absolute;inset:0;padding:12px;display:grid;gap:10px;align-content:start}
+.blk{background:var(--card);border:1px solid var(--line);padding:8px 10px;color:var(--muted);font-family:var(--cond);letter-spacing:.1em;text-transform:uppercase;font-size:12px}
+.blk.t{height:120px}.blk.m{height:80px}
+.row{display:grid;grid-template-columns:1.6fr 1fr;gap:10px}
+.scroll{position:absolute;right:3px;top:150px;width:4px;height:60px;background:#2a3d52;border-radius:2px}
+.fab{position:absolute;right:14px;bottom:14px;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;border:1px solid #2a3d52;background:var(--card);color:var(--accent);font:600 19px/1 var(--mono);box-shadow:0 8px 24px -8px rgba(0,0,0,.9)}
+.pillb{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:6px 14px;border:1px solid rgba(255,181,71,.5);background:rgba(15,24,34,.95);color:var(--accent);font-family:var(--cond);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px;border-radius:999px;box-shadow:0 8px 24px -8px rgba(0,0,0,.9)}
+.bar{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:7px 12px;background:rgba(10,16,23,.96);border-bottom:1px solid var(--line);box-shadow:0 8px 20px -10px rgba(0,0,0,.9)}
+.bar b{font-family:var(--cond);font-size:15px;letter-spacing:.06em;text-transform:uppercase}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border:1px solid var(--line);font-size:10.5px;color:var(--muted)}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.chip.e{color:var(--err);border-color:rgba(255,107,107,.4)}.chip.e::before{background:var(--err)}
+.bar .up{margin-left:auto;padding:3px 10px;border:1px solid #2a3d52;color:var(--accent);font-family:var(--cond);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.ring{position:absolute;right:14px;bottom:14px;width:44px;height:44px}
+.ring svg{width:44px;height:44px}
+.ring span{position:absolute;inset:0;display:grid;place-items:center;color:var(--accent);font:600 18px/1 var(--mono)}
+.menu{position:absolute;right:14px;bottom:66px;width:190px;background:#0b131c;border:1px solid #2a3d52;box-shadow:0 12px 30px -10px rgba(0,0,0,.9);padding:6px;display:grid;gap:2px}
+.menu span{padding:4px 8px;display:flex;justify-content:space-between}
+.menu span.top{color:var(--accent);border-bottom:1px solid var(--line);margin-bottom:2px}
+.menu span.on{background:var(--sel)}
+.menu small{color:var(--muted)}
+.menu .dot{width:7px;height:7px;border-radius:50%;background:var(--err);display:inline-block}
+.pro{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11.5px}
+.pro div{border-left:2px solid var(--ok);padding-left:8px;color:var(--muted)}
+.pro div.con{border-color:var(--err)}
+.pro b{color:var(--fg);font-weight:500;display:block}
+</style>
+<div class="wrap">
+
+<section class="opt"><h2><span>A</span> · Rund knapp i hörnet</h2><p>En liten ↑-knapp nere till höger som dyker upp när du har scrollat en bit.</p>
+<div class="screen"><div class="page"><div class="row"><div class="blk t">Över tid</div><div class="blk t">Mest bandbredd</div></div><div class="blk m">Pi-hole</div><div class="blk m">Säkerhet</div></div><span class="scroll"></span><span class="fab">↑</span></div>
+<div class="pro"><div><b>Fördel</b>Diskret, tar nästan ingen plats.</div><div class="con"><b>Nackdel</b>Gör bara en sak.</div></div></section>
+
+<section class="opt"><h2><span>B</span> · Knapp med text</h2><p>”↑ Till toppen” som en pill längst ner i mitten – tydligare vad den gör.</p>
+<div class="screen"><div class="page"><div class="row"><div class="blk t">Över tid</div><div class="blk t">Mest bandbredd</div></div><div class="blk m">Pi-hole</div><div class="blk m">Säkerhet</div></div><span class="scroll"></span><span class="pillb">↑ Till toppen</span></div>
+<div class="pro"><div><b>Fördel</b>Lätt att förstå och träffa, även på mobilen.</div><div class="con"><b>Nackdel</b>Kan skymma lite av innehållet längst ner.</div></div></section>
+
+<section class="opt"><h2><span>C</span> · Smal rad som följer med</h2><p>När du scrollar ner glider en smal rad in överst med statuschippen och ”↑ Toppen”. Du ser alltid om något är fel.</p>
+<div class="screen"><div class="page" style="padding-top:48px"><div class="row"><div class="blk t">Över tid</div><div class="blk t">Mest bandbredd</div></div><div class="blk m">Pi-hole</div><div class="blk m">Säkerhet</div></div><span class="scroll"></span>
+<div class="bar"><b>Nätverket hemma</b><span class="chip">pfSense</span><span class="chip">VPN</span><span class="chip e">LillaNasen</span><span class="chip">Pi-hole 17 %</span><span class="up">↑ Toppen</span></div></div>
+<div class="pro"><div><b>Fördel</b>Status och larm syns hela tiden, och chippen går att klicka.</div><div class="con"><b>Nackdel</b>Tar en rad överst på skärmen.</div></div></section>
+
+<section class="opt"><h2><span>D</span> · Knapp med ”hoppa till”-meny</h2><p>Ringen visar hur långt ner du är. Klick → toppen. Håll eller högerklick → meny för att hoppa direkt till en del.</p>
+<div class="screen"><div class="page"><div class="row"><div class="blk t">Över tid</div><div class="blk t">Mest bandbredd</div></div><div class="blk m">Pi-hole</div><div class="blk m">Säkerhet</div></div><span class="scroll"></span>
+<div class="menu"><span class="top">↑ Toppen</span><span>Karta</span><span class="on">Över tid <small>här</small></span><span>Pi-hole</span><span>Säkerhet</span><span>Klienter</span><span>Unraid <i class="dot"></i></span><span>Plex</span></div>
+<span class="ring"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="#0f1822" stroke="#2a3d52" stroke-width="2"/><circle cx="22" cy="22" r="19" fill="none" stroke="#ffb547" stroke-width="2.5" stroke-dasharray="119.4" stroke-dashoffset="80" transform="rotate(-90 22 22)"/></svg><span>↑</span></span></div>
+<div class="pro"><div><b>Fördel</b>Snabbt till vilken del som helst, inte bara toppen.</div><div class="con"><b>Nackdel</b>Lite mer att lära sig.</div></div></section>
+
+</div>
