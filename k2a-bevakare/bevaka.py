@@ -40,9 +40,10 @@ BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(ja|bekräfta|ok)\s*$")
 BEKRAFTA_FRAGA = env("BEKRAFTA_FRAGA", r"vill du ta bort.*uppsägning")
 UPPSAGD_TEXT = env("UPPSAGD_TEXT", r"pågående\s+uppsägning")
 START_URL = env("START_URL", "https://minasidor.k2a.se/mypages")
+LISTA_URL = env("LISTA_URL", "https://minasidor.k2a.se/mypages/contract/")
+VISA_TEXT = env("VISA_TEXT", r"^\s*visa\s*$")
 AVTAL_MENY_TEXT = env("AVTAL_MENY_TEXT", r"^\s*mina\s+avtal\s*$")
 AVTAL_NAMN = env("AVTAL_NAMN")  # texten under Mina avtal, t.ex. Klaffgatan 2
-LOGGA_IN_TEXT = env("LOGGA_IN_TEXT", r"^\s*logga\s*in\s*$")
 # Valfria CSS-selektorer om automatiken inte hittar inloggningsfälten
 SEL_ANVANDARE = env("SEL_ANVANDARE")
 SEL_LOSENORD = env("SEL_LOSENORD")
@@ -109,45 +110,82 @@ def losenordsfalt(sida):
     return synlig(sida.locator(SEL_LOSENORD or "input[type=password]"))
 
 
-def logga_in(sida) -> bool:
-    """Fyller i inloggningsformuläret om det visas. True om inloggning gjordes."""
-    pw = losenordsfalt(sida)
-    if pw is None:
-        return False
-    if not (ANVANDARE and LOSENORD):
-        raise RuntimeError("Inloggning krävs men K2A_ANVANDARNAMN/K2A_LOSENORD saknas")
+TEXTFALT = "input:not([type]), input[type=text], input[type=email], input[type=tel]"
+LOSENORDSFLIK_TEXT = env("LOSENORDSFLIK_TEXT", r"^(?!.*(glömt|nytt|återställ)).*(lösenord|användarnamn|e-?post)")
+NASTA_TEXT = env("NASTA_TEXT", r"^\s*(nästa|fortsätt|gå vidare|logga in)\s*$")
 
-    if SEL_ANVANDARE:
-        anv = synlig(sida.locator(SEL_ANVANDARE))
+
+def pa_inloggningssida(sida) -> bool:
+    return bool(re.search(r"sign-?in|login|logga-?in", sida.url, re.I))
+
+
+def skicka_formular(sida, falt) -> None:
+    if SEL_SKICKA:
+        knapp = synlig(sida.locator(SEL_SKICKA))
     else:
-        # Sista synliga text-/e-postfältet före lösenordsfältet i samma formulär
-        anv = synlig(pw.locator(
-            "xpath=preceding::input[not(@type) or @type='text' or @type='email' or @type='tel'][1]"))
-    if anv is None:
-        raise RuntimeError("Hittade inget användarnamnsfält – sätt SEL_ANVANDARE")
-
-    logg("Loggar in …")
-    anv.fill(ANVANDARE)
-    pw.fill(LOSENORD)
-    knapp = synlig(sida.locator(SEL_SKICKA)) if SEL_SKICKA else (
-        klickbar(sida, LOGGA_IN_TEXT) or synlig(sida.locator("button[type=submit], input[type=submit]")))
+        knapp = synlig(falt.locator("xpath=ancestor::form[1]//*[@type='submit']")) or klickbar(sida, NASTA_TEXT)
     if knapp is not None:
         knapp.click()
     else:
-        pw.press("Enter")
+        falt.press("Enter")
     try:
         sida.wait_for_load_state("networkidle", timeout=30_000)
     except PWTimeout:
         pass
-    sida.wait_for_timeout(3000)
+    sida.wait_for_timeout(2500)
+
+
+def logga_in(sida) -> bool:
+    """Loggar in. Klarar BankID-flik först och tvåstegsinloggning. True om inloggning gjordes."""
+    if losenordsfalt(sida) is None and not pa_inloggningssida(sida):
+        return False
+    if not (ANVANDARE and LOSENORD):
+        raise RuntimeError("Inloggning krävs men K2A_ANVANDARNAMN/K2A_LOSENORD saknas")
+    logg(f"Loggar in på {sida.url} …")
+
+    # 1. Om bara BankID syns: klicka på fliken/länken för lösenordsinloggning.
+    if losenordsfalt(sida) is None and synlig(sida.locator(SEL_ANVANDARE or TEXTFALT)) is None:
+        flik = klickbar(sida, LOSENORDSFLIK_TEXT)
+        if flik is not None:
+            logg(f"Klickar på {flik.inner_text().strip()!r} för att visa inloggningsfälten")
+            flik.click()
+            sida.wait_for_timeout(2000)
+
+    pw = losenordsfalt(sida)
+    anv = synlig(sida.locator(SEL_ANVANDARE)) if SEL_ANVANDARE else None
+    if anv is None:
+        if pw is not None:
+            anv = synlig(pw.locator(f"xpath=preceding::input[not(@type) or @type='text' "
+                                    f"or @type='email' or @type='tel'][1]"))
+        if anv is None:
+            anv = synlig(sida.locator(TEXTFALT))
+    if anv is None and pw is None:
+        skarmdump(sida, "inloggningssida")
+        raise RuntimeError("Hittade inga inloggningsfält på inloggningssidan – se skärmdumpen")
+
+    if anv is not None:
+        anv.fill(ANVANDARE)
+    if pw is None:
+        # 2. Tvåstegsinloggning: användarnamn först, sedan lösenord.
+        logg("Skickar användarnamn, väntar på lösenordsfältet")
+        skicka_formular(sida, anv)
+        try:
+            sida.locator(SEL_LOSENORD or "input[type=password]").first.wait_for(state="visible", timeout=15_000)
+        except PWTimeout:
+            skarmdump(sida, "inget-losenordsfalt")
+            raise RuntimeError("Lösenordsfältet dök inte upp – se skärmdumpen")
+        pw = losenordsfalt(sida)
+    pw.fill(LOSENORD)
+    skicka_formular(sida, pw)
 
     if losenordsfalt(sida) is not None:
         skarmdump(sida, "inloggning-misslyckades")
         raise RuntimeError("Inloggningen verkar ha misslyckats (lösenordsfältet syns fortfarande)")
+    logg(f"Inloggad, står på {sida.url}")
     return True
 
 
-AVTAL_MONSTER = re.compile(rf"{AVBRYT_TEXT}|{UPPSAGD_TEXT}|uppsägningstid|avtal fr\.?o\.?m", re.I)
+AVTAL_MONSTER = re.compile(rf"{AVBRYT_TEXT}|{UPPSAGD_TEXT}|uppsägningstid|ladda ner avtalet", re.I)
 SENAST_FUNNEN = {"url": None}
 
 
@@ -159,6 +197,8 @@ def vanta_pa(sida, timeout_ms: int = 30_000, extra: str = "") -> str:
     slut = time.monotonic() + timeout_ms / 1000
     while time.monotonic() < slut:
         if synlig(pw) is not None:
+            return "inloggning"
+        if pa_inloggningssida(sida) and time.monotonic() > slut - timeout_ms / 1000 + 5:
             return "inloggning"
         if synlig(avtal) is not None:
             sida.wait_for_timeout(1500)  # låt knapparna ritas klart
@@ -177,7 +217,7 @@ def ga_till(sida, url: str, extra: str = "") -> str:
     except PWTimeout:
         pass
     lage = vanta_pa(sida, extra=extra)
-    if lage == "inloggning":
+    if lage == "inloggning" or (lage == "okant" and pa_inloggningssida(sida)):
         logga_in(sida)
         sida.goto(url, wait_until="domcontentloaded", timeout=60_000)
         lage = vanta_pa(sida, extra=extra)
@@ -205,13 +245,49 @@ def prova_klicka_avtal(sida) -> bool:
     return False
 
 
+def prova_avtalslistan(sida) -> bool:
+    """Går till avtalslistan och klickar på Visa (vid flera avtal: det som innehåller AVTAL_NAMN)."""
+    logg(f"Öppnar avtalslistan {LISTA_URL} …")
+    if ga_till(sida, LISTA_URL, extra=VISA_TEXT) == "avtal":
+        return True
+    rx = re.compile(VISA_TEXT, re.I)
+    antal = sida.get_by_role("button", name=rx).or_(sida.get_by_role("link", name=rx)).count()
+    if antal == 0:
+        antal = sida.get_by_text(rx).count()
+    logg(f"Hittade {antal} Visa-knapp(ar)")
+    for i in range(antal):
+        if i > 0:
+            ga_till(sida, LISTA_URL, extra=VISA_TEXT)
+        knappar = sida.get_by_role("button", name=rx).or_(sida.get_by_role("link", name=rx))
+        if knappar.count() == 0:
+            knappar = sida.get_by_text(rx)
+        if i >= knappar.count():
+            break
+        try:
+            knappar.nth(i).click(timeout=5_000)
+        except Exception as e:
+            logg(f"Kunde inte klicka på Visa: {e}")
+            continue
+        if vanta_pa(sida, 20_000) == "avtal":
+            if not AVTAL_NAMN or AVTAL_NAMN.lower() in sida.inner_text("body").lower():
+                return True
+            logg(f"Avtal {i + 1} är inte {AVTAL_NAMN!r}, provar nästa")
+    return False
+
+
 def oppna_avtal(sida) -> None:
     for url in dict.fromkeys(u for u in (SENAST_FUNNEN["url"], URL) if u):
         if ga_till(sida, url) == "avtal":
             return
         logg(f"Avtalet syntes inte på {url} (hamnade på {sida.url})")
 
-    # Via menyn: Mina avtal -> <AVTAL_NAMN>
+    # Via avtalslistan: /mypages/contract/ -> Visa
+    if LISTA_URL and prova_avtalslistan(sida):
+        SENAST_FUNNEN["url"] = sida.url
+        logg(f"Avtalet hittat via listan: {sida.url}")
+        return
+
+    # Reserv via menyn: Mina avtal -> <AVTAL_NAMN>
     logg(f"Letar upp avtalet via menyn på {START_URL} …")
     ga_till(sida, START_URL, extra=AVTAL_MENY_TEXT)
     for forsok in range(3):
