@@ -146,11 +146,29 @@ def oppna_avtal(sida) -> None:
         sida.goto(URL, wait_until="networkidle", timeout=60_000)
         if losenordsfalt(sida) is not None:
             raise RuntimeError("Fortfarande på inloggningssidan efter inloggning")
-    sida.wait_for_timeout(1500)  # ge eventuell JavaScript tid att rita upp knappar
+    # Vänta tills avtalsinnehållet har ritats upp av JavaScript (max 30 s).
+    try:
+        sida.get_by_text(re.compile(rf"{AVBRYT_TEXT}|{UPPSAGD_TEXT}|uppsägningstid|avtal fr\.?o\.?m", re.I)) \
+            .first.wait_for(state="visible", timeout=30_000)
+    except PWTimeout:
+        logg(f"Avtalsinnehållet syntes inte inom 30 s (adress nu: {sida.url})")
+    sida.wait_for_timeout(2000)
+
+
+def spara_senaste(sida) -> None:
+    """Sparar senaste vyn så att den syns på statussidan (för felsökning)."""
+    try:
+        BILDER.mkdir(parents=True, exist_ok=True)
+        sida.screenshot(path=str(BILDER / "senaste.png"), full_page=True)
+        (BILDER / "senaste.html").write_text(sida.content(), encoding="utf-8")
+    except Exception as e:
+        logg(f"Kunde inte spara senaste vyn: {e}")
 
 
 def kontrollera(sida) -> str:
     oppna_avtal(sida)
+    spara_senaste(sida)
+    logg(f"På sidan: {sida.url}  titel: {sida.title()!r}")
 
     knapp = klickbar(sida, AVBRYT_TEXT)
     if knapp is None:
@@ -229,6 +247,8 @@ border-radius:99px;border:1px solid currentColor;margin-left:8px;vertical-align:
 <dt>Igång sedan</dt><dd>{start}</dd></dl>
 <form method="post" action="/kontrollera" style="margin-top:14px">
 <button>Kontrollera nu</button></form></div>
+<div class="kort"><strong>Senaste vy</strong> – <a href="/bild/senaste.png">skärmdump</a> · <a href="/senaste.html">HTML</a>
+<a href="/bild/senaste.png"><img src="/bild/senaste.png" alt="" style="display:block;width:100%;margin-top:10px;border:1px solid var(--kant);border-radius:6px"></a></div>
 <div class="kort"><strong>Skärmdumpar</strong><ul>{bilder}</ul></div>
 <div class="kort"><strong>Logg</strong><pre>{logg}</pre></div>
 </main></body></html>"""
@@ -284,11 +304,21 @@ class Webb(BaseHTTPRequestHandler):
             if namn.endswith(".png") and fil.is_file():
                 return self.svara(200, "image/png", fil.read_bytes())
             return self.svara(404, "text/plain", b"saknas")
+        if self.path == "/senaste.html":
+            fil = BILDER / "senaste.html"
+            if fil.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="senaste.html"')
+                self.end_headers()
+                self.wfile.write(fil.read_bytes())
+                return
+            return self.svara(404, "text/plain", b"saknas")
         if self.path != "/":
             return self.svara(404, "text/plain", b"saknas")
 
         text, klass = STATUSTEXT.get(LAGE["status"], (LAGE["status"], "gra"))
-        bilder = sorted(BILDER.glob("*.png"), reverse=True)[:15] if BILDER.exists() else []
+        bilder = sorted((b for b in BILDER.glob("*.png") if b.name != "senaste.png"), reverse=True)[:15] if BILDER.exists() else []
         sida = SIDA
         for k, v in {
             "{torr}": '<span class="tag gul">torrkörning</span>' if TORR else "",
