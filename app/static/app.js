@@ -417,11 +417,9 @@ function plexServerPane(s, ss) {
 // Översikt: som tidigare – totalt för alla servrar och alla strömmar
 function plexAll(p) {
   const t = plexTotals(p.sessions);
-  return `<div class="plexsum"><div><b class="num">${t.streams}</b><span>${t.streams === 1 ? "ström" : "strömmar"} totalt</span></div>
-    <div><b class="num">${t.direct}</b><span>direktuppspelning</span></div><div><b class="num">${t.transcode}</b><span>omkodning</span></div>
-    <div><b class="num">${fmt(t.mbit, 1)}</b><span>Mbit/s totalt</span></div><div><b class="num">${t.remote}</b><span>utanför hemmet</span></div></div>
-    ${p.servers.filter((x) => !x.ok && x.error).map((x) => `<div class="problem"><b>${esc(x.name)}</b>${esc(x.error)}</div>`).join("")}
-    <div class="streams">${p.sessions.length ? p.sessions.map(streamHTML).join("") : '<div class="empty">Inga strömmar från Plex just nu.</div>'}</div>`;
+  return `${p.servers.filter((x) => !x.ok && x.error).map((x) => `<div class="problem"><b>${esc(x.name)}</b>${esc(x.error)}</div>`).join("")}
+    <div class="psec"><h3>Strömmar just nu <small>${t.streams} ${t.streams === 1 ? "ström" : "strömmar"} totalt · ${t.direct} direkt · ${t.transcode} omkodning · ${fmt(t.mbit, 1)} Mbit/s${t.remote ? ` · ${t.remote} utanför hemmet` : ""}</small></h3>
+      <div class="streams">${p.sessions.length ? p.sessions.map(streamHTML).join("") : '<div class="empty">Inga strömmar från Plex just nu.</div>'}</div></div>`;
 }
 function renderPlex(d) {
   const p = d.plex || { servers: [], sessions: [] };
