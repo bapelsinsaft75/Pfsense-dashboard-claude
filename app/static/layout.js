@@ -36,7 +36,7 @@ const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><pa
 
 // Delarna av sidan, i den ordning de har i Klassisk.
 const el = {};
-const ORDER = ["head", "demo", "problems", "kpis", "map", "chart", "pihole", "security", "unifi", "clients", "unraid", "plex", "foot"];
+const ORDER = ["head", "demo", "problems", "kpis", "chart", "map", "pihole", "security", "unifi", "clients", "unraid", "plex", "foot"];
 function grab() {
   const wrap = document.querySelector(".wrap");
   Object.assign(el, {
@@ -54,7 +54,7 @@ function grab() {
 // Sidor/sektioner som de andra utseendena bygger på
 const SECTIONS = [
   { id: "oversikt", title: "Översikt", icon: "overview", parts: ["kpis"] },
-  { id: "natverk", title: "Nätverk", icon: "network", parts: ["map", "chart"] },
+  { id: "natverk", title: "Nätverk", icon: "network", parts: ["chart", "map"] },
   { id: "klienter", title: "Klienter", icon: "clients", parts: ["clients"] },
   { id: "unifi", title: "UniFi", icon: "unifi", parts: ["unifi"] },
   { id: "sakerhet", title: "Säkerhet", icon: "security", parts: ["security"] },
