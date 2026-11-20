@@ -1621,6 +1621,21 @@ setInterval(() => {
   if (left === 0 && Date.now() - ph.fetchedAt > 3000) load();
 }, 1000);
 
+/* ── knapp till toppen (sidan, eller panelen i Statusrutor) ── */
+const totop = $("totop");
+const scroller = () => (document.body.classList.contains("ldrawer-open") && $("ldrawer-body")) || null;
+const showTop = () => { const sc = scroller(); totop.classList.toggle("show", (sc ? sc.scrollTop : window.scrollY) > 500); };
+window.addEventListener("scroll", showTop, { passive: true });
+document.addEventListener("scroll", (e) => { if (e.target && e.target.id === "ldrawer-body") showTop(); }, { capture: true, passive: true });
+new MutationObserver(showTop).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+showTop();
+totop.addEventListener("click", () => {
+  const sc = scroller(), behavior = reduceMotion ? "auto" : "smooth";
+  if (sc) sc.scrollTo({ top: 0, behavior }); else window.scrollTo({ top: 0, behavior });
+  const h = sc ? $("ldrawer-title") : document.querySelector("h1");
+  if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+});
+
 const map = new MapView(document.querySelector("#map svg"));
 Promise.all([fetch("countries-110m.json").then((r) => r.json()), fetch("country-coords.json").then((r) => r.json())])
   .then(([world, cc]) => { coords = cc; map.setWorld(world); render(); })
