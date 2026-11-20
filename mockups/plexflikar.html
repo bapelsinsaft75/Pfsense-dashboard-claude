@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Plex med flikar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: Plex-rutan med en flik per server, bibliotek med antal och knapp för att uppdatera. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--ok:#3ddc84;--plex:#e5a00d;
+  --track:#0b131c;--sel:#1a2c40;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:14px}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.02em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:14px}
+.head{display:flex;justify-content:space-between;align-items:end;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px;align-items:end}
+.tabs .t{font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:12px;padding-bottom:8px}
+.tabs span.tb{padding:4px 12px 8px;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-flex;gap:8px;align-items:center}
+.tabs span.on{color:var(--plex);box-shadow:inset 0 -2px 0 var(--plex)}
+.tabs .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.tabs .n{font-family:var(--mono);font-size:10.5px;padding:0 6px;border-radius:999px;background:rgba(229,160,13,.15);color:var(--plex);letter-spacing:0}
+.meta{color:var(--muted);font-size:11.5px;padding-bottom:8px}
+.sec{display:grid;gap:8px}
+.sec h3{margin:0;font-family:var(--cond);font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.libs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.lib{border:1px solid var(--line);background:var(--bg);padding:10px 12px;display:grid;gap:4px}
+.lib .t{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lib .t b{font-weight:500}
+.lib .ty{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lib .v{font-family:var(--cond);font-size:28px;font-weight:600;line-height:1.1}
+.lib .v small{font-size:13px;color:var(--muted);margin-left:4px;font-weight:500}
+.lib .s{font-size:11px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid #2a3d52;background:var(--sel);font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg)}
+.btn.p{color:var(--plex);border-color:rgba(229,160,13,.5)}
+.btn.busy{color:var(--muted)}
+.spin{width:10px;height:10px;border:2px solid var(--plex);border-right-color:transparent;border-radius:50%;display:inline-block}
+.lib.scan{border-color:rgba(229,160,13,.5)}
+.bar{height:4px;background:var(--track)}.bar i{display:block;height:100%;background:var(--plex)}
+.streams{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.st{display:grid;grid-template-columns:54px minmax(0,1fr);gap:10px;border:1px solid var(--line);background:var(--bg);padding:10px}
+.st .poster{width:54px;height:80px;background:linear-gradient(160deg,#2a3d52,#16212d)}
+.st b{font-weight:500;display:block}
+.st .m{display:block;color:var(--muted);font-size:11px}
+.st .pr{height:4px;background:var(--track);margin-top:6px}.st .pr i{display:block;height:100%;background:var(--plex)}
+.empty{color:var(--muted)}
+.note{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px;display:grid;gap:4px}
+.note b{color:var(--fg);font-weight:500}
+.hl{outline:2px solid var(--accent);outline-offset:3px}
+</style>
+<div class="wrap">
+<div class="tag">Plex-rutan <em>en flik per server; antal i fliken = strömmar just nu</em></div>
+<section class="card">
+  <div class="head">
+    <div class="tabs hl"><span class="t">Plex</span><span class="tb on"><i class="dot"></i>Peters Plex <span class="n">3</span></span><span class="tb"><i class="dot"></i>Alex Plex <span class="n">1</span></span></div>
+    <span class="meta">v1.41.3 · svarar</span>
+  </div>
+
+  <div class="sec">
+    <h3>Bibliotek <span class="btn p">⟳ Uppdatera alla</span></h3>
+    <div class="libs">
+      <div class="lib"><span class="t"><span><span class="ty">Filmer</span><br><b>Filmer</b></span><span class="btn p">⟳ Uppdatera</span></span><span class="v">1 243<small>filmer</small></span><span class="s">senast skannad i dag 03:12</span></div>
+      <div class="lib scan"><span class="t"><span><span class="ty">Serier</span><br><b>TV-serier</b></span><span class="btn busy"><i class="spin"></i>Skannar …</span></span><span class="v">214<small>serier · 9 870 avsnitt</small></span><div class="bar"><i style="width:46%"></i></div><span class="s">skannar sedan 22:41</span></div>
+      <div class="lib"><span class="t"><span><span class="ty">Filmer</span><br><b>Barnfilmer</b></span><span class="btn p">⟳ Uppdatera</span></span><span class="v">312<small>filmer</small></span><span class="s">senast skannad i går 03:12</span></div>
+      <div class="lib"><span class="t"><span><span class="ty">Musik</span><br><b>Musik</b></span><span class="btn p">⟳ Uppdatera</span></span><span class="v">486<small>artister · 5 102 låtar</small></span><span class="s">senast skannad 18 nov 03:12</span></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Strömmar just nu <span class="meta" style="padding:0">3 strömmar · 1 omkodning · 18 Mbit/s</span></h3>
+    <div class="streams">
+      <div class="st"><span class="poster"></span><div><b>Breaking Bad</b><span class="m">S03E07 · One Minute · Peter · Vardagsrum-TV</span><span class="m">Direktspelning · 1080p · 12 Mbit/s</span><div class="pr"><i style="width:49%"></i></div></div></div>
+      <div class="st"><span class="poster"></span><div><b>Dune: Part Two</b><span class="m">Film · Peter · Apple-TV</span><span class="m">Omkodning 4K → 1080p · 6 Mbit/s</span><div class="pr"><i style="width:22%"></i></div></div></div>
+      <div class="st"><span class="poster"></span><div><b>Lorde – Melodrama</b><span class="m">Musik · Peter · Sonos-Kök</span><span class="m">Direktspelning · FLAC</span><div class="pr"><i style="width:70%"></i></div></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="note">
+  <span><b>Fliken kommer ihåg</b> vilken server du tittade på senast. Statuschippen för en Plex-server öppnar rätt flik.</span>
+  <span><b>Uppdatera</b> ber Plex skanna biblioteket efter nya eller borttagna filer (samma som ”Skanna biblioteksfiler” i Plex). Knappen visar ”Skannar …” tills Plex är klar, och det syns under Händelser.</span>
+  <span><b>Krav:</b> Plex-token måste tillhöra serverns ägare (admin) för att uppdatera. Antal filmer och serier fungerar med samma token som i dag.</span>
+</div>
+</div>
