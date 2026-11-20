@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Över tid och klientlista</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: Bandbredd och Datamängd under varandra med egna val, och en klientlista som visar 10 rader och kan fällas ut. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--lan:#2fd4c0;
+  --track:#0b131c;--sel:#1a2c40;--grid:#131e2a;--ok:#3ddc84;--ip:#8fc7ff;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1300px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:16px}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.02em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+.row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:stretch}
+@media (max-width:1000px){.row{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:12px;min-width:0;align-content:start}
+.card h2{margin:0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 small{font-family:var(--mono);text-transform:none;letter-spacing:.02em;color:var(--fg);font-size:11px;font-weight:400}
+.panel{display:grid;gap:8px}
+.panel+.panel{border-top:1px solid var(--line);padding-top:14px}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.ph b{font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg)}
+.ctr{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--track);padding:3px;gap:2px}
+.seg span{padding:3px 9px;font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;display:inline-flex;align-items:center}
+.seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+.seg svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6}
+.hl{outline:2px solid var(--accent);outline-offset:3px}
+.stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.stats b{display:block;color:var(--fg);font-family:var(--cond);font-size:20px;font-weight:600;line-height:1.1;letter-spacing:0;text-transform:none}
+.stats b small{font-size:12px;color:var(--muted);margin-left:3px}
+svg.ch{display:block;width:100%;height:130px}
+svg.ch text{fill:var(--muted);font-size:9.5px;font-family:var(--mono)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+.tl{display:grid;gap:9px}
+.tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px}
+.tr .bar{grid-column:1/-1;height:6px;background:var(--track);display:flex}
+.tr .s{grid-column:1/-1;color:var(--muted);font-size:11px}
+.dim{opacity:.55}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:400;color:var(--muted);text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid #131e2a;white-space:nowrap}
+td.r,th.r{text-align:right}
+.ip{color:var(--ip)}
+.pill{font-size:11px;padding:1px 8px;border-radius:999px;background:rgba(61,220,132,.12);color:var(--ok)}
+.pill.idle{background:#16212d;color:var(--muted)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.search{border:1px solid var(--line);background:var(--bg);padding:4px 10px;color:var(--muted);min-width:200px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid #2a3d52;background:var(--sel);font-family:var(--cond);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg)}
+.more{display:flex;justify-content:center;padding:10px;border:1px dashed #2a3d52;color:var(--accent);font-family:var(--cond);font-size:14px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;background:linear-gradient(transparent,rgba(26,44,64,.35))}
+.fade{position:relative}
+.fade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:40px;background:linear-gradient(transparent,var(--card));pointer-events:none}
+.note{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px;display:grid;gap:4px}
+.note b{color:var(--fg);font-weight:500}
+</style>
+<div class="wrap">
+<div class="tag">1 · Över tid <em>Bandbredd och Datamängd under varandra – var och en med egen källa och period</em></div>
+<div class="row">
+<section class="card" id="ot"></section>
+<section class="card dim">
+  <h2>Mest bandbredd · Mest data <small>topplistan som i dag</small></h2>
+  <div class="tl" id="tl"></div>
+</section>
+</div>
+
+<div class="tag">2 · Klientlistan, standard <em>de 10 första enligt vald sortering, sök och filter gäller alltid hela listan</em></div>
+<section class="card">
+  <h2>Klienter <small>visar 10 av 61</small><span class="btn hl">Visa alla 61 ▾</span></h2>
+  <div class="tools"><span class="seg"><span class="on">Alla</span><span>Online</span><span>Inaktiva</span></span><span class="seg"><span class="on">Alla</span><span>Trådlöst</span><span>Kabel</span><span>Okänd</span></span><span class="search">Sök namn, IP eller MAC</span></div>
+  <div class="fade"><table id="cl"></table></div>
+  <div class="more hl">▾ Visa alla 61 klienter</div>
+</section>
+
+<div class="tag">3 · Klientlistan, utfälld <em>knappen blir ”Visa 10 ▴”; valet sparas i webbläsaren</em></div>
+<section class="card">
+  <h2>Klienter <small>61 klienter</small><span class="btn">Visa 10 ▴</span></h2>
+  <table id="cl2"></table>
+  <div class="more">▴ Visa bara 10</div>
+</section>
+
+<div class="note">
+  <span><b>Söker du</b> efter en klient som inte är bland de 10 visas den ändå – sökningen och filtren går över alla klienter, bara antalet rader begränsas.</span>
+  <span><b>Valen i Över tid</b> (källa och period för respektive graf) sparas i webbläsaren, precis som idag.</span>
+</div>
+</div>
+<script>
+const G='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>';
+const J='<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"/><path d="M8 19v-5h8v5M10 14v-2h4v2"/></svg>';
+const L='<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z M3 13l9 5 9-5"/></svg>';
+const scope=(on)=>`<span class="seg">${[G,J,L].map((s,i)=>`<span class="${i===on?'on':''}">${s}</span>`).join('')}</span>`;
+const win=(on)=>`<span class="seg">${['5 min','15 min','60 min','24 h'].map(w=>`<span class="${w===on?'on':''}">${w}</span>`).join('')}</span>`;
+let seed=3;const r=()=>(seed=(seed*9301+49297)%233280)/233280;
+// bandbredd: 5 min internt, linjer
+let pts1d=[],pts1u=[];for(let i=0;i<=60;i++){const x=40+i*(950/60);const d=60+40*Math.sin(i/6)+r()*30;const u=20+r()*18;pts1d.push([x,120-d*0.9]);pts1u.push([x,120-u*0.9]);}
+const path=(p)=>'M'+p.map(q=>q.map(v=>v.toFixed(1)).join(',')).join('L');
+const ax1=['22:53','22:54','22:55','22:56','22:57','22:58'].map((t,i)=>`<text x="${40+i*190}" y="128">${t}</text>`).join('');
+const grid=[30,60,90].map(y=>`<line x1="40" x2="990" y1="${y}" y2="${y}" stroke="#131e2a"/>`).join('');
+const svg1=`<svg class="ch" viewBox="0 0 1000 132" preserveAspectRatio="none">${grid}<text x="0" y="33">80</text><text x="0" y="63">50</text><text x="0" y="93">20</text><path d="${path(pts1d)}" fill="none" stroke="#2fd4c0" stroke-width="2"/><path d="${path(pts1u)}" fill="none" stroke="#5aa9ff" stroke-width="1.6"/>${ax1}</svg>`;
+// datamängd: 24 h internet, staplar
+let bars='';const n=48;for(let i=0;i<n;i++){const h=i/2;const base=(h<14?.05:h<17?.6:h<19?.2:h<21?.7:h<23?.5:.25)*(0.4+r()*1.2);const d=Math.min(1,base)*95;const u=d*(0.08+r()*0.5*(i%7===0?2:0.3));const x=40+i*(950/n);bars+=`<rect x="${x}" y="${120-d}" width="${950/n-3}" height="${d-u}" fill="#ffb547"/><rect x="${x}" y="${120-u}" width="${950/n-3}" height="${u}" fill="#5aa9ff"/>`;}
+const ax2=['00:00','04:00','08:00','12:00','16:00','20:00'].map((t,i)=>`<text x="${40+i*158}" y="128">${t}</text>`).join('');
+const svg2=`<svg class="ch" viewBox="0 0 1000 132" preserveAspectRatio="none">${grid}<text x="0" y="33">1 GB</text><text x="0" y="93">0,3</text>${bars}${ax2}</svg>`;
+document.getElementById('ot').innerHTML=`<h2>Över tid</h2>
+<div class="panel"><div class="ph"><b>Bandbredd</b><span class="ctr hl">${scope(1)}${win('5 min')}</span></div>
+<div class="stats"><span><b>78<small>Mbit/s</small></b>nu</span><span><b>112<small>Mbit/s</small></b>högst</span><span><b>61<small>Mbit/s</small></b>snitt</span><span><b>Internt</b>källa</span></div>
+${svg1}<div class="legend"><span><i style="background:#2fd4c0"></i>Ned</span><span><i style="background:#5aa9ff"></i>Upp</span><span>· senaste 5 minuterna, trafik inom nätverket</span></div></div>
+<div class="panel"><div class="ph"><b>Datamängd</b><span class="ctr hl">${scope(0)}${win('24 h')}</span></div>
+<div class="stats"><span><b>11,4<small>GB</small></b>totalt</span><span><b>8,9<small>GB</small></b>ned</span><span><b>2,5<small>GB</small></b>upp</span><span><b>30 min</b>per stapel</span></div>
+${svg2}<div class="legend"><span><i style="background:#ffb547"></i>Nedladdning</span><span><i style="background:#5aa9ff"></i>Uppladdning</span><span>· per halvtimme, klienter mot internet</span></div></div>`;
+const names=['IntelS','idasApple','Peters MacBook','LillaNasen','samsung-tv','Peters iPhone','IdasiPhone','Nvidia-Shield','a8:72:…','DiskStation'];
+document.getElementById('tl').innerHTML=names.map((n,i)=>`<div class="tr"><span>${n}</span><span class="num">${(53/(i+1)).toFixed(0)} %</span><div class="bar"><i style="width:${90/(i+1)}%;background:#ffb547"></i></div><span class="s">${(18/(i+1)).toFixed(1)} GB</span></div>`).join('');
+const cl=['PS5','Vardagsrum-TV','Peters iPhone','MacBook-Pro','Unraid','iPad','Kontor-PC','Hue-Bridge','Sonos-Kök','Galaxy-S24','Roborock','Skrivare-HP'];
+const row=(n,i)=>`<tr><td>${n}</td><td class="ip">192.168.2.${20+i}</td><td>${i%3?'Trådlöst · 5 GHz':'Kabel · Switch Kontor port '+(i+2)}</td><td><span class="pill${i>9?' idle':''}">${i>9?'Inaktiv':'Online'}</span></td><td class="r">${(48/(i+1)).toFixed(1)} GB</td></tr>`;
+const head='<tr><th>Namn</th><th>IP-adress</th><th>Anslutning</th><th>Status</th><th class="r">Data ↓</th></tr>';
+document.getElementById('cl').innerHTML=head+cl.slice(0,10).map(row).join('');
+document.getElementById('cl2').innerHTML=head+cl.map(row).join('')+'<tr><td colspan="5" style="color:#6d8195;text-align:center">… alla 61 klienter</td></tr>';
+</script>
