@@ -591,7 +591,16 @@ function renderPicker() {
       <span class="proferr" hidden></span>
       <button type="button" data-pmanage><span>⚙</span>Hantera profiler …</button>
     </div>`;
+  placeMenu();
 }
+// öppna menyn åt det håll där den får plats (vänster- eller högerkant)
+function placeMenu() {
+  const box = $("profpick"), m = box && box.querySelector(".profmenu");
+  if (!m || m.hidden) return;
+  const r = box.getBoundingClientRect(), w = Math.min(280, window.innerWidth - 32);
+  m.classList.toggle("left", r.right - w < 16);
+}
+window.addEventListener("resize", placeMenu);
 function renderProfileSettings() {
   const list = $("s-profiles"); if (!list) return;
   const act = activeId();
@@ -617,7 +626,7 @@ function flash(btn, text) { const old = btn.innerHTML; btn.innerHTML = `<span>�
 const profBox = $("profpick");
 if (profBox) {
   profBox.addEventListener("click", (e) => {
-    if (e.target.closest(".profbtn")) { const m = profBox.querySelector(".profmenu"); m.hidden = !m.hidden; profBox.querySelector(".profbtn").setAttribute("aria-expanded", !m.hidden); if (!m.hidden) { const f = m.querySelector("button,input"); if (f) f.focus(); } return; }
+    if (e.target.closest(".profbtn")) { const m = profBox.querySelector(".profmenu"); m.hidden = !m.hidden; placeMenu(); profBox.querySelector(".profbtn").setAttribute("aria-expanded", !m.hidden); if (!m.hidden) { const f = m.querySelector("button,input"); if (f) f.focus(); } return; }
     profileAction(e);
   });
   profBox.addEventListener("submit", async (e) => {
