@@ -112,7 +112,25 @@ def losenordsfalt(sida):
 
 TEXTFALT = "input:not([type]), input[type=text], input[type=email], input[type=tel]"
 LOSENORDSFLIK_TEXT = env("LOSENORDSFLIK_TEXT", r"^(?!.*(glömt|nytt|återställ)).*(lösenord|användarnamn|e-?post)")
-NASTA_TEXT = env("NASTA_TEXT", r"^\s*(nästa|fortsätt|gå vidare|logga in)\s*$")
+NASTA_TEXT = env("NASTA_TEXT", r"^\s*(nästa|fortsätt|gå vidare)\s*$")
+LOGGA_IN_TEXT = env("LOGGA_IN_TEXT", r"^\s*(logga in|nästa|fortsätt)\s*$")
+
+
+def knapp_med_text(sida, monster: str):
+    """Synlig knapp vars SYNLIGA text matchar (hoppar över ikonknappar med dold etikett)."""
+    rx = re.compile(monster, re.I)
+    kandidater = sida.locator("button, [role=button], input[type=submit], a")
+    for i in range(kandidater.count()):
+        el = kandidater.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            text = el.inner_text().strip() or (el.get_attribute("value") or "").strip()
+        except Exception:
+            continue
+        if rx.search(text):
+            return el
+    return None
 
 
 COOKIE_TEXT = env("COOKIE_TEXT", r"^\s*(avvisa alla|neka alla|endast nödvändiga|tillåt alla|acceptera alla)\s*$")
@@ -163,11 +181,11 @@ def pa_inloggningssida(sida) -> bool:
     return bool(re.search(r"sign-?in|login|logga-?in", sida.url, re.I))
 
 
-def skicka_formular(sida, falt) -> None:
+def skicka_formular(sida, falt, monster: str) -> None:
     if SEL_SKICKA:
         knapp = synlig(sida.locator(SEL_SKICKA))
     else:
-        knapp = klickbar(sida, NASTA_TEXT) or synlig(falt.locator("xpath=ancestor::form[1]//*[@type='submit']"))
+        knapp = knapp_med_text(sida, monster)
     if knapp is not None:
         logg(f"Klickar på {knapp.inner_text().strip()!r}")
         knapp.click()
@@ -218,7 +236,7 @@ def logga_in(sida) -> bool:
     if pw is None:
         # 2. Tvåstegsinloggning: användarnamn först, sedan lösenord.
         logg("Skickar användarnamn, väntar på lösenordsfältet")
-        skicka_formular(sida, anv)
+        skicka_formular(sida, anv, NASTA_TEXT)
         try:
             sida.locator(SEL_LOSENORD or "input[type=password]").first.wait_for(state="visible", timeout=15_000)
         except PWTimeout:
@@ -229,7 +247,7 @@ def logga_in(sida) -> bool:
     pw.fill("")
     pw.press_sequentially(LOSENORD, delay=40)
     forbli_inloggad(sida)
-    skicka_formular(sida, pw)
+    skicka_formular(sida, pw, LOGGA_IN_TEXT)
 
     if losenordsfalt(sida) is not None:
         skarmdump(sida, "inloggning-misslyckades")
