@@ -17,6 +17,7 @@
     </div>
     <div class="headright">
       <div class="chips" id="chips" aria-label="Datakällor"></div>
+      <div class="profpick" id="profpick"></div>
       <button type="button" class="gear" id="open-settings" aria-label="Inställningar" title="Inställningar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       <div class="seg" role="group" aria-label="Period" id="period">
         <button type="button" aria-pressed="false" data-p="live"><i class="livedot"></i>Just nu</button><button type="button" aria-pressed="true" data-p="24h">24 timmar</button><button type="button" aria-pressed="false" data-p="7d">7 dagar</button><button type="button" aria-pressed="false" data-p="30d">30 dagar</button>
@@ -190,6 +191,17 @@
         <legend>Utseende</legend>
         <div class="lchoices" id="s-layout" role="radiogroup" aria-label="Utseende"></div>
         <p class="hint">Gäller den här webbläsaren och ändras direkt. På en väggskärm kan du lägga till <code>?layout=rutor</code> (eller <code>sidomeny</code>, <code>flikar</code>, <code>klassisk</code>, <code>overblick</code>) i adressen.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Visa delar</legend>
+        <div class="partchoices" id="s-parts"></div>
+        <p class="hint">Dölj delar du inte vill se. Ändras direkt och sparas med profilen.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Profiler</legend>
+        <p class="hint">En profil kommer ihåg utseendet, rutornas ordning, valen på sidan (period, grafer, flikar, filter) och vilka delar som visas. Profilerna sparas i dashboarden och finns i alla webbläsare.</p>
+        <div class="proflist" id="s-profiles"></div>
+        <div class="inline"><input type="text" id="s-prof-new" maxlength="40" placeholder="Namn, t.ex. Väggskärm" aria-label="Namn på ny profil"><button type="button" class="btn" id="s-prof-add">Spara nuvarande som ny profil</button></div>
       </fieldset>
       <label for="s-retention">Spara historik <span class="muted">(dagar)</span></label>
       <input type="number" id="s-retention" min="1" max="365" step="1" required>

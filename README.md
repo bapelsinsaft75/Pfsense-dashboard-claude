@@ -31,6 +31,9 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   (t.ex. ”uppladdningen är full – Tower laddar upp backup”), små rutor för internet, linjen, VPN, pfSense, DNS,
   Wi-Fi, servrar och säkerhet, och en nätverkskarta där länkarna färgas efter hur fulla de är, med en topplista
   över det som är mest belastat. Ange linjens hastighet (`WAN_DOWN_MBIT`/`WAN_UP_MBIT` eller under Inställningar).
+- **Profiler** med eget namn: välj utseende, flytta om rutorna i Statusrutor, dölj delar du inte vill se och spara det
+  som en profil. Byt profil i menyn bredvid kugghjulet; hantera dem under Inställningar → Allmänt. Profilerna sparas
+  i dashboarden och finns i alla webbläsare.
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
   (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,

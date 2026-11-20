@@ -502,3 +502,18 @@ def test_alert_matrix_rows(engine):
     assert rows["vpn_down"]["group"] == "Nätverk" and rows["vpn_down"]["critical"]
     assert "plex_down" not in rows  # ingen Plex konfigurerad
     assert rows["vpn_down"]["route"]["emails"] == ["jag@exempel.se"]  # MAIL_TO som tidigare
+
+
+def test_profiles_saved_and_cleaned(engine):
+    s = engine.settings
+    s.update({"profiles": [{"id": "Vägg skärm!", "name": "  Väggskärm ", "layout": "rutor",
+                            "prefs": {"tileOrder": '["vpn","natverk"]', "period": "live", "hacker": "x"}},
+                           {"id": "dator", "name": "Dator", "layout": "okänt", "prefs": {}}]})
+    p = s.get("profiles")
+    assert p[0]["id"] == "vggskrm" and p[0]["name"] == "Väggskärm" and p[0]["layout"] == "rutor"
+    assert p[0]["prefs"] == {"tileOrder": '["vpn","natverk"]', "period": "live"}
+    assert p[1]["layout"] == "klassisk"
+    with pytest.raises(ValueError):
+        s.update({"profiles": [{"id": "a", "name": ""}]})
+    with pytest.raises(ValueError):
+        s.update({"profiles": [{"id": "a", "name": "A"}, {"id": "a", "name": "B"}]})

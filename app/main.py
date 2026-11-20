@@ -405,6 +405,22 @@ async def plex_refresh(server: int, body: dict = Body(default={})):
     return {"libraries": p.libraries}
 
 
+@app.get("/api/profiles")
+async def get_profiles():
+    engine: Engine = app.state.engine
+    return {"profiles": engine.settings.get("profiles")}
+
+
+@app.put("/api/profiles")
+async def put_profiles(body: dict = Body(...)):
+    engine: Engine = app.state.engine
+    try:
+        engine.settings.update({"profiles": body.get("profiles") or []})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"profiles": engine.settings.get("profiles")}
+
+
 @app.get("/api/overview")
 async def overview():
     from .overview import build

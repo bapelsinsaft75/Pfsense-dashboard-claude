@@ -44,7 +44,11 @@ ALERT_GROUPS = [
     ("Klienter", ["new_device", "data_anomaly"]),
     ("Servrar", ["unraid_down", "unraid_problem", "unraid_watch", "unraid_vm", "plex_down", "pihole_down"]),
 ]
-ROUTE_SEP = "|"  # larmtyp|server|container – mer specifika rader går före mindre specifika
+ROUTE_SEP = "|"
+# profiler: vilka val i webbläsaren en profil kommer ihåg, och vilka delar som kan döljas
+PROFILE_KEYS = {"layout", "tileOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
+                "urTab", "plexTab", "phDomTab", "phClTab", "phQn", "phQf", "hiddenParts"}
+PROFILE_LAYOUTS = {"klassisk", "sidomeny", "rutor", "flikar", "overblick"}  # larmtyp|server|container – mer specifika rader går före mindre specifika
 
 # Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
 CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_problem",
@@ -82,6 +86,8 @@ SCHEMA = {
     "channels": ("channels", None, None),
     # vem som får vilka larm: "typ", "typ|server" eller "typ|server|container" -> banner, slack, e-postadresser
     "routes": ("routes", None, None),
+    # sparade profiler: namn, utseende och val på sidan
+    "profiles": ("profiles", None, None),
 }
 
 
@@ -111,6 +117,7 @@ class Settings:
             "recipients": None,
             "channels": {},
             "routes": {},
+            "profiles": [],
         }
         self.mail_to: list[str] = [a.strip() for a in (cfg.mail_to or "").split(",") if a.strip()]
         self.path = os.path.join(cfg.data_dir, "settings.json") if persist else None
@@ -287,6 +294,23 @@ class Settings:
                         emails = [str(e).strip() for e in (v.get("emails") or []) if EMAIL_RE.fullmatch(str(e).strip())]
                         val[k] = {"banner": bool(v.get("banner")), "slack": bool(v.get("slack")),
                                   "emails": sorted(set(emails), key=str.lower)}
+                elif typ == "profiles":
+                    if not isinstance(raw, list) or len(raw) > 30:
+                        raise ValueError("Högst 30 profiler.")
+                    val, ids = [], set()
+                    for pr in raw:
+                        pid = re.sub(r"[^a-z0-9-]", "", str((pr or {}).get("id", "")).lower())[:40]
+                        name = str((pr or {}).get("name", "")).strip()[:40]
+                        if not pid or pid in ids:
+                            raise ValueError("Ogiltigt profil-id.")
+                        if not name:
+                            raise ValueError("Profilen måste ha ett namn.")
+                        ids.add(pid)
+                        layout = pr.get("layout") if pr.get("layout") in PROFILE_LAYOUTS else "klassisk"
+                        prefs = {k: str(v)[:8000] for k, v in (pr.get("prefs") or {}).items()
+                                 if k in PROFILE_KEYS and v is not None}
+                        val.append({"id": pid, "name": name, "layout": layout, "prefs": prefs,
+                                    "updated": int(pr.get("updated") or 0)})
                 elif typ == "watch":
                     if not isinstance(raw, dict):
                         raise ValueError

@@ -107,8 +107,14 @@ function summary(d) {
 }
 
 /* ── gemensamt: placera delar ── */
+/* delar som är dolda i den här webbläsaren (sparas med profilen) */
+const PART_LABEL = { kpis: "Nyckeltal", map: "Karta och länder", chart: "Över tid och topplista", pihole: "Pi-hole",
+  security: "Säkerhet och händelser", unifi: "UniFi-enheter", clients: "Klienter", unraid: "Unraid", plex: "Plex" };
+let hidden = new Set(store.get("hiddenParts", []));
+const ALWAYS = new Set(["head", "demo", "problems", "foot", "ovw"]);
+const shown = (sectionId) => { const s = SECTIONS.find((x) => x.id === sectionId); return !s || s.parts.some((p) => !hidden.has(p)); };
 function put(container, names) {
-  for (const n of names) if (el[n]) container.appendChild(el[n]);
+  for (const n of names) if (el[n] && (container === el.store || ALWAYS.has(n) || !hidden.has(n))) container.appendChild(el[n]);
 }
 function stash(names) { put(el.store, names); }
 function clearWrap() {
@@ -150,7 +156,7 @@ function buildFlikar() {
   const bar = document.createElement("nav");
   bar.className = "ltabs";
   bar.setAttribute("aria-label", "Delar");
-  bar.innerHTML = SECTIONS.map((s) => `<a href="#rad-${s.id}" data-sec="${s.id}">${s.title}<span class="ldot" data-dot="${s.id}"></span></a>`).join("");
+  bar.innerHTML = SECTIONS.filter((s) => shown(s.id)).map((s) => `<a href="#rad-${s.id}" data-sec="${s.id}">${s.title}<span class="ldot" data-dot="${s.id}"></span></a>`).join("");
   put(el.wrap, ["head"]);
   el.wrap.appendChild(bar);
   put(el.wrap, ["demo", "problems"]);
@@ -161,7 +167,7 @@ function buildFlikar() {
   el.wrap.appendChild(ib);
   inbox(ib.querySelector(".lsb"));
   const collapsed = store.get("layoutCollapsed", {});
-  for (const s of SECTIONS) {
+  for (const s of SECTIONS.filter((x) => shown(x.id))) {
     const sec = document.createElement("section");
     sec.className = "lsec" + (collapsed[s.id] ? "" : " open");
     sec.id = `rad-${s.id}`;
@@ -397,6 +403,7 @@ function renderTiles(S) {
   if (S.plex.servers.length) tiles.push({ tile: "plex", title: "Plex", icon: "plex", level: S.sections.plex.level, big: `${S.plex.totals.streams}<small>strömmar</small>`, sub: `${S.plex.totals.transcode} omkodning · ${S.plex.totals.remote} utanför hemmet` });
   if (S.ph) tiles.push({ tile: "pihole", title: "Pi-hole", icon: "pihole", level: S.sections.pihole.level, big: S.sections.pihole.level === "ok" ? `${fmt(S.ph.percent_blocked || 0, 0)}<small>% blockerat</small>` : S.sections.pihole.level === "warn" ? "Pausad" : "Nere", sub: S.sections.pihole.text });
   if (S.sections.unifi.level !== "off") tiles.push({ tile: "unifi", title: "UniFi", icon: "unifi", level: S.sections.unifi.level, big: `${S.sections.unifi.badge || 0}<small>enheter</small>`, sub: S.sections.unifi.text });
+  for (let i = tiles.length - 1; i >= 0; i--) if (!shown(tiles[i].tile)) tiles.splice(i, 1);
   const rank = { err: 0, warn: 1, ok: 2, off: 3 };
   const order = store.get("tileOrder", null);
   if (Array.isArray(order) && order.length) {
@@ -455,14 +462,14 @@ function onRender(d) {
       side.innerHTML = `<div class="lbrand">Nätverket hemma</div>
         ${link("oversikt", "Översikt", icon("overview"), sec.oversikt)}
         <div class="lgrp">Nätverk</div>
-        ${link("natverk", "Karta och trafik", icon("network"), sec.natverk)}
-        ${link("klienter", "Klienter", icon("clients"), sec.klienter)}
-        ${sec.unifi.level !== "off" ? link("unifi", "UniFi", icon("unifi"), sec.unifi) : ""}
-        ${link("sakerhet", "Säkerhet och VPN", icon("security"), sec.sakerhet)}
-        ${S.ph ? link("pihole", "Pi-hole", icon("pihole"), sec.pihole) : ""}
-        ${S.unraids.length || S.plex.servers.length ? '<div class="lgrp">Servrar</div>' : ""}
-        ${S.unraids.map((u) => link("servrar", u.name, `<span class="ldot ${u.level}"></span>`, { level: u.level, badge: u.level === "ok" ? "" : u.level === "err" ? "!" : "1" }, u.i)).join("")}
-        ${S.plex.servers.length ? link("plex", "Plex", icon("plex"), sec.plex) : ""}`;
+        ${shown("natverk") ? link("natverk", "Karta och trafik", icon("network"), sec.natverk) : ""}
+        ${shown("klienter") ? link("klienter", "Klienter", icon("clients"), sec.klienter) : ""}
+        ${sec.unifi.level !== "off" && shown("unifi") ? link("unifi", "UniFi", icon("unifi"), sec.unifi) : ""}
+        ${shown("sakerhet") ? link("sakerhet", "Säkerhet och VPN", icon("security"), sec.sakerhet) : ""}
+        ${S.ph && shown("pihole") ? link("pihole", "Pi-hole", icon("pihole"), sec.pihole) : ""}
+        ${(S.unraids.length && shown("servrar")) || (S.plex.servers.length && shown("plex")) ? '<div class="lgrp">Servrar</div>' : ""}
+        ${shown("servrar") ? S.unraids.map((u) => link("servrar", u.name, `<span class="ldot ${u.level}"></span>`, { level: u.level, badge: u.level === "ok" ? "" : u.level === "err" ? "!" : "1" }, u.i)).join("") : ""}
+        ${S.plex.servers.length && shown("plex") ? link("plex", "Plex", icon("plex"), sec.plex) : ""}`;
     }
   } else if (layout === "rutor") {
     renderTiles(S);
@@ -514,4 +521,132 @@ if (pick) {
     apply(e.target.value);
   });
 }
+
+/* ── profiler: namn, utseende, rutornas ordning, val på sidan och dolda delar ── */
+const PKEYS = ["layout", "tileOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
+  "urTab", "plexTab", "phDomTab", "phClTab", "phQn", "phQf", "hiddenParts"];
+let profiles = [];
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* ingen lagring */ } },
+};
+const activeId = () => ls.get("activeProfile");
+function snapshot() {
+  const prefs = {};
+  for (const k of PKEYS) { const v = ls.get(k); if (v != null) prefs[k] = v; }
+  prefs.layout = JSON.stringify(layout);
+  return { layout, prefs, updated: Math.floor(Date.now() / 1000) };
+}
+const slug = (name) => (name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "profil").slice(0, 30);
+async function saveProfiles(list) {
+  const r = await fetch("api/profiles", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profiles: list }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.status);
+  profiles = j.profiles;
+  renderPicker(); renderProfileSettings();
+}
+async function loadProfiles() {
+  try { const r = await fetch("api/profiles", { cache: "no-store" }); profiles = (await r.json()).profiles || []; } catch (e) { profiles = []; }
+  renderPicker(); renderProfileSettings();
+}
+function useProfile(id) {
+  const p = profiles.find((x) => x.id === id); if (!p) return;
+  for (const k of PKEYS) ls.set(k, p.prefs[k] ?? null);
+  ls.set("layout", JSON.stringify(p.layout));
+  ls.set("activeProfile", p.id);
+  const u = new URL(location.href); u.searchParams.delete("layout"); u.hash = "";
+  location.replace(u.toString());
+}
+async function addProfile(name) {
+  name = (name || "").trim();
+  if (!name) return "Skriv ett namn på profilen.";
+  if (profiles.some((p) => p.name.toLowerCase() === name.toLowerCase())) return `Det finns redan en profil som heter ${name}.`;
+  let id = slug(name), n = 2;
+  while (profiles.some((p) => p.id === id)) id = `${slug(name)}-${n++}`;
+  await saveProfiles([...profiles, { id, name, ...snapshot() }]);
+  ls.set("activeProfile", id);
+  renderPicker(); renderProfileSettings();
+  return null;
+}
+async function updateProfile(id) { await saveProfiles(profiles.map((p) => (p.id === id ? { ...p, ...snapshot() } : p))); }
+async function renameProfile(id, name) {
+  name = (name || "").trim(); if (!name) return;
+  await saveProfiles(profiles.map((p) => (p.id === id ? { ...p, name } : p)));
+}
+async function deleteProfile(id) {
+  await saveProfiles(profiles.filter((p) => p.id !== id));
+  if (activeId() === id) ls.set("activeProfile", null);
+  renderPicker();
+}
+function renderPicker() {
+  const box = $("profpick"); if (!box) return;
+  const act = profiles.find((p) => p.id === activeId());
+  const open = box.querySelector(".profmenu") && !box.querySelector(".profmenu").hidden;
+  box.innerHTML = `<button type="button" class="btn profbtn" aria-haspopup="true" aria-expanded="${open}" title="Byt profil">Profil: <b>${esc(act ? act.name : "ingen")}</b> ▾</button>
+    <div class="profmenu" role="menu" ${open ? "" : "hidden"}>
+      ${profiles.length ? profiles.map((p) => `<button type="button" role="menuitemradio" aria-checked="${act && act.id === p.id}" data-puse="${esc(p.id)}"><span>${act && act.id === p.id ? "●" : ""}</span>${esc(p.name)}<small>${esc(LAYOUTS[p.layout] || "")}</small></button>`).join("") : '<p class="muted">Inga profiler än.</p>'}
+      <hr>
+      ${act ? `<button type="button" data-pupd="${esc(act.id)}"><span>↻</span>Spara ändringar i ${esc(act.name)}</button>` : ""}
+      <form class="profnew"><input type="text" maxlength="40" placeholder="Namn på ny profil" aria-label="Namn på ny profil"><button type="submit" class="btn">Spara</button></form>
+      <span class="proferr" hidden></span>
+      <button type="button" data-pmanage><span>⚙</span>Hantera profiler …</button>
+    </div>`;
+}
+function renderProfileSettings() {
+  const list = $("s-profiles"); if (!list) return;
+  const act = activeId();
+  list.innerHTML = profiles.length ? profiles.map((p) => `<div class="profrow" data-pid="${esc(p.id)}">
+      <input type="text" maxlength="40" value="${esc(p.name)}" aria-label="Namn på profilen" data-pname>
+      <span class="muted">${esc(LAYOUTS[p.layout] || p.layout)}${act === p.id ? " · används nu" : ""}</span>
+      <button type="button" class="btn" data-puse="${esc(p.id)}">Använd</button>
+      <button type="button" class="btn" data-pupd="${esc(p.id)}" title="Ersätt profilen med hur sidan ser ut nu">Spara nuvarande</button>
+      <button type="button" class="btn" data-pdel="${esc(p.id)}">Ta bort</button></div>`).join("") : '<p class="muted">Inga profiler än. Ställ in sidan som du vill ha den och spara den som en profil.</p>';
+  const parts = $("s-parts");
+  if (parts) parts.innerHTML = Object.entries(PART_LABEL).map(([k, l]) => `<label class="check"><input type="checkbox" data-part="${k}" ${hidden.has(k) ? "" : "checked"}> ${l}</label>`).join("");
+}
+async function profileAction(e) {
+  const t = e.target;
+  const use = t.closest("[data-puse]"); if (use) { useProfile(use.dataset.puse); return; }
+  const upd = t.closest("[data-pupd]");
+  if (upd) { try { await updateProfile(upd.dataset.pupd); flash(upd, "Sparat"); } catch (err) { alert(err.message); } return; }
+  const del = t.closest("[data-pdel]");
+  if (del) { const p = profiles.find((x) => x.id === del.dataset.pdel); if (p && confirm(`Ta bort profilen ${p.name}?`)) await deleteProfile(p.id); return; }
+  if (t.closest("[data-pmanage]")) { $("profpick").querySelector(".profmenu").hidden = true; $("open-settings").click(); return; }
+}
+function flash(btn, text) { const old = btn.innerHTML; btn.innerHTML = `<span>✓</span>${text}`; setTimeout(() => { btn.innerHTML = old; }, 1200); }
+const profBox = $("profpick");
+if (profBox) {
+  profBox.addEventListener("click", (e) => {
+    if (e.target.closest(".profbtn")) { const m = profBox.querySelector(".profmenu"); m.hidden = !m.hidden; profBox.querySelector(".profbtn").setAttribute("aria-expanded", !m.hidden); if (!m.hidden) { const f = m.querySelector("button,input"); if (f) f.focus(); } return; }
+    profileAction(e);
+  });
+  profBox.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inp = e.target.querySelector("input"), err = profBox.querySelector(".proferr");
+    try { const msg = await addProfile(inp.value); if (msg) { err.textContent = msg; err.hidden = false; } }
+    catch (x) { err.textContent = x.message; err.hidden = false; }
+  });
+  document.addEventListener("click", (e) => { const m = profBox.querySelector(".profmenu"); if (m && !m.hidden && !profBox.contains(e.target)) { m.hidden = true; profBox.querySelector(".profbtn").setAttribute("aria-expanded", "false"); } });
+  document.addEventListener("keydown", (e) => { const m = profBox.querySelector(".profmenu"); if (e.key === "Escape" && m && !m.hidden) { m.hidden = true; profBox.querySelector(".profbtn").focus(); } });
+}
+const sp = $("s-profiles");
+if (sp) {
+  sp.addEventListener("click", profileAction);
+  sp.addEventListener("change", (e) => { const n = e.target.closest("[data-pname]"); if (n) renameProfile(n.closest(".profrow").dataset.pid, n.value).catch((x) => alert(x.message)); });
+}
+const sadd = $("s-prof-add");
+if (sadd) sadd.addEventListener("click", async () => {
+  const inp = $("s-prof-new");
+  try { const msg = await addProfile(inp.value); if (msg) alert(msg); else inp.value = ""; } catch (x) { alert(x.message); }
+});
+const sparts = $("s-parts");
+if (sparts) sparts.addEventListener("change", (e) => {
+  const c = e.target.closest("[data-part]"); if (!c) return;
+  if (c.checked) hidden.delete(c.dataset.part); else hidden.add(c.dataset.part);
+  store.set("hiddenParts", [...hidden]);
+  apply(layout);
+});
+const og = $("open-settings");
+if (og) og.addEventListener("click", () => renderProfileSettings());
+loadProfiles();
 })();
