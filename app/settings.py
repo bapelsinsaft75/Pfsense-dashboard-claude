@@ -54,6 +54,8 @@ EMAIL_RE = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
 # namn: (typ, min, max)
 SCHEMA = {
     "retention_days": (int, 1, 365),
+    "wan_down_mbit": (int, 0, 100000),
+    "wan_up_mbit": (int, 0, 100000),
     "anomaly_factor": (float, 1.5, 20),
     "anomaly_min_gb": (float, 0.1, 1000),
     "suricata_min_priority": (int, 1, 3),
@@ -87,6 +89,8 @@ class Settings:
     def __init__(self, cfg: Config, persist: bool = True) -> None:
         self.defaults = {
             "retention_days": cfg.retention_days,
+            "wan_down_mbit": cfg.wan_down_mbit,
+            "wan_up_mbit": cfg.wan_up_mbit,
             "anomaly_factor": cfg.anomaly_factor,
             "anomaly_min_gb": cfg.anomaly_min_gb,
             "suricata_min_priority": cfg.suricata_min_priority,

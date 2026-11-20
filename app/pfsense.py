@@ -26,6 +26,7 @@ class PfSense:
     INTERFACES = "/api/v2/status/interfaces"
     GATEWAYS = "/api/v2/status/gateways"
     OPENVPN_CLIENTS = "/api/v2/status/openvpn/clients"
+    SYSTEM = "/api/v2/status/system"
 
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
@@ -73,6 +74,10 @@ class PfSense:
 
     async def openvpn_clients(self) -> list[dict]:
         return await self.get(self.OPENVPN_CLIENTS)
+
+    async def system(self) -> dict:
+        rows = await self.get(self.SYSTEM)
+        return rows[0] if rows else {}
 
     async def close(self) -> None:
         await self.client.aclose()
@@ -317,6 +322,7 @@ def parse_gateway(row: dict) -> dict | None:
         "status": status or sub,
         "loss": str(loss) if loss is not None else None,
         "delay": str(pick(row, "delay", default="")) or None,
+        "stddev": str(pick(row, "stddev", default="")) or None,
         "monitor": pick(row, "monitorip", "monitor"),
         "vpn": bool(VPN_NAME.search(str(name)) or VPN_NAME.search(str(pick(row, "descr", default="")))),
     }

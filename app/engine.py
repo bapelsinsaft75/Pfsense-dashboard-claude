@@ -56,6 +56,21 @@ def guess_type(*hints: str | None, kind: str | None = None) -> str:
     return "laptop" if kind == "wifi" else "desktop"
 
 
+def _ms(v) -> float | None:
+    """"12.3ms" eller 12.3 → 12.3"""
+    try:
+        return float(str(v).lower().replace("ms", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct(v) -> float | None:
+    try:
+        return float(str(v).replace("%", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
 class Engine:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
@@ -76,6 +91,8 @@ class Engine:
                        if cfg.pihole_url else None)
         self.alerts = Alerts(self.history, self.mailer, self.settings, self.slack)
         self.gateways: dict[str, dict] = {}
+        self.gw_hist: dict[str, deque] = {}  # gateway -> (tid, fördröjning ms, jitter ms, förlust %, wan ned, wan upp)
+        self.pf_system: dict = {}
         self.vpn_clients: dict[str, dict] = {}
         self._confirm: dict[str, dict] = {}
         self._clients_polled = False
@@ -430,6 +447,26 @@ class Engine:
             else:
                 self.alerts.resolve(dkey)
         self.gateways = seen
+        now = time.time()
+        for name, g in seen.items():
+            hist = self.gw_hist.setdefault(name, deque(maxlen=4000))
+            hist.append((now, _ms(g.get("delay")), _ms(g.get("stddev")), _pct(g.get("loss")),
+                         self.wan_rate[0] if self.wan_rate else None, self.wan_rate[1] if self.wan_rate else None))
+
+    def update_system(self, row: dict) -> None:
+        """CPU, minne och temperatur för pfSense (REST API status/system)."""
+        def num(*keys):
+            for k in keys:
+                v = row.get(k)
+                if isinstance(v, (int, float)):
+                    return float(v)
+                try:
+                    return float(str(v).rstrip("%"))
+                except (TypeError, ValueError):
+                    continue
+            return None
+        self.pf_system = {"cpu": num("cpu_usage", "cpu"), "mem": num("mem_usage", "memory_usage"),
+                          "temp": num("temp_c", "cpu_temp"), "uptime": row.get("uptime"), "at": time.time()}
 
     def update_openvpn(self, rows: list[dict]) -> None:
         self.raw["openvpn"] = rows[:20]

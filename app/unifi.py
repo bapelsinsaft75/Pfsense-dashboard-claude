@@ -104,6 +104,7 @@ def parse_client(row: dict) -> dict | None:
         info["dev"] = norm_mac(pick(row, "ap_mac", "last_uplink_mac"))
         info["band"] = BANDS.get(str(row.get("radio", "")).lower(), row.get("radio_proto") or row.get("radio"))
         info["ssid"] = row.get("essid")
+        info["satisfaction"] = to_int(row.get("satisfaction"))
         sig = row.get("signal")
         if isinstance(sig, (int, float)) and sig < 0:
             info["rssi"] = int(sig)
@@ -123,7 +124,28 @@ def parse_device(row: dict) -> dict | None:
     own_uplink = to_int(uplink.get("port_idx"))
     if own_uplink is None:
         own_uplink = next((to_int(p.get("port_idx")) for p in ports if p.get("is_uplink")), None)
+    # upplänkens hastighet och trafik just nu (bytes/s → bit/s), för att se hur full länken är
+    up_port = next((p for p in ports if to_int(p.get("port_idx")) == own_uplink), {}) if own_uplink else {}
+    speed = to_int(pick(uplink, "speed", default=None)) or to_int(up_port.get("speed"))
+    rx = pick(uplink, "rx_bytes-r", default=None)
+    tx = pick(uplink, "tx_bytes-r", default=None)
+    if rx is None:
+        rx, tx = up_port.get("rx_bytes-r"), up_port.get("tx_bytes-r")
+    radios = []
+    for r in row.get("radio_table_stats") or []:
+        radios.append({"band": BANDS.get(str(r.get("radio", "")).lower(), r.get("radio")), "channel": r.get("channel"),
+                       "util": to_int(r.get("cu_total")), "clients": to_int(r.get("num_sta")) or 0,
+                       "satisfaction": to_int(r.get("satisfaction"))})
+    sysst = row.get("system-stats") or {}
     return {
+        "uplink_speed": speed,
+        "uplink_rx_bps": float(rx) * 8 if isinstance(rx, (int, float)) else None,
+        "uplink_tx_bps": float(tx) * 8 if isinstance(tx, (int, float)) else None,
+        "radios": radios,
+        "satisfaction": to_int(row.get("satisfaction")),
+        "slow_ports": sum(1 for p in ports if p.get("up") and 0 < (to_int(p.get("speed")) or 0) < 1000),
+        "port_errors": sum((to_int(p.get("rx_errors")) or 0) + (to_int(p.get("tx_errors")) or 0) for p in ports),
+        "cpu": to_int(sysst.get("cpu")) if str(sysst.get("cpu", "")).replace(".", "").isdigit() else None,
         "id": mac,
         "kind": "ap" if dtype == "uap" else "switch",
         "name": row.get("name") or MODELS.get(model, model) or mac,

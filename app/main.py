@@ -74,6 +74,10 @@ async def vpn_loop(engine: Engine, pf: PfSense) -> None:
             log.debug("Gateways: %s", exc)
         except Exception:  # noqa: BLE001
             log.exception("Kunde inte läsa gateways")
+        try:
+            engine.update_system(await pf.system())
+        except Exception as exc:  # noqa: BLE001 – bara för Överblick
+            log.debug("Systemstatus: %s", exc)
         if openvpn_supported:
             try:
                 engine.update_openvpn(await pf.openvpn_clients())
@@ -399,6 +403,13 @@ async def plex_refresh(server: int, body: dict = Body(default={})):
     what = next((x["title"] for x in p.libraries if x["key"] == key), None) if key else "alla bibliotek"
     engine.alerts.note("plex_refresh", f"Plex: uppdaterar {what} på {p.name}", "Startat från dashboarden.")
     return {"libraries": p.libraries}
+
+
+@app.get("/api/overview")
+async def overview():
+    from .overview import build
+    engine: Engine = app.state.engine
+    return await asyncio.to_thread(build, engine)
 
 
 @app.get("/api/top")

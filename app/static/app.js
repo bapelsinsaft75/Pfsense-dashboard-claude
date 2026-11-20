@@ -693,6 +693,7 @@ async function openSettings() {
     const j = await r.json();
     alertKinds = await rk.json();
     const st = j.settings;
+    $("s-wandown").value = st.wan_down_mbit || 0; $("s-wanup").value = st.wan_up_mbit || 0;
     $("s-retention").value = st.retention_days; $("s-factor").value = st.anomaly_factor; $("s-mingb").value = st.anomaly_min_gb;
     $("s-prio").value = String(st.suricata_min_priority); $("s-pfb").value = st.pfblocker_threshold;
     $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
@@ -726,6 +727,7 @@ $("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const rt = readRoutes();
   const body = {
+    wan_down_mbit: +$("s-wandown").value || 0, wan_up_mbit: +$("s-wanup").value || 0,
     retention_days: +$("s-retention").value, anomaly_factor: +$("s-factor").value, anomaly_min_gb: +$("s-mingb").value,
     suricata_min_priority: +$("s-prio").value, pfblocker_threshold: +$("s-pfb").value,
     confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: rt.alert_kinds,
@@ -1315,6 +1317,7 @@ async function load() {
     loadChart();
     loadMap();
     loadPihole();
+    loadOverview();
   } catch (e) {
     $("problems").innerHTML = `<div class="problem"><b>Dashboard</b>Får inget svar från servern (${esc(e.message)}). Försöker igen …</div>`;
   }
@@ -1634,6 +1637,70 @@ totop.addEventListener("click", () => {
   if (sc) sc.scrollTo({ top: 0, behavior }); else window.scrollTo({ top: 0, behavior });
   const h = sc ? $("ldrawer-title") : document.querySelector("h1");
   if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+});
+
+/* ── Överblick: är något fel, och var sitter flaskhalsen ── */
+const OV_ICON = { ok: "✓", warn: "⚠", err: "✕" };
+const ovPctLvl = (p) => (p == null ? "" : p >= 85 ? "err" : p >= 50 ? "warn" : "ok");
+async function loadOverview() {
+  if (document.body.dataset.layout !== "overblick") return;
+  try {
+    const r = await fetch("api/overview", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    renderOverview(await r.json());
+  } catch (e) { $("ovw-verdict").innerHTML = `<div class="problem"><b>Överblick</b>Kunde inte hämta (${esc(e.message)}).</div>`; }
+}
+window.loadOverview = loadOverview;
+function renderOverview(o) {
+  const v = o.verdict;
+  $("ovw-verdict").className = `ovverdict ${v.level}`;
+  $("ovw-verdict").innerHTML = `<span class="ic">${OV_ICON[v.level] || "✓"}</span><div><b>${esc(v.text)}</b><span>${esc(v.sub)} · kontrollerat ${clock(o.generated)}</span></div>`;
+  $("ovw-probs").innerHTML = o.problems.map((p) => `<div class="ovprob ${p.level}">
+      <span class="t"><i class="cdot ${p.level}"></i>${esc(p.title)}</span>
+      ${p.value ? `<span class="big num">${esc(p.value)}<small>${esc(p.unit || "")}</small>${p.normal ? ` <small class="norm">(${esc(p.normal)})</small>` : ""}</span>` : ""}
+      ${p.pct != null ? `<div class="meter ovmeter"><i class="${p.level === "err" ? "e" : "w"}" style="width:${Math.min(100, p.pct)}%"></i>${p.mark != null ? `<b style="left:${p.mark}%"></b>` : ""}</div>` : ""}
+      <span class="why">${esc(p.why || "")}</span>
+      ${p.goto ? `<span><button type="button" class="btn" data-ovgoto="${esc(p.goto)}">${esc(p.action || "Visa")}</button></span>` : ""}</div>`).join("");
+  $("ovw-probs").hidden = !o.problems.length;
+  $("ovw-tiles").innerHTML = o.tiles.map((t) => `<button type="button" class="ovtile ${t.level}" data-ovgoto="${esc(t.goto || "")}" title="Visa ${esc(t.label)}">
+      <span class="l"><i class="cdot ${t.level}"></i>${esc(t.label)}</span><span class="v num">${esc(t.value)}<small>${esc(t.unit || "")}</small></span><span class="s">${esc(t.sub || "")}</span></button>`).join("");
+  renderOvMap(o.map);
+  $("ovw-rank").innerHTML = o.links.length ? o.links.map((l, i) => {
+    const lv = ovPctLvl(l.pct);
+    return `<button type="button" class="ovrk" data-ovgoto="${esc(l.goto || "")}"><span class="n">${i + 1}</span><b class="${lv}">${esc(l.name)}</b><span class="${lv} num">${l.pct != null ? fmt(l.pct, 0) + " %" : l.mbit != null ? fmtMbit(l.mbit * 1e6) + " Mbit/s" : "–"}</span>
+      <div class="meter"><i class="${lv === "err" ? "e" : lv === "warn" ? "w" : ""}" style="width:${Math.min(100, l.pct || 0)}%"></i></div><span class="m">${esc(l.note || "")}</span></button>`;
+  }).join("") : `<div class="empty">Ingen länkdata än. Ange linjens hastighet under Inställningar → Allmänt och anslut UniFi för länkarna i nätverket.</div>`;
+}
+function renderOvMap(m) {
+  const el = $("ovw-map");
+  if (!m || !m.nodes.length) { el.innerHTML = ""; return; }
+  const byId = Object.fromEntries(m.nodes.map((n) => [n.id, { ...n, kids: [] }]));
+  m.edges.forEach((e) => { if (byId[e.from] && byId[e.to]) byId[e.from].kids.push(e.to); });
+  const depth = {}, rows = [];
+  const walk = (id, d) => { if (depth[id] != null) return; depth[id] = d; (rows[d] = rows[d] || []).push(id); byId[id].kids.forEach((k) => walk(k, d + 1)); };
+  walk("internet", 0);
+  m.nodes.forEach((n) => { if (depth[n.id] == null) walk(n.id, rows.length); });
+  const W = 860, rowH = 92, nw = 150, nh = 40, H = rows.length * rowH + 10;
+  const pos = {};
+  rows.forEach((ids, d) => ids.forEach((id, i) => { pos[id] = { x: (i + 1) * W / (ids.length + 1), y: 14 + d * rowH }; }));
+  const col = (p) => (p == null ? "#3a4d62" : p >= 85 ? "var(--err)" : p >= 50 ? "var(--accent)" : "var(--ok-fg)");
+  const maxM = Math.max(1, ...m.edges.map((e) => e.mbit || 0));
+  const edges = m.edges.filter((e) => pos[e.from] && pos[e.to]).map((e) => {
+    const a = pos[e.from], b = pos[e.to], x1 = a.x, y1 = a.y + nh, x2 = b.x, y2 = b.y;
+    const w = 2 + Math.sqrt((e.mbit || 0) / maxM) * 6, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const tip = `${byId[e.from].label} ↔ ${byId[e.to].label}: ${e.pct != null ? fmt(e.pct, 0) + " % belagd" : "okänd beläggning"}${e.mbit ? ` · ${fmtMbit(e.mbit * 1e6)} Mbit/s` : ""}${e.speed ? ` · länk ${e.speed} Mbit/s` : ""}`;
+    return `<g class="oved"><title>${esc(tip)}</title><path d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" stroke="${col(e.pct)}" stroke-width="${w.toFixed(1)}" fill="none" stroke-linecap="round"/>
+      ${e.label ? `<text x="${x2 + (x2 === x1 ? 10 : x2 > x1 ? -10 : 10)}" y="${x2 === x1 ? my + 4 : y2 - 8}" text-anchor="${x2 === x1 ? "start" : x2 > x1 ? "end" : "start"}">${esc(e.label)}</text>` : ""}</g>`;
+  }).join("");
+  const nodes = m.nodes.filter((n) => pos[n.id]).map((n) => {
+    const p = pos[n.id];
+    return `<g class="ovnd ${n.level}" transform="translate(${p.x - nw / 2},${p.y})"><rect width="${nw}" height="${nh}" rx="3"/><text x="${nw / 2}" y="17" text-anchor="middle" class="nt">${esc(n.label)}</text><text x="${nw / 2}" y="31" text-anchor="middle" class="ns">${esc(n.sub || "")}</text></g>`;
+  }).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Nätverkskarta med hur fulla länkarna är" style="width:100%;height:auto;display:block">${edges}${nodes}</svg>`;
+}
+$("ovw").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-ovgoto]");
+  if (b && b.dataset.ovgoto) scrollToCard(b.dataset.ovgoto);
 });
 
 const map = new MapView(document.querySelector("#map svg"));

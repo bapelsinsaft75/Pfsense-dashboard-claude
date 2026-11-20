@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import random
@@ -159,6 +160,14 @@ def setup(engine: Engine) -> None:
     _seed_unraid(engine, now)
     if engine.pihole is None:
         engine.pihole = DemoPiHole(engine)
+    # Överblick: linjens hastighet, historik för fördröjning och UniFi-länkar
+    for k, v in (("wan_down_mbit", 1000), ("wan_up_mbit", 100)):
+        if not engine.settings.defaults.get(k):
+            engine.settings.defaults[k] = v
+    rnd2 = random.Random(7)
+    hist = engine.gw_hist.setdefault("WAN_DHCP", deque(maxlen=4000))
+    for t in range(int(now - 86400), int(now), 60):
+        hist.append((t, 4 + rnd2.random() * 2.5, 0.4 + rnd2.random() * .6, 0.0, None, None))
     tick(engine)
 
 
@@ -347,8 +356,31 @@ def _demo_recent(engine: Engine, now: float, seconds: float, at: float) -> None:
         r[1] += idn + int(ld * random.uniform(.7, 1.3))
 
 
+def _demo_net(engine: Engine, now: float) -> None:
+    """UniFi-länkar, Wi-Fi-kanaler, pfSense-CPU och fördröjning som följer hur full uppladdningen är."""
+    rnd = random.Random(int(now // 10))
+    up = (engine.wan_rate or (0, 0))[1] / 1e6
+    cap = engine.settings.get("wan_up_mbit") or 100
+    load = up / cap
+    delay = 4 + rnd.random() * 2 + (max(0, load - .8) * 600)
+    engine.gw_hist.setdefault("WAN_DHCP", deque(maxlen=4000)).append(
+        (now, delay, 0.5 + rnd.random() * (1 + load * 10), 0.0, *(engine.wan_rate or (None, None))))
+    engine.gateways["WAN_DHCP"]["delay"] = f"{delay:.1f}ms"
+    engine.pf_system = {"cpu": 9 + rnd.random() * 8, "mem": 38.0, "temp": 46.0, "uptime": None, "at": now}
+    rates = {"74:83:c2:00:00:01": 0.31, "74:83:c2:00:00:02": 0.12, "74:83:c2:00:00:03": 0.28, "74:83:c2:00:00:04": 0.09}
+    for d in engine.devices.values():
+        d["uplink_speed"] = 1000
+        r = rates.get(d["id"], .05) * rnd.uniform(.8, 1.2)
+        d["uplink_rx_bps"], d["uplink_tx_bps"] = r * 1e9, r * .3e9
+        if d["kind"] == "ap":
+            d["radios"] = [{"band": "5 GHz", "channel": 36, "util": int(58 + rnd.random() * 10), "clients": 9, "satisfaction": 82},
+                           {"band": "2,4 GHz", "channel": 6, "util": int(20 + rnd.random() * 8), "clients": 5, "satisfaction": 95}]
+
+
 def tick(engine: Engine) -> None:
     now = time.time()
+    if engine.devices:
+        _demo_net(engine, now)
     for srv in engine.plex_servers:
         if isinstance(srv, DemoPlex):
             srv.tick()

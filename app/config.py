@@ -67,6 +67,9 @@ class Config:
         self.pfsense_poll = max(3, env_int("PFSENSE_POLL_SECONDS", 10))
         self.pfsense_client_poll = max(10, env_int("PFSENSE_CLIENT_POLL_SECONDS", 60))
         self.wan_interface = (env("WAN_INTERFACE", "wan") or "wan").lower()
+        # internetlinjens hastighet i Mbit/s (för att se hur full den är). 0 = okänd
+        self.wan_down_mbit = env_int("WAN_DOWN_MBIT", 0)
+        self.wan_up_mbit = env_int("WAN_UP_MBIT", 0)
 
         self.lan_subnets = _networks(env("LAN_SUBNETS", "192.168.2.0/24") or "")
 

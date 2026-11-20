@@ -10,6 +10,7 @@ const LAYOUTS = {
   sidomeny: "Sidomeny",
   rutor: "Statusrutor",
   flikar: "Flikar och rader",
+  overblick: "Överblick",
 };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -41,7 +42,7 @@ function grab() {
   Object.assign(el, {
     wrap, alerts: $("alerts"), head: wrap.querySelector(".head"), demo: $("demo"), problems: $("problems"),
     kpis: $("sec-kpis"), map: $("sec-map"), chart: $("sec-chart"), security: $("sec-security"),
-    unifi: $("unifi-card"), clients: $("clients-card"), unraid: $("unraid-cards"), plex: $("plex-card"), pihole: $("pihole-card"),
+    unifi: $("unifi-card"), clients: $("clients-card"), unraid: $("unraid-cards"), plex: $("plex-card"), pihole: $("pihole-card"), ovw: $("ovw"),
     foot: wrap.querySelector(".foot"),
   });
   el.store = document.createElement("div");
@@ -113,6 +114,8 @@ function stash(names) { put(el.store, names); }
 function clearWrap() {
   el.store.appendChild(el.alerts);
   stash(ORDER);
+  stash(["ovw"]);
+  if (el.ovw) el.ovw.hidden = true;
   el.wrap.innerHTML = "";
 }
 function inbox(target) {
@@ -127,6 +130,18 @@ function buildKlassisk() {
   el.alerts.classList.remove("inbox");
   el.wrap.parentNode.insertBefore(el.alerts, el.wrap);
   put(el.wrap, ORDER);
+}
+
+/* ── Överblick: är något fel och var sitter flaskhalsen – sedan allt annat ── */
+function buildOverblick() {
+  clearWrap();
+  el.alerts.classList.remove("inbox");
+  el.wrap.parentNode.insertBefore(el.alerts, el.wrap);
+  put(el.wrap, ["head", "demo", "problems", "ovw"]);
+  el.ovw.hidden = false;
+  document.body.dataset.layout = "overblick";
+  put(el.wrap, ORDER.filter((n) => !["head", "demo", "problems"].includes(n)));
+  if (window.loadOverview) window.loadOverview();
 }
 
 /* ── Flikar och rader ── */
@@ -366,7 +381,7 @@ function onRender(d) {
 
 /* ── klick på statusmarkeringar (Unraid, Plex) ── */
 function goto(id) {
-  if (layout === "klassisk") return false;
+  if (layout === "klassisk" || layout === "overblick") return false;
   const m = id.match(/^unraid-card-(\d+)$/);
   const target = m ? "servrar" : GOTO[id];
   if (!target) return false;
@@ -382,7 +397,7 @@ function apply(name) {
   if (layout === "rutor") { closeDrawer(); document.removeEventListener("keydown", escClose); if (built.drawer) built.drawer.remove(); built.drawer = null; }
   layout = name;
   document.body.dataset.layout = name;
-  ({ klassisk: buildKlassisk, sidomeny: buildSidomeny, rutor: buildRutor, flikar: buildFlikar })[name]();
+  ({ klassisk: buildKlassisk, sidomeny: buildSidomeny, rutor: buildRutor, flikar: buildFlikar, overblick: buildOverblick })[name]();
   if (window.dashState && window.dashState.data) { window.dashRender(); }
   const pick = $("s-layout");
   if (pick) pick.querySelectorAll("input").forEach((i) => { i.checked = i.value === name; });
@@ -401,6 +416,7 @@ if (pick) {
     sidomeny: "Meny till vänster, en sak i taget.",
     rutor: "En ruta per system, detaljer i en panel.",
     flikar: "En sida med flikar och delar som kan fällas ihop.",
+    overblick: "Det viktigaste först: är något fel, och var sitter flaskhalsen.",
   }[v]}</small></span></label>`).join("");
   pick.addEventListener("change", (e) => {
     if (e.target.name !== "layout") return;

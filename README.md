@@ -27,6 +27,10 @@ Grafisk dashboard för pfSense som körs som Docker-container på Unraid (testad
   blockera/avblockera domäner och en lista över egna regler. Larm om Pi-hole slutar svara.
 - Periodvalet överst: **Just nu** · 24 timmar · 7 dagar · 30 dagar. Just nu visar bara anslutningar som har
   trafik i detta ögonblick (i Mbit/s). Varje ruta visar vald period efter rubriken; Bandbredd är alltid just nu.
+- **Överblick** (eget utseende): överst en mening som säger om allt fungerar, problem som kort med orsak i klartext
+  (t.ex. ”uppladdningen är full – Tower laddar upp backup”), små rutor för internet, linjen, VPN, pfSense, DNS,
+  Wi-Fi, servrar och säkerhet, och en nätverkskarta där länkarna färgas efter hur fulla de är, med en topplista
+  över det som är mest belastat. Ange linjens hastighet (`WAN_DOWN_MBIT`/`WAN_UP_MBIT` eller under Inställningar).
 - Klicka på ett land, på kartan eller i listan, för att se vilka klienter och vilka externa adresser
   (med värdnamn och organisation) som kommunicerar med landet.
 - Med UniFi: om klienten är trådlös eller trådbunden, switch och port, Wi-Fi-band och signal,
@@ -224,6 +228,7 @@ slå på *Settings → Docker → Host access to custom networks* (Docker måste
 | `UNRAID2_URL`, `UNRAID2_API_KEY`, `UNRAID2_NAME` | `http://192.168.2.11`, …, `Tower` | Nästa Unraid-server (upp till `UNRAID4_...`) |
 | `PLEX1_NAME`, `PLEX1_URL`, `PLEX1_TOKEN` | `Peters Plex`, `http://192.168.2.56:32400` | Plex-server 1 (upp till `PLEX4_...`) |
 | `PLEX_VERIFY_SSL` | `false` | `false` för Plex egna certifikat |
+| `WAN_DOWN_MBIT`, `WAN_UP_MBIT` | `0`, `0` | Internetlinjens hastighet för Överblick (0 = okänd) |
 | `PIHOLE_URL`, `PIHOLE_PASSWORD`, `PIHOLE_NAME` | –, –, `Pi-hole` | Pi-hole v6 och dess app-lösenord |
 | `PIHOLE_VERIFY_SSL`, `PIHOLE_POLL_SECONDS` | `false`, `10` | Certifikatkontroll och hur ofta Pi-hole läses av |
 | `PUBLIC_URL` | `http://192.168.2.30:8080` | Dashboardens adress, för länkar i Slack och e-post |
