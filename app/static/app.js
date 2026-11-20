@@ -53,7 +53,9 @@ class MapView {
     this.svg = d3.select(svgEl);
     const vb = svgEl.viewBox.baseVal;
     this.w = vb.width; this.h = vb.height;
-    const s = this.svg;
+    const s = this.svg.append("g").attr("class", "maproot");
+    this.root = s;
+    this.k = 1;
     this.gS = s.append("path").attr("class", "sphere");
     this.gG = s.append("path").attr("class", "grat");
     this.gL = s.append("g"); this.gB = s.append("g"); this.gF = s.append("g"); this.gE = s.append("g");
@@ -62,6 +64,29 @@ class MapView {
     this.flows = [];
     this.home = { name: "Örebro", lon: 15.2066, lat: 59.2741 };
     this.makeProj();
+    // zoom med knapparna, dra med musen; på mobil flyttar ett finger kartan bara när man har zoomat in
+    this.zb = d3.zoom().scaleExtent([1, 16]).translateExtent([[0, 0], [this.w, this.h]])
+      .filter((e) => !e.button && e.type !== "wheel" && e.type !== "dblclick"
+        && (e.type !== "touchstart" || this.k > 1 || (e.touches && e.touches.length > 1)))
+      .on("zoom", (e) => {
+        this.k = e.transform.k;
+        this.root.attr("transform", e.transform);
+        this.applyK();
+        this.svg.classed("zoomed", this.k > 1.001).style("touch-action", this.k > 1.001 ? "none" : "pan-y");
+        const lvl = document.getElementById("map-zlevel");
+        if (lvl) lvl.textContent = `${Math.round(this.k * 10) / 10}×`;
+        const out = document.querySelector('[data-mz="out"]'), rs = document.querySelector('[data-mz="reset"]');
+        if (out) out.disabled = this.k <= 1.001;
+        if (rs) rs.disabled = this.k <= 1.001 && Math.abs(e.transform.x) < 0.5 && Math.abs(e.transform.y) < 0.5;
+      });
+    this.svg.call(this.zb).style("touch-action", "pan-y");
+  }
+  zoomBy(f) { this.svg.transition().duration(reduceMotion ? 0 : 250).call(this.zb.scaleBy, f, [this.w / 2, this.h / 2]); }
+  zoomReset(anim = true) { this.svg.transition().duration(anim && !reduceMotion ? 300 : 0).call(this.zb.transform, d3.zoomIdentity); }
+  applyK() {
+    const inv = 1 / this.k;
+    this.gE.selectAll("g.endpoint").attr("transform", function () { return `translate(${this.__x},${this.__y}) scale(${inv})`; });
+    if (this.hx != null) this.gH.attr("transform", `translate(${this.hx},${this.hy}) scale(${inv})`);
   }
   makeProj() {
     this.p = d3.geoEqualEarth();
@@ -104,12 +129,13 @@ class MapView {
       .attr("class", (f) => "flow dash" + (show(f) ? "" : " dim")).attr("d", (f) => this.arc(f)).attr("stroke", col).attr("stroke-width", sw)
       .select("title").text(tip);
     const pts = d3.groups(flows, (f) => f.cc).map(([cc, fs]) => ({ cc, fs }));
-    const labels = this.zoom === "europe" || pts.length <= 14;
+    const labels = this.zoom === "europe" || this.k >= 2 || pts.length <= 14;
     this.gE.selectAll("g").data(pts, (d) => d.cc).join((en) => { const g = en.append("g").attr("class", "endpoint"); g.append("circle"); g.append("text"); g.append("title"); return g; })
       .each((d, i, n) => {
         const g = d3.select(n[i]), [x, y] = this.p(coords[d.cc]);
+        n[i].__x = x; n[i].__y = y;
         const any = d.fs.some(show), both = d.fs.length > 1, hasOut = d.fs.some((f) => f.dir === "out");
-        g.attr("transform", `translate(${x},${y})`).classed("dim", !any);
+        g.attr("transform", `translate(${x},${y}) scale(${1 / this.k})`).classed("dim", !any);
         g.select("circle").attr("r", 3.2).attr("fill", hasOut ? "var(--out)" : "var(--in)").attr("stroke", both ? "var(--in)" : "none").attr("stroke-width", both ? 1.6 : 0);
         g.select("text").attr("x", 6).attr("y", 3).text(labels && d.cc !== "SE" ? countryName(d.cc) + (this.live ? ` · ${fmtMbit(d3.sum(d.fs, (f) => f.bps))} Mbit/s` : "") : "");
         g.classed("livept", !!this.live);
@@ -122,7 +148,8 @@ class MapView {
       this.gH.append("path").attr("d", HOUSE).attr("transform", "scale(1.1)");
       this.gH.append("text").attr("text-anchor", "end").attr("x", -13).attr("y", -13);
     }
-    this.gH.attr("transform", `translate(${hx},${hy})`).select("text").text(this.home.name);
+    this.hx = hx; this.hy = hy;
+    this.gH.attr("transform", `translate(${hx},${hy}) scale(${1 / this.k})`).select("text").text(this.home.name);
   }
 }
 
@@ -1197,7 +1224,15 @@ $("period").addEventListener("click", (e) => {
   mapData = null; renderMapWin(); load();
 });
 setPressed($("period"), $("period").querySelector(`[data-p="${state.period}"]`));
-$("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPressed(e.currentTarget, b); map.zoom = b.dataset.z; map.makeProj(); map.render(); });
+$("zoom").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; setPressed(e.currentTarget, b); map.zoom = b.dataset.z; map.makeProj(); map.zoomReset(false); map.render(); });
+$("map-zoom").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-mz]"); if (!b) return;
+  if (b.dataset.mz === "in") map.zoomBy(1.6);
+  else if (b.dataset.mz === "out") map.zoomBy(1 / 1.6);
+  else map.zoomReset();
+  // etiketterna visas när man har zoomat in tillräckligt
+  setTimeout(() => map.render(), reduceMotion ? 0 : 320);
+});
 $("connf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.connF = b.dataset.c; setPressed(e.currentTarget, b); render(); });
 $("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });
 function scrollToCard(id) {

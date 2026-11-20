@@ -37,7 +37,9 @@
     <div class="card">
       <h2><span class="ttl">Vart trafiken går · <span class="per" id="per-map"></span></span><span class="mapctrls"><span class="seg small" role="group" aria-label="Kartutsnitt" id="zoom"><button type="button" aria-pressed="true" data-z="world">Världen</button><button type="button" aria-pressed="false" data-z="europe">Europa</button></span></span></h2>
       <div class="livebar" id="livebar" hidden></div>
-      <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från hemmet"></svg></div>
+      <div class="map" id="map"><svg viewBox="0 0 860 440" role="img" aria-label="Karta med trafik från hemmet"></svg>
+        <div class="mapzoom" id="map-zoom" role="group" aria-label="Zooma kartan"><button type="button" data-mz="in" title="Zooma in" aria-label="Zooma in">+</button><button type="button" data-mz="out" title="Zooma ut" aria-label="Zooma ut" disabled>−</button><button type="button" data-mz="reset" title="Visa hela kartan igen" aria-label="Återställ zoom" disabled>⟲</button><span class="mzlevel" id="map-zlevel" aria-live="polite">1×</span></div>
+        <div class="maphint">Dra för att flytta kartan</div></div>
       <div class="legend"><span><i style="background:var(--out)"></i>Startad inifrån (klient → internet)</span><span><i style="background:var(--in)"></i>Startad utifrån (internet → klient)</span><span id="mapfilter"></span></div>
     </div>
     <div class="card">

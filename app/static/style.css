@@ -60,7 +60,7 @@ button{font:inherit;color:inherit}
 .card h2 small{font-family:var(--mono);text-transform:none;letter-spacing:.02em;color:var(--fg);font-size:11px;font-weight:400}
 .empty{color:var(--muted);padding:16px 0}
 
-.map{position:relative;background:radial-gradient(ellipse at 55% 30%,#102033,var(--card) 70%)}
+.map{position:relative;overflow:hidden;background:radial-gradient(ellipse at 55% 30%,#102033,var(--card) 70%)}
 .map svg{display:block;width:100%;height:auto}
 .sphere{fill:none;stroke:none}
 .grat{fill:none;stroke:var(--grat);stroke-width:.5}
@@ -681,3 +681,18 @@ dialog#settings{max-width:min(900px,calc(100vw - 32px))}
 .mwatch{font:inherit;font-size:11.5px;background:var(--track);color:var(--accent);border:1px dashed #2a3d52;padding:3px 6px}
 .mtxpart{display:inline-block;width:12px;height:12px;background:var(--accent);position:relative;vertical-align:-1px}
 .mtxpart::after{content:"";position:absolute;left:2px;right:2px;top:5px;height:2px;background:#1a1205}
+
+/* kartans zoom */
+.map svg{cursor:grab}
+.map svg:active{cursor:grabbing}
+.map .sphere,.map .grat,.map .land,.map .flow{vector-effect:non-scaling-stroke}
+.mapzoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:2px;background:var(--track);padding:3px;border:1px solid var(--line);align-items:center}
+.mapzoom button{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;font:600 17px/1 var(--mono);color:var(--fg);background:var(--card);border:1px solid var(--line)}
+.mapzoom button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.mapzoom button:disabled{opacity:.35;cursor:default}
+.mapzoom button:focus-visible{outline:2px solid var(--accent)}
+.mzlevel{font-size:10px;color:var(--muted);padding-top:2px}
+.maphint{position:absolute;left:10px;bottom:10px;font-size:10.5px;color:var(--muted);background:rgba(11,19,28,.8);padding:2px 8px;border:1px solid var(--line);opacity:0;transition:opacity .2s;pointer-events:none}
+.map:has(svg.zoomed):hover .maphint{opacity:1}
+@media (hover:none){.maphint{display:none}}
+.map svg{overflow:hidden}
