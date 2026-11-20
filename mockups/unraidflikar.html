@@ -1,0 +1,163 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Unraid med flikar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: en Unraid-ruta med översikt över båda servrarna och en flik per server med detaljer. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--ok:#3ddc84;--err:#ff6b6b;--ur:#f15a2c;
+  --track:#0b131c;--sel:#1a2c40;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5}
+.wrap{max-width:1300px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:14px}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.02em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+.card{background:var(--card);border:1px solid var(--line);padding:16px;display:grid;gap:14px}
+.head{display:flex;justify-content:space-between;align-items:end;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px;align-items:end}
+.tabs .t{font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:12px;padding-bottom:8px}
+.tabs .tb{padding:4px 12px 8px;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-flex;gap:8px;align-items:center}
+.tabs .on{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.d{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);display:inline-block}
+.d.w{background:var(--accent);box-shadow:0 0 6px var(--accent)}.d.e{background:var(--err);box-shadow:0 0 6px var(--err)}.d.o{background:var(--muted);box-shadow:none}
+.meta{color:var(--muted);font-size:11.5px;padding-bottom:8px}
+.ov{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.ov{grid-template-columns:1fr}}
+.srv{border:1px solid var(--line);background:var(--bg);padding:12px 14px;display:grid;gap:10px}
+.srv.warn{border-color:rgba(255,181,71,.45)}
+.srv .h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.srv .h b{font-family:var(--cond);font-size:18px;letter-spacing:.06em;text-transform:uppercase;display:inline-flex;gap:8px;align-items:center}
+.srv .h span{color:var(--muted);font-size:11px}
+.prob{font-size:11.5px;color:var(--accent)}
+.meters{display:grid;gap:7px}
+.mt{display:grid;grid-template-columns:80px minmax(0,1fr) 150px;gap:10px;align-items:center;font-size:11.5px}
+.mt .l{color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.mt .v{text-align:right}
+.mt .v small{color:var(--muted)}
+.bar{height:6px;background:var(--track)}.bar i{display:block;height:100%;background:#5b8bb5}
+.bar i.h{background:var(--accent)}
+.counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.counts div{border:1px solid var(--line);padding:6px 9px;font-size:11px;color:var(--muted)}
+.counts b{display:block;font-family:var(--cond);font-size:22px;font-weight:600;color:var(--fg);line-height:1.1}
+.counts b small{font-size:12px;color:var(--muted);margin-left:3px}
+.counts .bad b{color:var(--err)}
+.link{color:var(--accent);font-family:var(--cond);font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;justify-self:end}
+.kp{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.kp>div{border:1px solid var(--line);background:var(--bg);padding:9px 12px}
+.kp .l{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kp .v{font-family:var(--cond);font-size:26px;font-weight:600;line-height:1.1}
+.kp .v small{font-size:12px;color:var(--muted);margin-left:3px}
+.kp .s{font-size:11px;color:var(--muted)}
+.pill{font-size:10.5px;padding:0 7px;border-radius:999px;background:rgba(61,220,132,.12);color:var(--ok)}
+.pill.w{background:rgba(255,181,71,.14);color:var(--accent)}.pill.o{background:#16212d;color:var(--muted)}
+.det{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px}
+@media (max-width:900px){.det{grid-template-columns:1fr}}
+h3{margin:0;font-family:var(--cond);font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.seg{display:inline-flex;background:var(--track);padding:3px;gap:2px}
+.seg span{padding:2px 8px;font-family:var(--cond);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg span.on{background:var(--sel);color:var(--accent);box-shadow:inset 0 0 0 1px #2a3d52}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:400;color:var(--muted);text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid var(--line)}
+td{padding:5px 6px;border-bottom:1px solid #131e2a}
+td.r,th.r{text-align:right}
+.ub{display:inline-block;width:80px;height:5px;background:var(--track);vertical-align:middle;margin-right:6px}.ub i{display:block;height:100%;background:#5b8bb5}
+.ct{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #131e2a;font-size:12px}
+.ct .m{color:var(--muted);font-size:11px}
+.ct .m.e{color:var(--err)}
+.hl{outline:2px solid var(--accent);outline-offset:3px}
+.note{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px;display:grid;gap:4px}
+.note b{color:var(--fg);font-weight:500}
+</style>
+<div class="wrap">
+
+<div class="tag">1 · Flik Översikt <em>båda servrarna sida vid sida – klick på en server öppnar dess flik</em></div>
+<section class="card">
+  <div class="head">
+    <div class="tabs hl"><span class="t">Unraid</span><span class="tb on">Översikt</span><span class="tb"><i class="d w"></i>LillaNasen</span><span class="tb"><i class="d"></i>Tower</span></div>
+    <span class="meta">uppdateras var 30:e sekund</span>
+  </div>
+  <div class="ov">
+    <div class="srv warn">
+      <div class="h"><b><i class="d w"></i>LillaNasen</b><span>Unraid 7.2.4 · drifttid 18 d</span></div>
+      <span class="prob">⚠ Disk 3 är varm (52 °C) · qbittorrent stoppad oväntat</span>
+      <div class="meters">
+        <div class="mt"><span class="l">Lagring</span><div class="bar"><i style="width:65%"></i></div><span class="v">31,4 <small>av 48 TB · 65 %</small></span></div>
+        <div class="mt"><span class="l">Processor</span><div class="bar"><i style="width:23%"></i></div><span class="v">23 % <small>· 12 trådar</small></span></div>
+        <div class="mt"><span class="l">Minne</span><div class="bar"><i style="width:57%"></i></div><span class="v">18,2 <small>av 32 GB · 57 %</small></span></div>
+        <div class="mt"><span class="l">Varmast</span><div class="bar"><i class="h" style="width:87%"></i></div><span class="v">52 °C <small>· Disk 3</small></span></div>
+      </div>
+      <div class="counts">
+        <div><b>Startad</b>array · parity giltig</div>
+        <div class="bad"><b>8<small>av 10</small></b>dockers körs · 1 stoppad oväntat</div>
+        <div><b>1<small>av 2</small></b>VM körs</div>
+      </div>
+      <span class="link">Visa LillaNasen →</span>
+    </div>
+    <div class="srv">
+      <div class="h"><b><i class="d"></i>Tower</b><span>Unraid 7.2.4 · drifttid 41 d</span></div>
+      <span class="prob" style="color:var(--ok)">✓ Allt ser bra ut</span>
+      <div class="meters">
+        <div class="mt"><span class="l">Lagring</span><div class="bar"><i style="width:43%"></i></div><span class="v">20,8 <small>av 48 TB · 43 %</small></span></div>
+        <div class="mt"><span class="l">Processor</span><div class="bar"><i style="width:8%"></i></div><span class="v">8 % <small>· 16 trådar</small></span></div>
+        <div class="mt"><span class="l">Minne</span><div class="bar"><i style="width:35%"></i></div><span class="v">22,4 <small>av 64 GB · 35 %</small></span></div>
+        <div class="mt"><span class="l">Varmast</span><div class="bar"><i style="width:60%"></i></div><span class="v">36 °C <small>· Disk 2</small></span></div>
+      </div>
+      <div class="counts">
+        <div><b>Startad</b>array · parity giltig</div>
+        <div><b>5<small>av 5</small></b>dockers körs</div>
+        <div><b>–</b>inga VM</div>
+      </div>
+      <span class="link">Visa Tower →</span>
+    </div>
+  </div>
+</section>
+
+<div class="tag">2 · Flik per server <em>allt du ser i dag för en server, i en egen flik</em></div>
+<section class="card">
+  <div class="head">
+    <div class="tabs"><span class="t">Unraid</span><span class="tb">Översikt</span><span class="tb on"><i class="d w"></i>LillaNasen</span><span class="tb"><i class="d"></i>Tower</span></div>
+    <span class="meta">Unraid 7.2.4 · drifttid 18 dagar 4 h</span>
+  </div>
+  <div class="kp">
+    <div><div class="l">Array</div><div class="v">Startad</div><div class="s"><span class="pill">Parity giltig</span> · kontroll 3 nov, 0 fel</div></div>
+    <div><div class="l">Lagring</div><div class="v">31,4<small>av 48 TB</small></div><div class="s">16,6 TB ledigt · 65 %</div></div>
+    <div><div class="l">Processor</div><div class="v">23<small>%</small></div><div class="s">Intel Core i5-12400 · 12 trådar</div></div>
+    <div><div class="l">Minne</div><div class="v">18,2<small>av 32 GB</small></div><div class="s">57 %</div></div>
+  </div>
+  <div class="det">
+    <div style="display:grid;gap:8px;align-content:start">
+      <h3>Diskar</h3>
+      <table>
+        <tr><th>Disk</th><th>Enhet</th><th>Status</th><th>Använt</th><th class="r">Storlek</th><th class="r">Temp</th></tr>
+        <tr><td>Parity</td><td>WDC WD120EFBX</td><td><span class="pill">OK</span></td><td>–</td><td class="r">12 TB</td><td class="r">38 °C</td></tr>
+        <tr><td>Disk 1</td><td>WDC WD120EFBX</td><td><span class="pill">OK</span></td><td><span class="ub"><i style="width:82%"></i></span>82 %</td><td class="r">12 TB</td><td class="r">39 °C</td></tr>
+        <tr><td>Disk 2</td><td>ST12000VN0008</td><td><span class="pill o">Vilar</span></td><td><span class="ub"><i style="width:71%"></i></span>71 %</td><td class="r">12 TB</td><td class="r">–</td></tr>
+        <tr><td>Disk 3</td><td>ST12000VN0008</td><td><span class="pill w">Varm</span></td><td><span class="ub"><i style="width:94%;background:var(--accent)"></i></span>94 %</td><td class="r">12 TB</td><td class="r" style="color:var(--accent)">52 °C</td></tr>
+        <tr><td>Cache</td><td>Samsung 990 Pro</td><td><span class="pill">OK</span></td><td><span class="ub"><i style="width:46%"></i></span>46 %</td><td class="r">2 TB</td><td class="r">44 °C</td></tr>
+      </table>
+    </div>
+    <div style="display:grid;gap:10px;align-content:start">
+      <h3>Docker · 8 av 10 körs <span class="seg"><span class="on">Alla</span><span>Körs</span><span>Stoppade</span></span></h3>
+      <div>
+        <div class="ct"><i class="d e"></i><span>qbittorrent</span><span class="m e">stoppad oväntat · 12 min sedan 🔔</span></div>
+        <div class="ct"><i class="d"></i><span>home-assistant</span><span class="m">körs · 18 dagar 🔔</span></div>
+        <div class="ct"><i class="d"></i><span>plex</span><span class="m">körs · 6 dagar</span></div>
+        <div class="ct"><i class="d"></i><span>radarr</span><span class="m">körs · 6 dagar</span></div>
+        <div class="ct"><i class="d o"></i><span>handbrake</span><span class="m">stoppad · 3 dagar sedan</span></div>
+        <div style="color:var(--muted);font-size:11px;padding-top:4px">… och 5 till</div>
+      </div>
+      <h3>Virtuella maskiner · 1 av 2 körs <span class="seg"><span class="on">Alla</span><span>Körs</span><span>Stoppade</span></span></h3>
+      <div>
+        <div class="ct"><i class="d"></i><span>Windows 11</span><span class="m">körs 🔔</span></div>
+        <div class="ct"><i class="d o"></i><span>Ubuntu test</span><span class="m">avstängd</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="note">
+  <span><b>Statuschippen</b> LillaNasen och Tower öppnar rätt flik. Fliken du senast tittade på kommer ihåg.</span>
+  <span><b>Plex</b> får samma upplägg: Översikt med båda servrarna (strömmar, antal filmer/serier) och en flik per server med bibliotek, Uppdatera-knappar och strömmar.</span>
+  <span><b>Med bara en server</b> visas ingen Översikt-flik – då syns servern direkt.</span>
+</div>
+</div>
