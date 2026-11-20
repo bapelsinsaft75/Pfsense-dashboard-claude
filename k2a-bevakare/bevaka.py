@@ -115,6 +115,23 @@ LOSENORDSFLIK_TEXT = env("LOSENORDSFLIK_TEXT", r"^(?!.*(glömt|nytt|återställ)
 NASTA_TEXT = env("NASTA_TEXT", r"^\s*(nästa|fortsätt|gå vidare|logga in)\s*$")
 
 
+COOKIE_TEXT = env("COOKIE_TEXT", r"^\s*(avvisa alla|neka alla|endast nödvändiga|tillåt alla|acceptera alla)\s*$")
+
+
+def stang_cookies(sida) -> None:
+    """Stänger cookie-rutan (den täcker annars inloggningsformuläret). Väljer helst 'Avvisa alla'."""
+    for monster in (r"^\s*(avvisa alla|neka alla|endast nödvändiga)\s*$", COOKIE_TEXT):
+        knapp = klickbar(sida, monster)
+        if knapp is not None:
+            try:
+                logg(f"Stänger cookie-rutan ({knapp.inner_text().strip()!r})")
+                knapp.click(timeout=5_000)
+                sida.wait_for_timeout(1000)
+            except Exception as e:
+                logg(f"Kunde inte stänga cookie-rutan: {e}")
+            return
+
+
 def pa_inloggningssida(sida) -> bool:
     return bool(re.search(r"sign-?in|login|logga-?in", sida.url, re.I))
 
@@ -142,6 +159,7 @@ def logga_in(sida) -> bool:
     if not (ANVANDARE and LOSENORD):
         raise RuntimeError("Inloggning krävs men K2A_ANVANDARNAMN/K2A_LOSENORD saknas")
     logg(f"Loggar in på {sida.url} …")
+    stang_cookies(sida)
 
     # 1. Om bara BankID syns: klicka på fliken/länken för lösenordsinloggning.
     if losenordsfalt(sida) is None and synlig(sida.locator(SEL_ANVANDARE or TEXTFALT)) is None:
@@ -217,6 +235,7 @@ def ga_till(sida, url: str, extra: str = "") -> str:
     except PWTimeout:
         pass
     lage = vanta_pa(sida, extra=extra)
+    stang_cookies(sida)
     if lage == "inloggning" or (lage == "okant" and pa_inloggningssida(sida)):
         logga_in(sida)
         sida.goto(url, wait_until="domcontentloaded", timeout=60_000)
