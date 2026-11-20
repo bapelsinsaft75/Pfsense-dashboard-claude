@@ -132,6 +132,33 @@ def stang_cookies(sida) -> None:
             return
 
 
+FORBLI_TEXT = env("FORBLI_TEXT", r"förbli inloggad|kom ihåg mig")
+
+
+def forbli_inloggad(sida) -> None:
+    """Slår på 'Jag vill förbli inloggad' om den finns och är avslagen."""
+    rx = re.compile(FORBLI_TEXT, re.I)
+    for roll in ("switch", "checkbox"):
+        el = synlig(sida.get_by_role(roll, name=rx))
+        if el is None:
+            el = sida.get_by_role(roll, name=rx).first if sida.get_by_role(roll, name=rx).count() else None
+        if el is not None:
+            try:
+                if not el.is_checked():
+                    logg("Slår på 'Jag vill förbli inloggad'")
+                    el.check(force=True, timeout=5_000)
+                return
+            except Exception as e:
+                logg(f"Kunde inte slå på via {roll}: {e}")
+    text = synlig(sida.get_by_text(rx))
+    if text is not None:
+        logg("Klickar på 'Jag vill förbli inloggad'")
+        try:
+            text.click(timeout=5_000)
+        except Exception as e:
+            logg(f"Kunde inte klicka på 'förbli inloggad': {e}")
+
+
 def pa_inloggningssida(sida) -> bool:
     return bool(re.search(r"sign-?in|login|logga-?in", sida.url, re.I))
 
@@ -140,10 +167,12 @@ def skicka_formular(sida, falt) -> None:
     if SEL_SKICKA:
         knapp = synlig(sida.locator(SEL_SKICKA))
     else:
-        knapp = synlig(falt.locator("xpath=ancestor::form[1]//*[@type='submit']")) or klickbar(sida, NASTA_TEXT)
+        knapp = klickbar(sida, NASTA_TEXT) or synlig(falt.locator("xpath=ancestor::form[1]//*[@type='submit']"))
     if knapp is not None:
+        logg(f"Klickar på {knapp.inner_text().strip()!r}")
         knapp.click()
     else:
+        logg("Hittade ingen knapp, trycker Enter")
         falt.press("Enter")
     try:
         sida.wait_for_load_state("networkidle", timeout=30_000)
@@ -182,7 +211,10 @@ def logga_in(sida) -> bool:
         raise RuntimeError("Hittade inga inloggningsfält på inloggningssidan – se skärmdumpen")
 
     if anv is not None:
-        anv.fill(ANVANDARE)
+        anv.click()
+        anv.fill("")
+        anv.press_sequentially(ANVANDARE, delay=40)
+    forbli_inloggad(sida)
     if pw is None:
         # 2. Tvåstegsinloggning: användarnamn först, sedan lösenord.
         logg("Skickar användarnamn, väntar på lösenordsfältet")
@@ -193,7 +225,10 @@ def logga_in(sida) -> bool:
             skarmdump(sida, "inget-losenordsfalt")
             raise RuntimeError("Lösenordsfältet dök inte upp – se skärmdumpen")
         pw = losenordsfalt(sida)
-    pw.fill(LOSENORD)
+    pw.click()
+    pw.fill("")
+    pw.press_sequentially(LOSENORD, delay=40)
+    forbli_inloggad(sida)
     skicka_formular(sida, pw)
 
     if losenordsfalt(sida) is not None:
