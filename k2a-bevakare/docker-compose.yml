@@ -8,4 +8,4 @@ services:
     volumes:
       - ./skarmdumpar:/data/skarmdumpar
     ports:
-      - "8080:8080"
+      - "${WEBB_PORT:-8080}:${WEBB_PORT:-8080}"

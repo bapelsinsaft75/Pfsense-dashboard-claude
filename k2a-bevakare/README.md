@@ -10,7 +10,7 @@ cp .env.exempel .env      # fyll i AVTAL_URL, K2A_ANVANDARNAMN, K2A_LOSENORD
 docker compose up -d --build
 ```
 
-Öppna `http://<server>:8080`.
+Öppna `http://<server>:8080` (eller den port du satt i `WEBB_PORT`).
 
 1. Låt `TORRKORNING=1` stå kvar första gången. Kontrollera på statussidan att inloggningen
    fungerar och att skärmdumparna visar rätt sida.
