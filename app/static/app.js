@@ -42,7 +42,8 @@ const countryName = (cc) => { try { return (regionNames && regionNames.of(cc)) |
 const clock = (t) => new Date(t * 1000).toLocaleTimeString("sv-SE", { timeZone: "Europe/Stockholm" });
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const state = { period: (() => { try { const p = localStorage.getItem("period"); return ["live", "24h", "7d", "30d"].includes(p) ? p : "24h"; } catch (e) { return "24h"; } })(), data: null, mapFilter: null, devF: null, connF: "", sortKey: "bytes", sortDir: -1 };
+const state = { period: (() => { try { const p = localStorage.getItem("period"); return ["live", "24h", "7d", "30d"].includes(p) ? p : "24h"; } catch (e) { return "24h"; } })(), data: null, mapFilter: null, devF: null, connF: "", sortKey: "bytes", sortDir: -1,
+  clAll: (() => { try { return localStorage.getItem("clientsAll") === "1"; } catch (e) { return false; } })() };
 let coords = {};
 let byId = {};
 
@@ -660,28 +661,40 @@ function renderCountries() {
   }).join("") : `<div class="empty">Ingen trafik registrerad än.</div>`;
 }
 
-/* ── över tid: bandbredd och datamängd ── */
-const chartState = (() => { try { return { mode: "bw", win: "60m", scope: "internet", ...JSON.parse(localStorage.getItem("chartView") || "{}") }; } catch (e) { return { mode: "bw", win: "60m", scope: "internet" }; } })();
-let chartData = null;
-const STEP_LABEL = { 30: "30 s", 60: "1 min", 1800: "30 min" };
-async function loadChart() {
+/* ── över tid: bandbredd och datamängd, var för sig med egen period och källa ── */
+const charts = (() => {
+  const def = { bw: { win: "60m", scope: "internet" }, data: { win: "24h", scope: "internet" } };
   try {
-    const r = await fetch(`api/series?window=${chartState.win}&scope=${chartState.scope}`, { cache: "no-store" });
+    const saved = JSON.parse(localStorage.getItem("chartView2") || "null");
+    if (saved) return { bw: { ...def.bw, ...saved.bw }, data: { ...def.data, ...saved.data } };
+    const old = JSON.parse(localStorage.getItem("chartView") || "{}");
+    if (old.win) def[old.mode === "data" ? "data" : "bw"] = { win: old.win, scope: old.scope || "internet" };
+  } catch (e) { /* ingen lagring */ }
+  return def;
+})();
+const chartData = { bw: null, data: null };
+const STEP_LABEL = { 30: "30 s", 60: "1 min", 1800: "30 min" };
+function loadChart() { loadChartOne("bw"); loadChartOne("data"); }
+async function loadChartOne(mode) {
+  const C = charts[mode];
+  try {
+    const r = await fetch(`api/series?window=${C.win}&scope=${C.scope}`, { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
-    chartData = await r.json();
-    renderChart();
-  } catch (e) { $("chart").innerHTML = `<div class="empty">Kunde inte hämta grafen (${esc(e.message)}).</div>`; }
+    chartData[mode] = await r.json();
+    renderChart(mode);
+  } catch (e) { $(`${mode}-chart`).innerHTML = `<div class="empty">Kunde inte hämta grafen (${esc(e.message)}).</div>`; }
 }
-function renderChart() {
-  document.querySelectorAll("[data-cmode]").forEach((b) => b.setAttribute("aria-selected", b.dataset.cmode === chartState.mode));
-  document.querySelectorAll("[data-cwin]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cwin === chartState.win));
-  const cd = chartData;
-  const el = $("chart");
-  if (!cd) return;
-  if (cd.unifi === false && chartState.scope !== "internet") { chartState.scope = "internet"; loadChart(); return; }
-  renderScopeSeg("chartscope", chartState.scope, cd.unifi);
+function renderChart(mode) {
+  if (!mode) { renderChart("bw"); renderChart("data"); return; }
+  const C = charts[mode];
+  document.querySelectorAll(`#${mode}-win [data-cwin]`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.cwin === C.win));
+  const cd = chartData[mode];
+  const el = $(`${mode}-chart`);
+  if (!cd || cd.window !== C.win || cd.scope !== C.scope) return;
+  if (cd.unifi === false && C.scope !== "internet") { C.scope = "internet"; loadChartOne(mode); return; }
+  renderScopeSeg(`${mode}-scope`, C.scope, cd.unifi);
   const all = (cd.scope || "internet") === "all";
-  const bw = chartState.mode === "bw";
+  const bw = mode === "bw";
   // det pågående tidssteget är inte klart: i kurvan skulle det se ut som ett plötsligt fall
   const nowS = Date.now() / 1000;
   // första och sista tidssteget ligger bara delvis inom perioden och skulle se ut som fall i kurvan
@@ -698,14 +711,14 @@ function renderChart() {
   const sumAll = sumD + sumU, sumInet = cd.total_internet || 0, sumLan = Math.max(0, sumAll - sumInet);
   const pkAll = pts.reduce((a, p) => (p.down_bps + p.up_bps > a.down_bps + a.up_bps ? p : a), pts[0] || { down_bps: 0, up_bps: 0, t: 0 });
   if (all) {
-    $("chart-stats").innerHTML = bw
+    $(`${mode}-stats`).innerHTML = bw
       ? `<span><b class="num">${fmtMbit(sumAll * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt totalt</span><span><b class="num">${fmtMbit(sumInet * 8 / cd.seconds)}<small>Mbit/s</small></b>internet · ${fmt(sumAll ? sumInet / sumAll * 100 : 0, 0)} %</span><span><b class="num">${fmtMbit(sumLan * 8 / cd.seconds)}<small>Mbit/s</small></b>internt · ${fmt(sumAll ? sumLan / sumAll * 100 : 0, 0)} %</span><span><b class="num">${fmtMbit(pkAll.down_bps + pkAll.up_bps)}<small>Mbit/s</small></b>topp${pkAll.t ? ` kl ${hm(pkAll.t)}` : ""}</span>`
       : `<span><b class="num">${bytesParts(sumAll)}</b>totalt</span><span><b class="num">${bytesParts(sumInet)}</b>internet · ${fmt(sumAll ? sumInet / sumAll * 100 : 0, 0)} %</span><span><b class="num">${bytesParts(sumLan)}</b>internt · ${fmt(sumAll ? sumLan / sumAll * 100 : 0, 0)} %</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per stapel</span>`;
-  } else $("chart-stats").innerHTML = bw
+  } else $(`${mode}-stats`).innerHTML = bw
     ? `<span><b class="num">${fmtMbit(sumD * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt ned</span><span><b class="num">${fmtMbit(sumU * 8 / cd.seconds)}<small>Mbit/s</small></b>snitt upp</span><span><b class="num">${fmtMbit(pk.down_bps)}<small>Mbit/s</small></b>topp ned${pk.down_bps ? ` kl ${hm(pk.t)}` : ""}</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per punkt</span>`
     : `<span><b class="num">${bytesParts(sumD + sumU)}</b>totalt</span><span><b class="num">${bytesParts(sumD)}</b>ned</span><span><b class="num">${bytesParts(sumU)}</b>upp</span><span><b>${STEP_LABEL[cd.step] || cd.step + " s"}</b>per stapel</span>`;
   const per = bw ? "Mbit/s" : (cd.step >= 1800 ? "per halvtimme" : cd.step >= 60 ? "per minut" : "per 30 sekunder");
-  $("chart-legend").innerHTML = all
+  $(`${mode}-legend`).innerHTML = all
     ? `<span><i class="blk" style="background:var(--accent)"></i>Mot internet (pfSense)</span><span><i class="blk" style="background:var(--lan)"></i>Internt (UniFi minus internet)</span><span>· ${per}, ned och upp tillsammans</span>`
     : `<span><i class="${bw ? "" : "blk"}" style="background:var(--accent)"></i>Nedladdning</span><span><i class="${bw ? "" : "blk"}" style="background:var(--up)"></i>Uppladdning</span><span>· ${per}, ${cd.scope === "internal" ? "trafik inne i nätverket" : "klienter mot internet"}</span>`;
   el.innerHTML = "";
@@ -713,7 +726,7 @@ function renderChart() {
     el.innerHTML = `<div class="empty">${cd.seconds > 3600 ? "Ingen data än." : `Ingen trafik registrerad de senaste ${WIN_LABEL[cd.window]}. Korta perioder fylls på medan dashboarden körs.`}</div>`;
     return;
   }
-  const W = 760, H = 230, m = { l: 44, r: 10, t: 24, b: 24 };
+  const W = 760, H = 200, m = { l: 44, r: 10, t: 24, b: 24 };
   const s = d3.select(el).append("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("role", "img")
     .attr("aria-label", bw ? "Bandbredd över tid" : "Datamängd över tid").style("width", "100%").style("height", "auto").style("display", "block");
   const t0 = pts[0].t, t1 = pts[pts.length - 1].t + (bw ? 0 : cd.step);
@@ -792,19 +805,17 @@ function renderChart() {
     })
     .on("mouseleave", () => { guide.style("display", "none"); tip.style("display", "none"); });
 }
-document.querySelector("[data-cmode]").closest(".toptabs").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-cmode]"); if (!b) return;
-  chartState.mode = b.dataset.cmode; saveChart(); renderChart();
-});
-$("chartscope").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-scope]"); if (!b || b.disabled) return;
-  chartState.scope = b.dataset.scope; saveChart(); loadChart();
-});
-$("chartwin").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-cwin]"); if (!b) return;
-  chartState.win = b.dataset.cwin; saveChart(); renderChart(); loadChart();
-});
-function saveChart() { try { localStorage.setItem("chartView", JSON.stringify(chartState)); } catch (e) { /* ingen lagring */ } }
+for (const mode of ["bw", "data"]) {
+  $(`${mode}-scope`).addEventListener("click", (e) => {
+    const b = e.target.closest("[data-scope]"); if (!b || b.disabled) return;
+    charts[mode].scope = b.dataset.scope; saveChart(); renderScopeSeg(`${mode}-scope`, charts[mode].scope, chartData[mode] ? chartData[mode].unifi : true); loadChartOne(mode);
+  });
+  $(`${mode}-win`).addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cwin]"); if (!b) return;
+    charts[mode].win = b.dataset.cwin; saveChart(); renderChart(mode); loadChartOne(mode);
+  });
+}
+function saveChart() { try { localStorage.setItem("chartView2", JSON.stringify(charts)); } catch (e) { /* ingen lagring */ } }
 
 /* ── trafikval: internet, internt eller allt ── */
 const SCOPES = {
@@ -972,9 +983,23 @@ function renderTable(d) {
   const rows = d.clients.filter((c) => connOk(c) && statusOk(c) && (!dev || (c.conn && c.conn.dev === dev))
     && (!q || `${c.name} ${c.ip || ""} ${c.mac || ""}`.toLowerCase().includes(q)))
     .sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir; });
-  document.querySelector("#table tbody").innerHTML = rows.length ? rows.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td>${phEnabled() ? phCell(c.id) : ""}</tr>`).join("")
+  const LIMIT = 10;
+  const showAll = state.clAll || rows.length <= LIMIT + 2;
+  const shown = showAll ? rows : rows.slice(0, LIMIT);
+  document.querySelector("#table tbody").innerHTML = rows.length ? shown.map((c) => `<tr class="pickable${state.mapFilter === c.id ? " sel" : ""}" data-id="${esc(c.id)}"><td>${nameCell(c)}</td><td class="ip">${esc(c.ip || "–")}</td><td>${connHTML(c)}</td><td>${esc((c.mac || "–").toUpperCase())}</td><td><span class="pill${c.online ? "" : " idle"}">${c.online ? "Online" : "Inaktiv"}</span></td><td class="r-right num">${c.online && (c.down_bps + c.up_bps) > 0 ? fmtRate(c.down_bps + c.up_bps) + " Mbit/s" : "–"}</td><td class="r-right num">${fmtBytes(c.bytes)}</td>${phEnabled() ? phCell(c.id) : ""}</tr>`).join("")
     : `<tr><td colspan="${phEnabled() ? 8 : 7}" class="muted">Inga klienter matchar filtret.</td></tr>`;
-  $("filter-count").textContent = rows.length === d.clients.length ? `${rows.length} klienter` : `${rows.length} av ${d.clients.length} klienter`;
+  const of = rows.length === d.clients.length ? "" : ` (av ${d.clients.length})`;
+  $("filter-count").textContent = shown.length < rows.length ? `visar ${shown.length} av ${rows.length}${of}` : `${rows.length} klienter${of}`;
+  const canToggle = rows.length > LIMIT + 2;
+  $("cl-toggle").hidden = !canToggle;
+  $("cl-more").hidden = !canToggle;
+  $("cl-box").classList.toggle("clfade", canToggle && !state.clAll);
+  if (canToggle) {
+    $("cl-toggle").textContent = state.clAll ? `Visa ${LIMIT} ▴` : `Visa alla ${rows.length} ▾`;
+    $("cl-more").textContent = state.clAll ? `▴ Visa bara ${LIMIT}` : `▾ Visa alla ${rows.length} klienter`;
+    $("cl-toggle").setAttribute("aria-expanded", !!state.clAll);
+    $("cl-more").setAttribute("aria-expanded", !!state.clAll);
+  }
   $("unknown-hint").hidden = state.connF !== "unknown";
   if (editingInput) { const i = $("rename-input"); if (i) { i.focus(); if (caret != null) i.setSelectionRange(caret, caret); } }
   document.querySelectorAll("#table th button").forEach((b) => {
@@ -982,6 +1007,15 @@ function renderTable(d) {
     b.textContent = b.dataset.sort === state.sortKey ? `${base} ${state.sortDir < 0 ? "↓" : "↑"}` : base;
   });
 }
+
+function toggleClients(e) {
+  state.clAll = !state.clAll;
+  try { localStorage.setItem("clientsAll", state.clAll ? "1" : "0"); } catch (err) { /* ingen lagring */ }
+  renderTable(state.data);
+  if (!state.clAll && e && e.currentTarget.id === "cl-more") $("clients-card").scrollIntoView({ block: "nearest" });
+}
+$("cl-toggle").addEventListener("click", toggleClients);
+$("cl-more").addEventListener("click", toggleClients);
 
 const PENCIL = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M14 6l4 4"/></svg>';
 function nameCell(c) {

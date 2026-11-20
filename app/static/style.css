@@ -648,3 +648,19 @@ body.ldrawer-open{overflow:hidden}
 .phdlg .hint{margin:0;color:var(--muted);font-size:11.5px}
 .phdlg .problem{margin:0}
 .dlgbtns{display:flex;gap:8px;justify-content:flex-end}
+
+/* Över tid: två grafer under varandra */
+.chartcard{align-content:start}
+.cpanel{display:grid;gap:8px;min-width:0}
+.cpanel+.cpanel{border-top:1px solid var(--line);padding-top:14px}
+.cphead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.cphead h3{margin:0;font-family:var(--cond);font-weight:600;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg)}
+.cpctrls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* Klientlistan: 10 rader eller alla */
+#clients-card h2 .ttl{display:inline-flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#cl-box.clfade{position:relative}
+#cl-box.clfade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(transparent,var(--card));pointer-events:none}
+.clmore{all:unset;box-sizing:border-box;cursor:pointer;display:flex;justify-content:center;width:100%;padding:9px;border:1px dashed #2a3d52;color:var(--accent);font-family:var(--cond);font-size:14px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.clmore:hover{background:var(--sel)}
+.clmore:focus-visible{outline:2px solid var(--accent)}
