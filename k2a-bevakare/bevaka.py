@@ -36,6 +36,7 @@ TORR = env("TORRKORNING", "0").lower() in ("1", "true", "ja", "yes")
 NTFY_URL = env("NTFY_URL")
 AVBRYT_TEXT = env("AVBRYT_TEXT", r"avbryt\s+uppsägning")
 BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(bekräfta|ja|ok|avbryt uppsägning)\b")
+UPPSAGD_TEXT = env("UPPSAGD_TEXT", r"pågående\s+uppsägning")
 LOGGA_IN_TEXT = env("LOGGA_IN_TEXT", r"^\s*logga\s*in\s*$")
 # Valfria CSS-selektorer om automatiken inte hittar inloggningsfälten
 SEL_ANVANDARE = env("SEL_ANVANDARE")
@@ -82,6 +83,12 @@ def klickbar(omrade, monster: str):
     for i in range(kandidater.count()):
         el = kandidater.nth(i)
         if el.is_visible():
+            return el
+    # Reserv: element som bara ser ut som knappar (t.ex. <div> med klickhändelse).
+    text = omrade.get_by_text(rx)
+    for i in range(text.count()):
+        el = text.nth(i)
+        if el.is_visible() and len(el.inner_text().strip()) < 40:
             return el
     return None
 
@@ -147,6 +154,9 @@ def kontrollera(sida) -> str:
 
     knapp = klickbar(sida, AVBRYT_TEXT)
     if knapp is None:
+        if sida.get_by_text(re.compile(UPPSAGD_TEXT, re.I)).count():
+            skarmdump(sida, "text-men-ingen-knapp")
+            return "text-men-ingen-knapp"
         return "ingen-knapp"
 
     if TORR:
@@ -188,6 +198,7 @@ STATUSTEXT = {
     "klar": ("Uppsägningen avbröts", "gron"),
     "oklart": ("Klickade, men knappen finns kvar", "rod"),
     "fel": ("Fel vid senaste kontroll", "rod"),
+    "text-men-ingen-knapp": ("Uppsägning pågår men knappen hittades inte", "rod"),
 }
 
 SIDA = """<!doctype html><html lang="sv"><head><meta charset="utf-8">
@@ -339,6 +350,8 @@ def main() -> int:
                     notis("TORRKÖRNING: knappen 'Avbryt uppsägning' finns – klickade inte.")
                 elif status == "klar":
                     notis("Uppsägningen är avbruten – knappen är borta.")
+                elif status == "text-men-ingen-knapp":
+                    notis("Sidan säger att en uppsägning pågår men knappen hittades inte. Kolla skärmdumparna!")
                 elif status == "oklart":
                     notis("Tryckte på 'Avbryt uppsägning' men knappen finns kvar. Kolla skärmdumparna!")
             senaste = status
