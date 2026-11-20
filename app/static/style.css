@@ -756,3 +756,4 @@ dialog#settings{max-width:min(900px,calc(100vw - 32px))}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 .psec+.psec{margin-top:6px}
+#plex-pane{display:grid;gap:14px}

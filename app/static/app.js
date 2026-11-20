@@ -399,18 +399,6 @@ function plexTotals(ss) {
     remote: ss.filter((x) => !x.local).length, mbit: ss.reduce((a, x) => a + (x.bandwidth_kbps || 0), 0) / 1000 };
 }
 const plexLevel = (s) => (s.ok ? "ok" : s.error ? "err" : "off");
-function plexOverview(s, ss) {
-  const t = plexTotals(ss), libs = s.libraries || [];
-  const sum = (type, k = "count") => libs.filter((l) => l.type === type).reduce((a, l) => a + (l[k] || 0), 0);
-  const has = (type) => libs.some((l) => l.type === type);
-  const scanning = libs.filter((l) => l.refreshing);
-  return `<button type="button" class="ovbox ${plexLevel(s)}" data-pxtab="${s.index}" title="Visa ${esc(s.name)}">
-    <span class="ovh"><b><i class="cdot ${plexLevel(s)}"></i>${esc(s.name)}</b><span>${s.version ? "v" + esc(String(s.version).split("-")[0]) : ""}</span></span>
-    ${!s.ok ? `<span class="ovprob err">${esc(s.error || "Väntar på svar")}</span>` : scanning.length ? `<span class="ovprob warn">⟳ Skannar ${esc(scanning.map((l) => l.title).join(", "))} …</span>` : ""}
-    <span class="ovcounts"><span><b>${t.streams}</b>${t.streams === 1 ? "ström" : "strömmar"} nu</span><span><b>${t.transcode}</b>omkodning</span><span><b>${fmt(t.mbit, 1)}</b>Mbit/s</span></span>
-    ${libs.length ? `<span class="ovcounts">${has("movie") ? `<span><b>${fmt(sum("movie"), 0)}</b>filmer</span>` : ""}${has("show") ? `<span><b>${fmt(sum("show"), 0)}</b>serier · ${fmt(sum("show", "count2"), 0)} avsnitt</span>` : ""}${has("artist") ? `<span><b>${fmt(sum("artist"), 0)}</b>artister</span>` : ""}</span>` : ""}
-    <span class="ovlink">Visa ${esc(s.name)} →</span></button>`;
-}
 function plexServerPane(s, ss) {
   const t = plexTotals(ss), libs = s.libraries || [];
   const libHtml = libs.length ? libs.map((l) => `<div class="plib${l.refreshing ? " scan" : ""}">
@@ -426,6 +414,15 @@ function plexServerPane(s, ss) {
     <div class="psec"><h3>Strömmar just nu <small>${t.streams} ${t.streams === 1 ? "ström" : "strömmar"} · ${t.transcode} omkodning · ${fmt(t.mbit, 1)} Mbit/s${t.remote ? ` · ${t.remote} utanför hemmet` : ""}</small></h3>
       <div class="streams">${ss.length ? ss.map(streamHTML).join("") : '<div class="empty">Inga strömmar på den här servern just nu.</div>'}</div></div>`;
 }
+// Översikt: som tidigare – totalt för alla servrar och alla strömmar
+function plexAll(p) {
+  const t = plexTotals(p.sessions);
+  return `<div class="plexsum"><div><b class="num">${t.streams}</b><span>${t.streams === 1 ? "ström" : "strömmar"} totalt</span></div>
+    <div><b class="num">${t.direct}</b><span>direktuppspelning</span></div><div><b class="num">${t.transcode}</b><span>omkodning</span></div>
+    <div><b class="num">${fmt(t.mbit, 1)}</b><span>Mbit/s totalt</span></div><div><b class="num">${t.remote}</b><span>utanför hemmet</span></div></div>
+    ${p.servers.filter((x) => !x.ok && x.error).map((x) => `<div class="problem"><b>${esc(x.name)}</b>${esc(x.error)}</div>`).join("")}
+    <div class="streams">${p.sessions.length ? p.sessions.map(streamHTML).join("") : '<div class="empty">Inga strömmar från Plex just nu.</div>'}</div>`;
+}
 function renderPlex(d) {
   const p = d.plex || { servers: [], sessions: [] };
   const card = $("plex-card");
@@ -438,7 +435,7 @@ function renderPlex(d) {
   const tabs = [...(multi ? [{ id: "overview", label: "Översikt" }] : []), ...p.servers.map((s) => ({ id: String(s.index), label: s.name, dot: plexLevel(s), badge: by(s).length }))];
   $("plex-tabs").innerHTML = cardTabs("Plex", "data-pxtab", tabs, cur);
   const s = p.servers.find((x) => String(x.index) === cur);
-  $("plex-pane").innerHTML = cur === "overview" ? `<div class="ovgrid">${p.servers.map((x) => plexOverview(x, by(x))).join("")}</div>` : plexServerPane(s, by(s));
+  $("plex-pane").innerHTML = cur === "overview" ? plexAll(p) : plexServerPane(s, by(s));
 }
 window.plexSelect = (i) => { plexTab = String(i); tabSave("plexTab", plexTab); if (state.data) renderPlex(state.data); };
 $("plex-card").addEventListener("click", async (e) => {
