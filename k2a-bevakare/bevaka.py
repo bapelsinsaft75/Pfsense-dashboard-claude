@@ -40,6 +40,9 @@ BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(ja|bekräfta|ok)\s*$")
 BEKRAFTA_FRAGA = env("BEKRAFTA_FRAGA", r"vill du ta bort.*uppsägning")
 UPPSAGD_TEXT = env("UPPSAGD_TEXT", r"pågående\s+uppsägning")
 START_URL = env("START_URL", "https://minasidor.k2a.se/mypages")
+FEL_TEXT = env("FEL_TEXT", r"något gick fel|ett( oväntat)? fel (har )?uppstått|ett fel uppstod|tekniskt fel|internal server error|server error|tjänsten är (inte|tillfälligt) tillgänglig")
+FORSOK_VID_FEL = int(env("FORSOK_VID_FEL", "3"))
+PAUS_VID_FEL = int(env("PAUS_VID_FEL", "10"))
 LISTA_URL = env("LISTA_URL", "https://minasidor.k2a.se/mypages/contract/")
 VISA_TEXT = env("VISA_TEXT", r"^\s*visa\s*$")
 AVTAL_MENY_TEXT = env("AVTAL_MENY_TEXT", r"^\s*mina\s+avtal\s*$")
@@ -249,6 +252,7 @@ def logga_in(sida) -> bool:
     forbli_inloggad(sida)
     skicka_formular(sida, pw, LOGGA_IN_TEXT)
 
+    kolla_k2a_fel(sida, "inloggning")
     if losenordsfalt(sida) is not None:
         skarmdump(sida, "inloggning-misslyckades")
         raise RuntimeError("Inloggningen verkar ha misslyckats (lösenordsfältet syns fortfarande)")
@@ -265,6 +269,7 @@ def vanta_pa(sida, timeout_ms: int = 30_000, extra: str = "") -> str:
     pw = sida.locator(SEL_LOSENORD or "input[type=password]")
     avtal = sida.get_by_text(AVTAL_MONSTER)
     ovrigt = sida.get_by_text(re.compile(extra, re.I)) if extra else None
+    fel = sida.get_by_text(re.compile(FEL_TEXT, re.I))
     slut = time.monotonic() + timeout_ms / 1000
     while time.monotonic() < slut:
         if synlig(pw) is not None:
@@ -274,6 +279,8 @@ def vanta_pa(sida, timeout_ms: int = 30_000, extra: str = "") -> str:
         if synlig(avtal) is not None:
             sida.wait_for_timeout(1500)  # låt knapparna ritas klart
             return "avtal"
+        if synlig(fel) is not None:
+            return "fel"
         if ovrigt is not None and synlig(ovrigt) is not None:
             sida.wait_for_timeout(1000)
             return "extra"
@@ -322,6 +329,7 @@ def prova_avtalslistan(sida) -> bool:
     logg(f"Öppnar avtalslistan {LISTA_URL} …")
     if ga_till(sida, LISTA_URL, extra=VISA_TEXT) == "avtal":
         return True
+    kolla_k2a_fel(sida, "avtalslistan")
     rx = re.compile(VISA_TEXT, re.I)
     antal = sida.get_by_role("button", name=rx).or_(sida.get_by_role("link", name=rx)).count()
     if antal == 0:
@@ -347,8 +355,9 @@ def prova_avtalslistan(sida) -> bool:
     return False
 
 
-def oppna_avtal(sida) -> None:
-    for url in dict.fromkeys(u for u in (SENAST_FUNNEN["url"], URL) if u):
+def oppna_avtal(sida, omstart: bool = False) -> None:
+    forsta = [] if omstart else [SENAST_FUNNEN["url"], URL]
+    for url in dict.fromkeys(u for u in forsta if u):
         if ga_till(sida, url) == "avtal":
             return
         logg(f"Avtalet syntes inte på {url} (hamnade på {sida.url})")
@@ -387,8 +396,21 @@ def spara_senaste(sida) -> None:
         logg(f"Kunde inte spara senaste vyn: {e}")
 
 
-def kontrollera(sida) -> str:
-    oppna_avtal(sida)
+class K2AFel(RuntimeError):
+    pass
+
+
+def kolla_k2a_fel(sida, steg: str) -> None:
+    """Avbryter med K2AFel om sidan visar ett felmeddelande."""
+    el = synlig(sida.get_by_text(re.compile(FEL_TEXT, re.I)))
+    if el is not None:
+        text = " ".join(el.inner_text().split())[:200]
+        raise K2AFel(f"K2A visade ett fel ({steg}): {text}")
+
+
+def kontrollera(sida, omstart: bool = False) -> str:
+    oppna_avtal(sida, omstart)
+    kolla_k2a_fel(sida, "avtalssidan")
     spara_senaste(sida)
     logg(f"På sidan: {sida.url}  titel: {sida.title()!r}")
 
@@ -429,8 +451,10 @@ def kontrollera(sida) -> str:
         logg("Hittade ingen Ja-knapp")
     sida.wait_for_timeout(2000)
     skarmdump(sida, "efter-bekraftelse")
+    kolla_k2a_fel(sida, "efter bekräftelse")
 
-    oppna_avtal(sida)
+    oppna_avtal(sida, omstart=True)
+    kolla_k2a_fel(sida, "kontroll efter bekräftelse")
     if klickbar(sida, AVBRYT_TEXT) is None:
         return "klar"
     return "oklart"
@@ -566,6 +590,22 @@ def starta_webb() -> None:
     logg(f"Webbgränssnitt på port {WEBB_PORT}")
 
 
+def kontrollera_med_omstart(sida) -> str:
+    """Kör kontrollen; vid fel börjar den om från avtalslistan upp till FORSOK_VID_FEL gånger."""
+    for forsok in range(1, FORSOK_VID_FEL + 1):
+        try:
+            return kontrollera(sida, omstart=forsok > 1)
+        except Exception as e:
+            logg(f"Fel (försök {forsok}/{FORSOK_VID_FEL}): {e}")
+            skarmdump(sida, f"fel-forsok{forsok}")
+            SENAST_FUNNEN["url"] = None
+            if forsok == FORSOK_VID_FEL:
+                raise
+            logg(f"Börjar om från {LISTA_URL} om {PAUS_VID_FEL} s …")
+            time.sleep(PAUS_VID_FEL)
+    return "fel"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--en-gang", action="store_true", help="kontrollera en gång och avsluta")
@@ -589,7 +629,7 @@ def main() -> int:
         fel_i_rad = 0
         while True:
             try:
-                status = kontrollera(sida)
+                status = kontrollera_med_omstart(sida)
                 fel_i_rad = 0
             except Exception as e:
                 status = "fel"
