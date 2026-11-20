@@ -258,10 +258,21 @@ function buildRutor() {
   ib.className = "linbox";
   el.wrap.appendChild(ib);
   inbox(ib);
+  const bar = document.createElement("div");
+  bar.className = "ltbar";
+  bar.id = "ltbar";
+  el.wrap.appendChild(bar);
   const grid = document.createElement("div");
   grid.className = "ltiles";
   grid.id = "ltiles";
   el.wrap.appendChild(grid);
+  bar.addEventListener("click", tileBarClick);
+  grid.addEventListener("pointerdown", tileDown);
+  grid.addEventListener("keydown", (e) => {
+    const mv = e.target.closest("[data-mv]");
+    if (mv && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); moveTile(mv.closest(".ltile").dataset.key, +mv.dataset.mv); }
+  });
+
   put(el.wrap, ["foot"]);
   const dr = document.createElement("div");
   dr.className = "ldrawer-wrap";
@@ -274,6 +285,9 @@ function buildRutor() {
   $("ldrawer-close").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", escClose);
   grid.addEventListener("click", (e) => {
+    const mv = e.target.closest("[data-mv]");
+    if (mv) { e.preventDefault(); moveTile(mv.closest(".ltile").dataset.key, +mv.dataset.mv); return; }
+    if (tileEdit) return;
     const t = e.target.closest("[data-tile]"); if (!t) return;
     openDrawer(t.dataset.tile, t.dataset.ur != null ? +t.dataset.ur : null);
   });
@@ -300,14 +314,76 @@ function closeDrawer() {
   if (built.drawer) built.drawer.hidden = true;
   document.body.classList.remove("ldrawer-open");
 }
+/* ── egen ordning på rutorna: dra och släpp, eller pilar ── */
+let tileEdit = false, tileDrag = null, tileKeys = [];
+const tileKey = (t) => t.key || (t.ur != null ? `ur:${t.title}` : t.tile);
+function saveOrder(keys) { store.set("tileOrder", keys); }
+function moveTile(key, dir) {
+  const keys = [...tileKeys], i = keys.indexOf(key), j = i + dir;
+  if (i < 0 || j < 0 || j >= keys.length) return;
+  [keys[i], keys[j]] = [keys[j], keys[i]];
+  saveOrder(keys);
+  if (lastSum) renderTiles(lastSum);
+  const b = document.querySelector(`.ltile[data-key="${CSS.escape(key)}"] [data-mv="${dir}"]`); if (b) b.focus();
+}
+function tileBarClick(e) {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.act === "edit") tileEdit = !tileEdit;
+  if (b.dataset.act === "reset") { store.set("tileOrder", null); }
+  if (lastSum) renderTiles(lastSum);
+}
+// dra med mus eller finger (pekarhändelser – fungerar även på mobil)
+let tileStart = null;
+function tileTarget(x, y) {
+  const el2 = document.elementFromPoint(x, y);
+  const t = el2 && el2.closest(".ltile");
+  if (!t || t.dataset.key === tileDrag) return null;
+  const r = t.getBoundingClientRect();
+  return { t, right: x > r.left + r.width / 2 };
+}
+function tileDown(e) {
+  if (!tileEdit || e.button > 0 || e.target.closest("[data-mv]")) return;
+  const t = e.target.closest(".ltile"); if (!t) return;
+  tileStart = { key: t.dataset.key, x: e.clientX, y: e.clientY, el: t };
+  window.addEventListener("pointermove", tileMove);
+  window.addEventListener("pointerup", tileUp, { once: true });
+  window.addEventListener("pointercancel", tileUp, { once: true });
+}
+function tileMove(e) {
+  if (!tileStart) return;
+  if (!tileDrag) {
+    if (Math.hypot(e.clientX - tileStart.x, e.clientY - tileStart.y) < 6) return;
+    tileDrag = tileStart.key;
+    tileStart.el.classList.add("dragging");
+  }
+  e.preventDefault();
+  tileStart.el.style.transform = `translate(${e.clientX - tileStart.x}px,${e.clientY - tileStart.y}px)`;
+  document.querySelectorAll(".dropl,.dropr").forEach((x) => x.classList.remove("dropl", "dropr"));
+  const hit = tileTarget(e.clientX, e.clientY);
+  if (hit) hit.t.classList.add(hit.right ? "dropr" : "dropl");
+}
+function tileUp(e) {
+  window.removeEventListener("pointermove", tileMove);
+  const st = tileStart; tileStart = null;
+  if (!st || !tileDrag) { tileDrag = null; return; }
+  st.el.style.transform = "";
+  const hit = e.type === "pointerup" ? tileTarget(e.clientX, e.clientY) : null;
+  const dragged = tileDrag; tileDrag = null;
+  if (hit) {
+    const keys = tileKeys.filter((k) => k !== dragged);
+    let i = keys.indexOf(hit.t.dataset.key);
+    if (i >= 0) { if (hit.right) i += 1; keys.splice(i, 0, dragged); saveOrder(keys); }
+  }
+  if (lastSum) renderTiles(lastSum);
+}
 function renderTiles(S) {
   const grid = $("ltiles");
-  if (!grid) return;
+  if (!grid || tileDrag) return;
   const k = S.k;
   const tiles = [
     { tile: "natverk", title: "Internet", icon: "internet", level: "ok", big: `${fmt(S.mbit, 0)}<small>Mbit/s</small>`, sub: `${fmt(k.now_down_bps / 1e6, 0)} ned · ${fmt(k.now_up_bps / 1e6, 0)} upp · ${S.countries} länder` },
   ];
-  if (S.vpn.enabled) tiles.push({ tile: "sakerhet", title: "VPN", icon: "vpn", level: S.vpn.ok ? "ok" : "err", big: S.vpn.ok ? "Ansluten" : "Nere", sub: (S.vpn.detail || "").split(";")[0] });
+  if (S.vpn.enabled) tiles.push({ tile: "sakerhet", key: "vpn", title: "VPN", icon: "vpn", level: S.vpn.ok ? "ok" : "err", big: S.vpn.ok ? "Ansluten" : "Nere", sub: (S.vpn.detail || "").split(";")[0] });
   tiles.push(
     { tile: "klienter", title: "Klienter", icon: "clients", level: "ok", big: `${k.clients_online}<small>online</small>`, sub: S.sections.klienter.text.replace(/^\d+ online · /, "") },
     { tile: "sakerhet", title: "Säkerhet", icon: "security", level: S.sections.sakerhet.level, big: `${fmt(S.t.suricata || 0, 0)}<small>larm</small>`, sub: `${fmt(S.t.pfblockerng || 0, 0)} blockeringar senaste dygnet` },
@@ -322,9 +398,23 @@ function renderTiles(S) {
   if (S.ph) tiles.push({ tile: "pihole", title: "Pi-hole", icon: "pihole", level: S.sections.pihole.level, big: S.sections.pihole.level === "ok" ? `${fmt(S.ph.percent_blocked || 0, 0)}<small>% blockerat</small>` : S.sections.pihole.level === "warn" ? "Pausad" : "Nere", sub: S.sections.pihole.text });
   if (S.sections.unifi.level !== "off") tiles.push({ tile: "unifi", title: "UniFi", icon: "unifi", level: S.sections.unifi.level, big: `${S.sections.unifi.badge || 0}<small>enheter</small>`, sub: S.sections.unifi.text });
   const rank = { err: 0, warn: 1, ok: 2, off: 3 };
-  tiles.sort((a, b) => rank[a.level] - rank[b.level]);
-  grid.innerHTML = tiles.map((t) => `<button type="button" class="ltile ${t.level}${drawer === t.tile && (t.ur ?? null) === unraidFilter ? " open" : ""}" data-tile="${t.tile}" ${t.ur != null ? `data-ur="${t.ur}"` : ""}>
-      <span class="lth">${icon(t.icon)}<b>${esc(t.title)}</b><span class="ldot ${t.level}"></span></span>
+  const order = store.get("tileOrder", null);
+  if (Array.isArray(order) && order.length) {
+    // egen ordning; rutor som inte fanns när ordningen sparades hamnar sist
+    const pos = (t) => { const i = order.indexOf(tileKey(t)); return i < 0 ? 1000 + rank[t.level] : i; };
+    tiles.sort((a, b) => pos(a) - pos(b));
+  } else {
+    tiles.sort((a, b) => rank[a.level] - rank[b.level]);
+  }
+  tileKeys = tiles.map(tileKey);
+  const custom = Array.isArray(order) && order.length;
+  const bar = $("ltbar");
+  if (bar) bar.innerHTML = tileEdit
+    ? `<span class="lthint">Dra rutorna dit du vill ha dem, eller använd pilarna. Ordningen sparas i den här webbläsaren.</span><button type="button" class="btn" data-act="reset" ${custom ? "" : "disabled"}>Återställ (problem först)</button><button type="button" class="btn primary" data-act="edit">Klar</button>`
+    : `<span class="lthint">${custom ? "Egen ordning" : "Problem visas först"}</span><button type="button" class="btn" data-act="edit">↕ Ändra ordning</button>`;
+  grid.classList.toggle("editing", tileEdit);
+  grid.innerHTML = tiles.map((t, i) => `<button type="button" class="ltile ${t.level}${drawer === t.tile && (t.ur ?? null) === unraidFilter ? " open" : ""}" data-tile="${t.tile}" data-key="${esc(tileKey(t))}" ${t.ur != null ? `data-ur="${t.ur}"` : ""} ${tileEdit ? 'aria-roledescription="flyttbar ruta"' : ""}>
+      <span class="lth">${icon(t.icon)}<b>${esc(t.title)}</b><span class="ldot ${t.level}"></span>${tileEdit ? `<span class="ltmv"><span role="button" tabindex="0" data-mv="-1" aria-label="Flytta ${esc(t.title)} bakåt" ${i === 0 ? 'aria-disabled="true"' : ""}>◀</span><span role="button" tabindex="0" data-mv="1" aria-label="Flytta ${esc(t.title)} framåt" ${i === tiles.length - 1 ? 'aria-disabled="true"' : ""}>▶</span></span>` : ""}</span>
       <span class="ltbig num">${t.big}</span><span class="ltsub">${esc(t.sub || "")}</span></button>`).join("");
 }
 

@@ -816,3 +816,18 @@ h2:focus{outline:none}
 .ovrk .meter i.w{background:var(--accent)}.ovrk .meter i.e{background:var(--err)}
 .ovrk .m{font-size:11px;color:var(--muted)}
 .ovsep{margin:10px 0 0;font-family:var(--cond);font-size:15px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+
+/* Statusrutor: egen ordning */
+.ltbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:-4px}
+.lthint{color:var(--muted);font-size:11.5px;margin-right:auto}
+.ltiles.editing .ltile{cursor:grab;border-style:dashed}
+.ltiles.editing .ltile:active{cursor:grabbing}
+.ltile.dragging{opacity:.85;position:relative;z-index:5;box-shadow:0 16px 40px -12px rgba(0,0,0,.9);pointer-events:none}
+.ltiles.editing .ltile{touch-action:none;user-select:none}
+.ltile.dropl{box-shadow:inset 4px 0 0 var(--accent)}
+.ltile.dropr{box-shadow:inset -4px 0 0 var(--accent)}
+.ltmv{margin-left:auto;display:inline-flex;gap:4px}
+.ltmv [data-mv]{cursor:pointer;padding:2px 7px;border:1px solid #2a3d52;background:var(--sel);color:var(--accent);font-size:11px;line-height:1.4}
+.ltmv [data-mv]:hover{border-color:var(--accent)}
+.ltmv [data-mv]:focus-visible{outline:2px solid var(--accent)}
+.ltmv [aria-disabled="true"]{opacity:.3;pointer-events:none}
