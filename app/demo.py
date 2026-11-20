@@ -163,9 +163,13 @@ def setup(engine: Engine) -> None:
 
 
 def _seed_plex(engine: Engine, now: float) -> None:
-    from .plex import PlexServer
-    peter = PlexServer(0, "Peters Plex", "http://192.168.2.56:32400", "demo", False)
-    alex = PlexServer(1, "Alex Plex", "http://192.168.100.20:32400", "demo", False)
+    peter = DemoPlex(0, "Peters Plex", "http://192.168.2.56:32400", "demo", False)
+    alex = DemoPlex(1, "Alex Plex", "http://192.168.100.20:32400", "demo", False)
+    lib = lambda key, title, typ, n, n2, days: {"key": key, "title": title, "type": typ, "scanned": int(now - days * 86400),  # noqa: E731
+                                               "refreshing": False, "progress": None, "count": n, "count2": n2}
+    peter.libraries = [lib("1", "Filmer", "movie", 1243, None, 0.4), lib("2", "TV-serier", "show", 214, 9870, 0.4),
+                       lib("3", "Barnfilmer", "movie", 312, None, 1.4), lib("4", "Musik", "artist", 486, 5102, 2.4)]
+    alex.libraries = [lib("1", "Movies", "movie", 2210, None, 0.2), lib("2", "TV Shows", "show", 388, 17420, 0.2)]
     base = {"buffer": None, "address": None, "thumb": None, "hw": False, "target": None}
     peter.sessions = [
         {**base, "server": 0, "server_name": "Peters Plex", "id": "0:1", "type": "episode", "title": "Breaking Bad",
@@ -345,6 +349,9 @@ def _demo_recent(engine: Engine, now: float, seconds: float, at: float) -> None:
 
 def tick(engine: Engine) -> None:
     now = time.time()
+    for srv in engine.plex_servers:
+        if isinstance(srv, DemoPlex):
+            srv.tick()
     if not getattr(engine, "_demo_recent_seeded", False):
         for t in range(int(now - 3600), int(now), 30):
             _demo_recent(engine, now, 30, t)
@@ -510,3 +517,30 @@ class DemoPiHole(PiHole):
             qs = self._queries(since, min(now, float(p.get("until", now))))
             return 200, {"queries": qs[: int(p.get("length", 100))]}
         return 404, {"error": {"message": "okänd sökväg i demoläget"}}
+
+
+from .plex import PlexServer  # noqa: E402
+
+
+class DemoPlex(PlexServer):
+    """Plex i demoläget: en uppdatering tar 20 sekunder och visar förloppet."""
+
+    async def refresh(self, key=None) -> None:
+        now = time.time()
+        for lib in self.libraries:
+            if key is None or lib["key"] == key:
+                lib.update(refreshing=True, progress=0, _start=now)
+
+    async def poll_libraries(self) -> None:
+        self.tick()
+
+    def tick(self) -> None:
+        now = time.time()
+        for lib in self.libraries:
+            if lib.get("refreshing"):
+                p = (now - lib.get("_start", now)) / 20 * 100
+                if p >= 100:
+                    lib.update(refreshing=False, progress=None, scanned=int(now))
+                    lib["count"] = (lib["count"] or 0) + 1
+                else:
+                    lib["progress"] = round(p)

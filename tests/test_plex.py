@@ -82,3 +82,38 @@ def test_plex_down_alert(tmp_path, monkeypatch):
     p.status.update(ok=True, error=None)
     e.check_plex(p)
     assert not e.alerts.is_active("plex:http://plex.test:32400")
+
+
+def test_libraries_and_refresh():
+    import asyncio
+    import httpx
+    from app.plex import PlexServer
+    calls = []
+
+    def handler(req: httpx.Request):
+        calls.append(req.url.path)
+        p, q = req.url.path, dict(req.url.params)
+        if p == "/library/sections":
+            return httpx.Response(200, json={"MediaContainer": {"Directory": [
+                {"key": "1", "title": "Filmer", "type": "movie", "scannedAt": 100, "refreshing": False},
+                {"key": "2", "title": "TV-serier", "type": "show", "scannedAt": 200, "refreshing": True}]}})
+        if p == "/activities":
+            return httpx.Response(200, json={"MediaContainer": {"Activity": [
+                {"type": "library.update.section", "progress": 42, "Context": {"librarySectionID": "2"}}]}})
+        if p.endswith("/all"):
+            n = {("1", "1"): 1243, ("2", "2"): 214, ("2", "4"): 9870}[(p.split("/")[3], q.get("type"))]
+            return httpx.Response(200, json={"MediaContainer": {"size": 0, "totalSize": n}})
+        if p.endswith("/refresh"):
+            return httpx.Response(200)
+        return httpx.Response(404)
+
+    async def run():
+        s = PlexServer(0, "Peters Plex", "http://x", "t", False)
+        s.client = httpx.AsyncClient(base_url="http://x", transport=httpx.MockTransport(handler))
+        await s.poll_libraries()
+        lib = {x["key"]: x for x in s.libraries}
+        assert lib["1"]["count"] == 1243 and lib["2"]["count"] == 214 and lib["2"]["count2"] == 9870
+        assert lib["2"]["refreshing"] and lib["2"]["progress"] == 42
+        await s.refresh("1")
+        assert "/library/sections/1/refresh" in calls and lib["1"]["refreshing"]
+    asyncio.run(run())

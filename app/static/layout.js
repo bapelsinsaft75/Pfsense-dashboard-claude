@@ -315,15 +315,13 @@ function renderTiles(S) {
 
 /* ── Unraid: visa bara vald server ── */
 function applyUnraidFilter() {
-  const cards = el.unraid ? el.unraid.querySelectorAll(".urcard") : [];
-  cards.forEach((c, i) => { c.hidden = unraidFilter != null && i !== unraidFilter; });
+  if (unraidFilter != null && window.unraidSelect) window.unraidSelect(unraidFilter);
 }
 
 /* ── uppdatering vid varje ny data ── */
 let lastSum = null;
 function onRender(d) {
   const S = (lastSum = summary(d));
-  applyUnraidFilter();
   const title = S.alerts.length ? `(${S.alerts.length}) ` : "";
   document.title = title + "pfSense Nätverkskarta";
   if (layout === "flikar") {

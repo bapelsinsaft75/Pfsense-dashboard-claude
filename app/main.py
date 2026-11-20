@@ -382,6 +382,25 @@ async def pihole_rule_delete(body: dict = Body(...)):
     return {"rules": ph.rules}
 
 
+@app.post("/api/plex/{server}/refresh")
+async def plex_refresh(server: int, body: dict = Body(default={})):
+    engine: Engine = app.state.engine
+    if server < 0 or server >= len(engine.plex_servers):
+        raise HTTPException(404, "Okänd Plex-server.")
+    p = engine.plex_servers[server]
+    key = body.get("section")
+    key = str(key) if key not in (None, "") else None
+    if key and not any(x["key"] == key for x in p.libraries):
+        raise HTTPException(404, "Okänt bibliotek.")
+    try:
+        await p.refresh(key)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    what = next((x["title"] for x in p.libraries if x["key"] == key), None) if key else "alla bibliotek"
+    engine.alerts.note("plex_refresh", f"Plex: uppdaterar {what} på {p.name}", "Startat från dashboarden.")
+    return {"libraries": p.libraries}
+
+
 @app.get("/api/top")
 async def top(window: str = Query("5m", pattern="^(5m|15m|60m|24h)$"), limit: int = Query(10, ge=1, le=100),
               scope: str = Query("internet", pattern="^(internet|internal|all)$")):

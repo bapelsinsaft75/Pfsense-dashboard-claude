@@ -247,7 +247,7 @@ function unraidCard(u, i) {
   const sub = [u.version ? `Unraid ${u.version}` : null, u.uptime != null ? `drifttid ${fmtUptime(u.uptime)}` : null, "uppdateras var 30:e sekund"].filter(Boolean).join(" · ");
   const err = !st.ok && st.error ? `<div class="problem"><b>${esc(name)}</b>${esc(st.error)}</div>` : "";
   if (!st.ok && !u.disks) {
-    return `<section class="card urcard" id="unraid-card-${i}" data-name="${esc(name)}"><h2>Unraid · ${esc(name)} <small>${esc(sub)}</small></h2>${err || '<div class="empty">Väntar på svar från servern …</div>'}</section>`;
+    return `<div class="urcard" id="unraid-card-${i}" data-name="${esc(name)}"><p class="cmetaline">${esc(sub)}</p>${err || '<div class="empty">Väntar på svar från servern …</div>'}</div>`;
   }
   const cap = u.capacity || {}, mem = u.memory || {}, cpu = u.cpu || {};
   const hist = (cpuHistory[name] = cpuHistory[name] || []);
@@ -270,8 +270,8 @@ function unraidCard(u, i) {
   const vf = vms.filter((v) => !f.vm || (f.vm === "running" ? v.running : !v.running));
   const vmHtml = !vms.length ? "" : `<div class="urhead vmhead"><h3>Virtuella maskiner · ${vms.filter((v) => v.running).length} av ${vms.length} körs${w.vms.length ? ` · ${w.vms.length} övervakas` : ""}</h3>${segF("vm", f.vm)}</div>
     <div class="ctrs">${vf.length ? vf.map((v) => `<div class="ctr"><i class="${v.running ? "running" : v.state === "crashed" ? "bad" : "stopped"}"></i><span>${esc(v.name)}</span><small>${esc(VM_STATE[v.state] || v.state || "")}</small>${bell("vms", v.name, w.vms.includes(v.name))}</div>`).join("") : '<div class="empty">Inga virtuella maskiner matchar filtret.</div>'}</div>`;
-  return `<section class="card urcard" id="unraid-card-${i}" data-name="${esc(name)}">
-    <h2>Unraid · ${esc(name)} <small>${esc(sub)}</small></h2>${err}
+  return `<div class="urcard" id="unraid-card-${i}" data-name="${esc(name)}">
+    <p class="cmetaline">${esc(sub)}</p>${err}
     <div class="urtop">
       <div class="urtile"><span class="l">Array</span><span class="v${started ? "" : " bad"}">${started ? "Startad" : esc((u.array_state || "Okänd").toLowerCase())}</span><span class="s">${parBad ? '<span class="pill err">Parity ogiltig</span>' : '<span class="pill">Parity giltig</span>'}${parTxt ? " · " + parTxt : ""}</span></div>
       <div class="urtile"><span class="l">Lagring</span><span class="v num">${cap.used != null ? fmt(cap.used / 1e12, 1) : "–"}<small>av ${cap.total != null ? fmt(cap.total / 1e12, 0) : "–"} TB</small></span><div class="meter"><i class="${cap.pct >= 90 ? "hot" : ""}" style="width:${cap.pct || 0}%"></i></div><span class="s">${cap.free != null ? fmt(cap.free / 1e12, 1) + " TB ledigt" : ""}${cap.pct != null ? " · " + fmt(cap.pct, 0) + " %" : ""}</span></div>
@@ -281,13 +281,65 @@ function unraidCard(u, i) {
     <div class="urgrid">
       <div class="urcol"><h3>Diskar</h3><div class="tablebox"><table><thead><tr><th>Disk</th><th>Enhet</th><th>Status</th><th>Använt</th><th class="r-right">Storlek</th><th class="r-right">Temp</th></tr></thead><tbody>${disks}</tbody></table></div></div>
       <div class="urcol"><div class="urhead"><h3>Docker · ${cs.filter((c) => c.state === "running").length} av ${cs.length} körs${w.containers.length ? ` · ${w.containers.length} övervakas` : ""}</h3>${segF("docker", f.docker)}</div><div class="ctrs">${ctrs}</div>${vmHtml}</div>
-    </div></section>`;
+    </div></div>`;
+}
+/* flikar: Översikt (när det finns flera servrar) och en flik per server */
+const tabStore = (k, def) => { try { return localStorage.getItem(k) ?? def; } catch (e) { return def; } };
+const tabSave = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ingen lagring */ } };
+let urTab = tabStore("urTab", "overview");
+let plexTab = tabStore("plexTab", "overview");
+const LVL_CLS = (lv) => (lv === "ok" ? "ok" : lv === "warn" ? "warn" : lv === "err" ? "err" : "off");
+function cardTabs(title, attr, tabs, cur) {
+  return `<div class="ctabs" role="tablist" aria-label="${esc(title)}"><span class="ctitle">${esc(title)}</span>${tabs.map((t) =>
+    `<button type="button" role="tab" ${attr}="${esc(t.id)}" aria-selected="${t.id === cur}">${t.dot ? `<i class="cdot ${t.dot}"></i>` : ""}${esc(t.label)}${t.badge != null ? `<span class="cbadge">${esc(t.badge)}</span>` : ""}</button>`).join("")}</div>`;
+}
+const urName = (u, i) => u.status.name || u.hostname || `Unraid ${i + 1}`;
+const urLevel = (u) => (!u.status.ok ? (u.status.error ? "err" : "off") : LVL_CLS(u.status.level));
+function urOverview(u, i) {
+  const name = urName(u, i), lv = urLevel(u), cap = u.capacity || {}, mem = u.memory || {}, cpu = u.cpu || {};
+  const hot = (u.disks || []).filter((x) => x.temp != null).sort((a, b) => b.temp - a.temp)[0];
+  const cs = u.containers || [], vms = u.vms || [];
+  const run = cs.filter((c) => c.state === "running").length, bad = cs.filter((c) => c.state === "bad").length;
+  const vrun = vms.filter((v) => v.running).length;
+  const roleName = (x) => x.role === "parity" ? "Parity" : x.role === "cache" ? (x.name === "cache" ? "Cache" : x.name) : x.name.replace(/^disk(\d+)$/, "Disk $1");
+  const meter = (label, pct, val, hotc) => `<div class="ovm"><span class="l">${label}</span><div class="meter"><i class="${hotc ? "hot" : ""}" style="width:${Math.max(0, Math.min(100, pct || 0))}%"></i></div><span class="v">${val}</span></div>`;
+  const prob = !u.status.ok ? `<span class="ovprob err">${esc(u.status.error || "Väntar på svar")}</span>`
+    : lv === "ok" ? '<span class="ovprob ok">✓ Allt ser bra ut</span>' : `<span class="ovprob ${lv}">⚠ ${esc(u.status.detail || "")}</span>`;
+  const sub = [u.version ? `Unraid ${u.version}` : null, u.uptime != null ? `drifttid ${fmtUptime(u.uptime)}` : null].filter(Boolean).join(" · ");
+  return `<button type="button" class="ovbox ${lv}" data-urtab="${esc(name)}" title="Visa ${esc(name)}">
+    <span class="ovh"><b><i class="cdot ${lv}"></i>${esc(name)}</b><span>${esc(sub)}</span></span>${prob}
+    ${u.status.ok || u.disks ? `<span class="ovmeters">
+      ${meter("Lagring", cap.pct, `${cap.used != null ? fmt(cap.used / 1e12, 1) : "–"} <small>av ${cap.total != null ? fmt(cap.total / 1e12, 0) : "–"} TB · ${fmt(cap.pct || 0, 0)} %</small>`, cap.pct >= 90)}
+      ${meter("Processor", cpu.pct, `${cpu.pct != null ? fmt(cpu.pct, 0) : "–"} % <small>${cpu.threads ? "· " + cpu.threads + " trådar" : ""}</small>`)}
+      ${meter("Minne", mem.pct, `${mem.used != null ? fmt(mem.used / GB, 1) : "–"} <small>av ${mem.total != null ? fmt(mem.total / GB, 0) : "–"} GB · ${fmt(mem.pct || 0, 0)} %</small>`)}
+      ${hot ? meter("Varmast", hot.temp / 60 * 100, `${fmt(hot.temp, 0)} °C <small>· ${esc(roleName(hot))}</small>`, hot.temp >= 50) : ""}
+    </span>
+    <span class="ovcounts"><span><b>${u.array_state === "STARTED" ? "Startad" : esc((u.array_state || "Okänd").toLowerCase())}</b>array</span>
+      <span class="${bad ? "bad" : ""}"><b>${run}<small>av ${cs.length}</small></b>dockers körs${bad ? ` · ${bad} stoppad oväntat` : ""}</span>
+      <span><b>${vms.length ? `${vrun}<small>av ${vms.length}</small>` : "–"}</b>${vms.length ? "VM körs" : "inga VM"}</span></span>` : ""}
+    <span class="ovlink">Visa ${esc(name)} →</span></button>`;
 }
 function renderUnraids(d) {
   const list = d.unraids || [];
-  $("unraid-cards").innerHTML = list.map(unraidCard).join("");
+  const box = $("unraid-cards");
+  if (!list.length) { box.innerHTML = ""; return; }
+  const names = list.map(urName), multi = list.length > 1;
+  let cur = urTab;
+  if ((cur === "overview" && !multi) || (cur !== "overview" && !names.includes(cur))) cur = multi ? "overview" : names[0];
+  const tabs = [...(multi ? [{ id: "overview", label: "Översikt" }] : []), ...list.map((u, i) => ({ id: names[i], label: names[i], dot: urLevel(u) }))];
+  const idx = names.indexOf(cur);
+  box.innerHTML = `<section class="card urbox" id="unraid-box"><div class="chead">${cardTabs("Unraid", "data-urtab", tabs, cur)}<span class="cmeta">uppdateras var 30:e sekund</span></div>
+    ${cur === "overview" ? `<div class="ovgrid">${list.map(urOverview).join("")}</div>` : unraidCard(list[idx], idx)}</section>`;
 }
+window.unraidSelect = (i) => {
+  const list = (state.data && state.data.unraids) || [];
+  if (!list[i]) return;
+  const name = urName(list[i], i);
+  if (urTab !== name) { urTab = name; tabSave("urTab", name); renderUnraids(state.data); }
+};
 $("unraid-cards").addEventListener("click", async (e) => {
+  const tb = e.target.closest("[data-urtab]");
+  if (tb) { urTab = tb.dataset.urtab; tabSave("urTab", urTab); renderUnraids(state.data); return; }
   const wb = e.target.closest("[data-watch]");
   if (wb) {
     const server = wb.closest(".urcard").dataset.name, on = wb.getAttribute("aria-pressed") !== "true";
@@ -315,37 +367,95 @@ const msToTime = (ms) => {
 };
 const POSTER_BG = ["#2f5d3a,#0f2416", "#5a3a7a,#1b1030", "#7a4a1d,#2a1406", "#1f4a6e,#0a1a2a", "#6e1f3a,#2a0a16", "#3a5a6e,#0f1a24"];
 function initials(t) { return (t || "?").replace(/^(The|En|Ett|Den|Det) /i, "").split(/[\s:–-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
+const LIB_TYPE = { movie: "Filmer", show: "Serier", artist: "Musik", photo: "Foton" };
+function libCount(l) {
+  const n = (v) => (v == null ? "–" : fmt(v, 0));
+  if (l.type === "show") return `${n(l.count)}<small>serier${l.count2 != null ? ` · ${n(l.count2)} avsnitt` : ""}</small>`;
+  if (l.type === "artist") return `${n(l.count)}<small>artister${l.count2 != null ? ` · ${n(l.count2)} låtar` : ""}</small>`;
+  if (l.type === "movie") return `${n(l.count)}<small>filmer</small>`;
+  return `${n(l.count)}<small>objekt</small>`;
+}
+function streamHTML(x) {
+  const bg = POSTER_BG[[...x.title].reduce((a, c) => a + c.charCodeAt(0), 0) % POSTER_BG.length];
+  const art = x.thumb ? `<img src="api/plex/thumb/${x.server}?path=${encodeURIComponent(x.thumb)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  const dec = x.decision === "transcode"
+    ? `<span class="tag tc">Omkodning${x.video && x.target ? ` ${esc(x.video.split(" · ")[0])} → ${esc(x.target)}` : ""}${x.hw ? " (HW)" : ""}</span>`
+    : `<span class="tag dp">${x.decision === "stream" ? "Direktström" : "Direktuppspelning"}</span>`;
+  const where = x.local ? "" : `<span class="tag remote">Utanför hemmet${x.country ? " · " + esc(countryName(x.country)) : ""}</span>`;
+  const quality = [x.decision !== "transcode" && x.video ? x.video : null, x.audio].filter(Boolean).map((q) => `<span class="tag">${esc(q)}</span>`).join("");
+  const pct = x.duration ? Math.min(100, (x.offset || 0) / x.duration * 100) : 0;
+  const st = x.state === "paused" ? `<span class="state pause">❚❚ Pausad · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
+    : x.state === "buffering" ? `<span class="state">Buffrar · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
+    : `<span class="state play">▶ ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`;
+  return `<article class="stream"><div class="poster" style="background:linear-gradient(160deg,${bg})"><span>${x.type === "track" ? "♪" : esc(initials(x.title))}</span>${art}</div>
+    <div class="sinfo"><div class="stitle"><b title="${esc(x.title)}">${esc(x.title)}</b><span>${esc(x.label)}</span></div>
+    <div class="ssub">${esc(x.subtitle || "")}</div>
+    <div class="swho"><span class="u">${esc(x.user)}</span><span>${esc([x.device, x.product].filter(Boolean).join(" · "))}</span></div>
+    <div class="tags">${dec}${where}${quality}${x.bandwidth_kbps ? `<span class="tag num">${fmt(x.bandwidth_kbps / 1000, 1)} Mbit/s</span>` : ""}</div>
+    <div class="prog"><div class="bar">${x.buffer ? `<em style="width:${Math.min(100, x.buffer)}%"></em>` : ""}<i style="width:${pct}%"></i></div>${st}</div></div></article>`;
+}
+function plexTotals(ss) {
+  return { streams: ss.length, direct: ss.filter((x) => x.decision !== "transcode").length, transcode: ss.filter((x) => x.decision === "transcode").length,
+    remote: ss.filter((x) => !x.local).length, mbit: ss.reduce((a, x) => a + (x.bandwidth_kbps || 0), 0) / 1000 };
+}
+const plexLevel = (s) => (s.ok ? "ok" : s.error ? "err" : "off");
+function plexOverview(s, ss) {
+  const t = plexTotals(ss), libs = s.libraries || [];
+  const sum = (type, k = "count") => libs.filter((l) => l.type === type).reduce((a, l) => a + (l[k] || 0), 0);
+  const has = (type) => libs.some((l) => l.type === type);
+  const scanning = libs.filter((l) => l.refreshing);
+  return `<button type="button" class="ovbox ${plexLevel(s)}" data-pxtab="${s.index}" title="Visa ${esc(s.name)}">
+    <span class="ovh"><b><i class="cdot ${plexLevel(s)}"></i>${esc(s.name)}</b><span>${s.version ? "v" + esc(String(s.version).split("-")[0]) : ""}</span></span>
+    ${!s.ok ? `<span class="ovprob err">${esc(s.error || "Väntar på svar")}</span>` : scanning.length ? `<span class="ovprob warn">⟳ Skannar ${esc(scanning.map((l) => l.title).join(", "))} …</span>` : ""}
+    <span class="ovcounts"><span><b>${t.streams}</b>${t.streams === 1 ? "ström" : "strömmar"} nu</span><span><b>${t.transcode}</b>omkodning</span><span><b>${fmt(t.mbit, 1)}</b>Mbit/s</span></span>
+    ${libs.length ? `<span class="ovcounts">${has("movie") ? `<span><b>${fmt(sum("movie"), 0)}</b>filmer</span>` : ""}${has("show") ? `<span><b>${fmt(sum("show"), 0)}</b>serier · ${fmt(sum("show", "count2"), 0)} avsnitt</span>` : ""}${has("artist") ? `<span><b>${fmt(sum("artist"), 0)}</b>artister</span>` : ""}</span>` : ""}
+    <span class="ovlink">Visa ${esc(s.name)} →</span></button>`;
+}
+function plexServerPane(s, ss) {
+  const t = plexTotals(ss), libs = s.libraries || [];
+  const libHtml = libs.length ? libs.map((l) => `<div class="plib${l.refreshing ? " scan" : ""}">
+      <span class="plt"><span><span class="pty">${esc(LIB_TYPE[l.type] || l.type || "")}</span><b>${esc(l.title)}</b></span>
+      ${l.refreshing ? '<button type="button" class="btn" disabled><i class="spin"></i>Skannar …</button>' : `<button type="button" class="btn px" data-pxref="${s.index}" data-sec="${esc(l.key)}" title="Be Plex skanna ${esc(l.title)} efter nya och borttagna filer">⟳ Uppdatera</button>`}</span>
+      <span class="pv num">${libCount(l)}</span>
+      ${l.refreshing && l.progress != null ? `<div class="meter"><i style="width:${Math.min(100, l.progress)}%;background:var(--plex)"></i></div>` : ""}
+      <span class="ps">${l.refreshing ? (l.progress != null ? `skannar · ${fmt(l.progress, 0)} %` : "skannar …") : l.scanned ? `senast skannad ${phDate(l.scanned)}` : ""}</span></div>`).join("")
+    : `<div class="empty">${s.ok ? "Hämtar biblioteken …" : "Inga bibliotek att visa."}</div>`;
+  return `<p class="cmetaline">${s.version ? "Plex Media Server " + esc(String(s.version).split("-")[0]) + " · " : ""}${s.ok ? "svarar" : "svarar inte"}</p>
+    ${!s.ok && s.error ? `<div class="problem"><b>${esc(s.name)}</b>${esc(s.error)}</div>` : ""}
+    <div class="psec"><h3>Bibliotek ${libs.length ? `<button type="button" class="btn px" data-pxref="${s.index}" data-sec="">⟳ Uppdatera alla</button>` : ""}</h3><div class="plibs">${libHtml}</div></div>
+    <div class="psec"><h3>Strömmar just nu <small>${t.streams} ${t.streams === 1 ? "ström" : "strömmar"} · ${t.transcode} omkodning · ${fmt(t.mbit, 1)} Mbit/s${t.remote ? ` · ${t.remote} utanför hemmet` : ""}</small></h3>
+      <div class="streams">${ss.length ? ss.map(streamHTML).join("") : '<div class="empty">Inga strömmar på den här servern just nu.</div>'}</div></div>`;
+}
 function renderPlex(d) {
   const p = d.plex || { servers: [], sessions: [] };
   const card = $("plex-card");
   card.hidden = !p.servers.length;
   if (!p.servers.length) return;
-  const t = p.totals;
-  $("plex-sum").innerHTML = `<div><b class="num">${t.streams}</b><span>${t.streams === 1 ? "ström" : "strömmar"} totalt</span></div>
-    <div><b class="num">${t.direct}</b><span>direktuppspelning</span></div><div><b class="num">${t.transcode}</b><span>omkodning</span></div>
-    <div><b class="num">${fmt(t.bandwidth_kbps / 1000, 1)}</b><span>Mbit/s totalt</span></div><div><b class="num">${t.remote}</b><span>utanför hemmet</span></div>`;
-  const down = p.servers.filter((s) => !s.ok && s.error);
-  $("plex-streams").innerHTML = p.sessions.length ? p.sessions.map((x, i) => {
-    const bg = POSTER_BG[[...x.title].reduce((a, c) => a + c.charCodeAt(0), 0) % POSTER_BG.length];
-    const art = x.thumb ? `<img src="api/plex/thumb/${x.server}?path=${encodeURIComponent(x.thumb)}" alt="" loading="lazy" onerror="this.remove()">` : "";
-    const dec = x.decision === "transcode"
-      ? `<span class="tag tc">Omkodning${x.video && x.target ? ` ${esc(x.video.split(" · ")[0])} → ${esc(x.target)}` : ""}${x.hw ? " (HW)" : ""}</span>`
-      : `<span class="tag dp">${x.decision === "stream" ? "Direktström" : "Direktuppspelning"}</span>`;
-    const where = x.local ? "" : `<span class="tag remote">Utanför hemmet${x.country ? " · " + esc(countryName(x.country)) : ""}</span>`;
-    const quality = [x.decision !== "transcode" && x.video ? x.video : null, x.audio].filter(Boolean).map((q) => `<span class="tag">${esc(q)}</span>`).join("");
-    const pct = x.duration ? Math.min(100, (x.offset || 0) / x.duration * 100) : 0;
-    const st = x.state === "paused" ? `<span class="state pause">❚❚ Pausad · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
-      : x.state === "buffering" ? `<span class="state">Buffrar · ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`
-      : `<span class="state play">▶ ${msToTime(x.offset)} / ${msToTime(x.duration)}</span>`;
-    return `<article class="stream"><div class="poster" style="background:linear-gradient(160deg,${bg})"><span>${x.type === "track" ? "♪" : esc(initials(x.title))}</span>${art}</div>
-      <div class="sinfo"><div class="stitle"><b title="${esc(x.title)}">${esc(x.title)}</b><span>${esc(x.label)}</span></div>
-      <div class="ssub">${esc(x.subtitle || "")}</div>
-      <div class="swho"><span class="u">${esc(x.user)}</span><span>${esc([x.device, x.product].filter(Boolean).join(" · "))}</span></div>
-      <div class="tags">${dec}${where}${quality}${x.bandwidth_kbps ? `<span class="tag num">${fmt(x.bandwidth_kbps / 1000, 1)} Mbit/s</span>` : ""}</div>
-      <div class="prog"><div class="bar">${x.buffer ? `<em style="width:${Math.min(100, x.buffer)}%"></em>` : ""}<i style="width:${pct}%"></i></div>${st}</div></div></article>`;
-  }).join("") : `<div class="empty">Inga strömmar från Plex just nu.</div>`;
-  $("plex-err").innerHTML = down.map((s) => `<div class="problem"><b>${esc(s.name)}</b>${esc(s.error)}</div>`).join("");
+  const multi = p.servers.length > 1;
+  let cur = plexTab;
+  if ((cur === "overview" && !multi) || (cur !== "overview" && !p.servers.some((s) => String(s.index) === cur))) cur = multi ? "overview" : String(p.servers[0].index);
+  const by = (s) => p.sessions.filter((x) => x.server === s.index);
+  const tabs = [...(multi ? [{ id: "overview", label: "Översikt" }] : []), ...p.servers.map((s) => ({ id: String(s.index), label: s.name, dot: plexLevel(s), badge: by(s).length }))];
+  $("plex-tabs").innerHTML = cardTabs("Plex", "data-pxtab", tabs, cur);
+  const s = p.servers.find((x) => String(x.index) === cur);
+  $("plex-pane").innerHTML = cur === "overview" ? `<div class="ovgrid">${p.servers.map((x) => plexOverview(x, by(x))).join("")}</div>` : plexServerPane(s, by(s));
 }
+window.plexSelect = (i) => { plexTab = String(i); tabSave("plexTab", plexTab); if (state.data) renderPlex(state.data); };
+$("plex-card").addEventListener("click", async (e) => {
+  const tb = e.target.closest("[data-pxtab]");
+  if (tb) { plexTab = tb.dataset.pxtab; tabSave("plexTab", plexTab); renderPlex(state.data); return; }
+  const rb = e.target.closest("[data-pxref]");
+  if (!rb) return;
+  rb.disabled = true;
+  try {
+    const r = await fetch(`api/plex/${rb.dataset.pxref}/refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ section: rb.dataset.sec || null }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.status);
+  } catch (err) {
+    $("plex-err").innerHTML = `<div class="problem"><b>Plex</b>${esc(err.message)}</div>`;
+  }
+  load();
+});
 
 /* ── land: vilka adresser och klienter ── */
 const PORTS = {
@@ -678,7 +788,7 @@ function renderStatus(d) {
   const plexChips = ((d.plex || {}).servers || []).map((p) => {
     const cls = p.ok ? "ok" : p.error ? "err" : "";
     const tip = p.ok ? `${p.name}${p.version ? " · v" + p.version : ""} · ${p.streams} ${p.streams === 1 ? "ström" : "strömmar"}` : (p.error || "Väntar på svar");
-    return `<button type="button" class="chip plex ${cls}" data-goto="plex-card" title="${esc(tip)} · Klicka för att se strömmarna">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</button>`;
+    return `<button type="button" class="chip plex ${cls}" data-goto="plex-card" data-pxserver="${p.index ?? ""}" title="${esc(tip)} · Klicka för att se servern">${esc(p.name)}${p.ok ? ` <small>${p.streams}</small>` : ""}</button>`;
   });
   const unraidChip = (d.unraids || []).map((x, i) => {
     const u = x.status, name = u.name || `Unraid ${i + 1}`;
@@ -1237,13 +1347,19 @@ $("connf").addEventListener("click", (e) => { const b = e.target.closest("button
 $("statusf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.statusF = b.dataset.s; setPressed(e.currentTarget, b); render(); });
 function scrollToCard(id) {
   if (window.layoutGoto && window.layoutGoto(id)) return;
+  const um = id.match(/^unraid-card-(\d+)$/);
+  if (um) { window.unraidSelect(+um[1]); id = "unraid-box"; }
   const el = $(id);
   if (!el || el.hidden) return;
   const top = el.getBoundingClientRect().top + window.scrollY - $("alerts").offsetHeight - 12;
   window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
   el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
 }
-$("chips").addEventListener("click", (e) => { const b = e.target.closest("[data-goto]"); if (b) scrollToCard(b.dataset.goto); });
+$("chips").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-goto]"); if (!b) return;
+  if (b.dataset.pxserver) window.plexSelect(b.dataset.pxserver);
+  scrollToCard(b.dataset.goto);
+});
 function setClientFilter(status, conn) {
   state.statusF = status; state.connF = conn; state.devF = null;
   setPressed($("statusf"), $("statusf").querySelector(`[data-s="${status}"]`));

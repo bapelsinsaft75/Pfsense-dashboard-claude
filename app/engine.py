@@ -823,7 +823,7 @@ class Engine:
                 "total_down": sum(p["down"] for p in pts), "total_up": sum(p["up"] for p in pts)}
 
     def plex_summary(self) -> dict:
-        servers = [dict(s.status) for s in self.plex_servers]
+        servers = [{**s.status, "index": s.index, "libraries": [dict(x) for x in s.libraries]} for s in self.plex_servers]
         sessions = [dict(x) for s in self.plex_servers for x in s.sessions]
         for x in sessions:
             x["country"] = None if x["local"] or not x.get("address") else self.geo.country(x["address"])
