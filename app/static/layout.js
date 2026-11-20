@@ -36,7 +36,16 @@ const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><pa
 
 // Delarna av sidan, i den ordning de har i Klassisk.
 const el = {};
-const ORDER = ["head", "demo", "problems", "kpis", "chart", "map", "pihole", "security", "unifi", "clients", "unraid", "plex", "foot"];
+const DEFAULT_PARTS = ["kpis", "chart", "map", "pihole", "security", "unifi", "clients", "unraid", "plex"];
+const ORDER = ["head", "demo", "problems", ...DEFAULT_PARTS, "foot"];
+// egen ordning på delarna (sparas med profilen)
+function partOrder() {
+  const saved = (store.get("partOrder", []) || []).filter((p) => DEFAULT_PARTS.includes(p));
+  return [...saved, ...DEFAULT_PARTS.filter((p) => !saved.includes(p))];
+}
+const sortParts = (names) => { const o = partOrder(); return [...names].sort((a, b) => o.indexOf(a) - o.indexOf(b)); };
+const pageOrder = () => ["head", "demo", "problems", ...partOrder(), "foot"];
+const sectionsOrdered = () => { const o = partOrder(); const first = (s) => Math.min(...s.parts.map((p) => (o.includes(p) ? o.indexOf(p) : 99))); return [...SECTIONS].sort((a, b) => first(a) - first(b)); };
 function grab() {
   const wrap = document.querySelector(".wrap");
   Object.assign(el, {
@@ -135,7 +144,7 @@ function buildKlassisk() {
   clearWrap();
   el.alerts.classList.remove("inbox");
   el.wrap.parentNode.insertBefore(el.alerts, el.wrap);
-  put(el.wrap, ORDER);
+  put(el.wrap, pageOrder());
 }
 
 /* ── Överblick: är något fel och var sitter flaskhalsen – sedan allt annat ── */
@@ -146,7 +155,7 @@ function buildOverblick() {
   put(el.wrap, ["head", "demo", "problems", "ovw"]);
   el.ovw.hidden = false;
   document.body.dataset.layout = "overblick";
-  put(el.wrap, ORDER.filter((n) => !["head", "demo", "problems"].includes(n)));
+  put(el.wrap, pageOrder().filter((n) => !["head", "demo", "problems"].includes(n)));
   if (window.loadOverview) window.loadOverview();
 }
 
@@ -156,7 +165,7 @@ function buildFlikar() {
   const bar = document.createElement("nav");
   bar.className = "ltabs";
   bar.setAttribute("aria-label", "Delar");
-  bar.innerHTML = SECTIONS.filter((s) => shown(s.id)).map((s) => `<a href="#rad-${s.id}" data-sec="${s.id}">${s.title}<span class="ldot" data-dot="${s.id}"></span></a>`).join("");
+  bar.innerHTML = sectionsOrdered().filter((s) => shown(s.id)).map((s) => `<a href="#rad-${s.id}" data-sec="${s.id}">${s.title}<span class="ldot" data-dot="${s.id}"></span></a>`).join("");
   put(el.wrap, ["head"]);
   el.wrap.appendChild(bar);
   put(el.wrap, ["demo", "problems"]);
@@ -167,12 +176,12 @@ function buildFlikar() {
   el.wrap.appendChild(ib);
   inbox(ib.querySelector(".lsb"));
   const collapsed = store.get("layoutCollapsed", {});
-  for (const s of SECTIONS.filter((x) => shown(x.id))) {
+  for (const s of sectionsOrdered().filter((x) => shown(x.id))) {
     const sec = document.createElement("section");
     sec.className = "lsec" + (collapsed[s.id] ? "" : " open");
     sec.id = `rad-${s.id}`;
     sec.innerHTML = `<div class="lsh" role="button" tabindex="0" aria-expanded="${!collapsed[s.id]}"><span class="chev">▸</span><b>${s.title}</b><span class="lsum" data-sum="${s.id}"></span></div><div class="lsb"></div>`;
-    put(sec.querySelector(".lsb"), s.parts);
+    put(sec.querySelector(".lsb"), sortParts(s.parts));
     el.wrap.appendChild(sec);
   }
   put(el.wrap, ["foot"]);
@@ -250,7 +259,7 @@ function showPage() {
   head.textContent = s.id === "servrar" && unraidFilter != null ? (lastSum?.unraids[unraidFilter]?.name || s.title) : s.title;
   pg.appendChild(head);
   if (s.id === "oversikt") inbox(pg); else stashAlerts();
-  put(pg, s.parts);
+  put(pg, sortParts(s.parts));
   applyUnraidFilter();
   window.dashRender && window.dashRender();
 }
@@ -305,7 +314,7 @@ function openDrawer(sectionId, ur = null) {
   drawer = sectionId; unraidFilter = ur;
   const body = $("ldrawer-body");
   stash(SECTIONS.flatMap((x) => x.parts));
-  put(body, s.parts);
+  put(body, sortParts(s.parts));
   $("ldrawer-title").textContent = s.id === "servrar" && ur != null ? (lastSum?.unraids[ur]?.name || s.title) : s.title;
   built.drawer.hidden = false;
   document.body.classList.add("ldrawer-open");
@@ -523,7 +532,7 @@ if (pick) {
 }
 
 /* ── profiler: namn, utseende, rutornas ordning, val på sidan och dolda delar ── */
-const PKEYS = ["layout", "tileOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
+const PKEYS = ["layout", "tileOrder", "partOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
   "urTab", "plexTab", "phDomTab", "phClTab", "phQn", "phQf", "hiddenParts"];
 let profiles = [];
 const ls = {
@@ -611,7 +620,14 @@ function renderProfileSettings() {
       <button type="button" class="btn" data-pupd="${esc(p.id)}" title="Ersätt profilen med hur sidan ser ut nu">Spara nuvarande</button>
       <button type="button" class="btn" data-pdel="${esc(p.id)}">Ta bort</button></div>`).join("") : '<p class="muted">Inga profiler än. Ställ in sidan som du vill ha den och spara den som en profil.</p>';
   const parts = $("s-parts");
-  if (parts) parts.innerHTML = Object.entries(PART_LABEL).map(([k, l]) => `<label class="check"><input type="checkbox" data-part="${k}" ${hidden.has(k) ? "" : "checked"}> ${l}</label>`).join("");
+  if (parts) {
+    const o = partOrder();
+    parts.innerHTML = o.map((k, i) => `<div class="partrow" data-pk="${k}"><span class="grip" aria-hidden="true">⋮⋮</span>
+      <label class="check"><input type="checkbox" data-part="${k}" ${hidden.has(k) ? "" : "checked"}> ${PART_LABEL[k]}</label>
+      <button type="button" class="btn sm" data-pmv="-1" aria-label="Flytta ${PART_LABEL[k]} upp" ${i === 0 ? "disabled" : ""}>▲</button>
+      <button type="button" class="btn sm" data-pmv="1" aria-label="Flytta ${PART_LABEL[k]} ner" ${i === o.length - 1 ? "disabled" : ""}>▼</button></div>`).join("")
+      + `<div class="partfoot"><button type="button" class="linkbtn" data-preset ${store.get("partOrder", null) ? "" : "disabled"}>Återställ ordningen</button></div>`;
+  }
 }
 async function profileAction(e) {
   const t = e.target;
@@ -648,7 +664,44 @@ if (sadd) sadd.addEventListener("click", async () => {
   const inp = $("s-prof-new");
   try { const msg = await addProfile(inp.value); if (msg) alert(msg); else inp.value = ""; } catch (x) { alert(x.message); }
 });
+function setPartOrder(o, focusKey, dir) {
+  store.set("partOrder", o);
+  apply(layout);
+  renderProfileSettings();
+  if (focusKey) { const b = document.querySelector(`.partrow[data-pk="${focusKey}"] [data-pmv="${dir}"]`) || document.querySelector(`.partrow[data-pk="${focusKey}"] input`); if (b) b.focus(); }
+}
 const sparts = $("s-parts");
+if (sparts) sparts.addEventListener("click", (e) => {
+  const mv = e.target.closest("[data-pmv]");
+  if (mv) {
+    const k = mv.closest(".partrow").dataset.pk, o = partOrder(), i = o.indexOf(k), j = i + +mv.dataset.pmv;
+    if (j < 0 || j >= o.length) return;
+    [o[i], o[j]] = [o[j], o[i]];
+    setPartOrder(o, k, mv.dataset.pmv);
+    return;
+  }
+  if (e.target.closest("[data-preset]")) { store.set("partOrder", null); apply(layout); renderProfileSettings(); }
+});
+// dra raderna i listan (mus eller finger)
+if (sparts) sparts.addEventListener("pointerdown", (e) => {
+  const grip = e.target.closest(".grip"); if (!grip) return;
+  const row = grip.closest(".partrow"); e.preventDefault();
+  row.classList.add("dragging");
+  const move = (ev) => {
+    const over = document.elementFromPoint(ev.clientX, ev.clientY);
+    const t = over && over.closest(".partrow");
+    if (!t || t === row) return;
+    const r = t.getBoundingClientRect();
+    sparts.insertBefore(row, ev.clientY > r.top + r.height / 2 ? t.nextSibling : t);
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    row.classList.remove("dragging");
+    setPartOrder([...sparts.querySelectorAll(".partrow")].map((r) => r.dataset.pk));
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+});
 if (sparts) sparts.addEventListener("change", (e) => {
   const c = e.target.closest("[data-part]"); if (!c) return;
   if (c.checked) hidden.delete(c.dataset.part); else hidden.add(c.dataset.part);

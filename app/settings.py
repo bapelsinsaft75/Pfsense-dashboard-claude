@@ -46,7 +46,7 @@ ALERT_GROUPS = [
 ]
 ROUTE_SEP = "|"
 # profiler: vilka val i webbläsaren en profil kommer ihåg, och vilka delar som kan döljas
-PROFILE_KEYS = {"layout", "tileOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
+PROFILE_KEYS = {"layout", "tileOrder", "partOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
                 "urTab", "plexTab", "phDomTab", "phClTab", "phQn", "phQf", "hiddenParts"}
 PROFILE_LAYOUTS = {"klassisk", "sidomeny", "rutor", "flikar", "overblick"}  # larmtyp|server|container – mer specifika rader går före mindre specifika
 

@@ -856,3 +856,10 @@ h2:focus{outline:none}
 #s-prof-new{font:inherit;background:var(--track);color:var(--fg);border:1px solid var(--line);padding:6px 8px;flex:1 1 200px}
 .partchoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px}
 .profmenu.left{right:auto;left:0}
+.partchoices{display:grid;grid-template-columns:1fr;gap:4px}
+.partrow{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;gap:6px;align-items:center;border:1px solid var(--line);background:var(--bg);padding:4px 8px}
+.partrow.dragging{border-color:var(--accent);background:var(--sel)}
+.partrow .grip{cursor:grab;color:var(--muted);touch-action:none;user-select:none;text-align:center;letter-spacing:-2px}
+.partrow .check{margin:0}
+.partrow .btn.sm{padding:1px 8px}
+.partfoot{display:flex;justify-content:flex-end}
