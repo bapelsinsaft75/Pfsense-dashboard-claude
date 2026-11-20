@@ -1,0 +1,11 @@
+services:
+  k2a-bevakare:
+    build: .
+    container_name: k2a-bevakare
+    env_file: .env
+    restart: unless-stopped
+    ipc: host          # Chromium behöver delat minne
+    volumes:
+      - ./skarmdumpar:/data/skarmdumpar
+    ports:
+      - "8080:8080"
