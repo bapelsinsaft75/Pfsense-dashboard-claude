@@ -35,11 +35,13 @@ LOSENORD = env("K2A_LOSENORD")
 INTERVALL = int(env("INTERVALL_SEK", "300"))
 TORR = env("TORRKORNING", "0").lower() in ("1", "true", "ja", "yes")
 NTFY_URL = env("NTFY_URL")
+NTFY_TOKEN = env("NTFY_TOKEN")  # om din ntfy-server kräver inloggning (tk_…)
 AVBRYT_TEXT = env("AVBRYT_TEXT", r"avbryt\s+uppsägning")
 BEKRAFTA_TEXT = env("BEKRAFTA_TEXT", r"^\s*(ja|bekräfta|ok)\s*$")
 BEKRAFTA_FRAGA = env("BEKRAFTA_FRAGA", r"vill du ta bort.*uppsägning")
 UPPSAGD_TEXT = env("UPPSAGD_TEXT", r"pågående\s+uppsägning")
 START_URL = env("START_URL", "https://minasidor.k2a.se/mypages")
+SAG_UPP_TEXT = env("SAG_UPP_TEXT", r"^\s*säg\s+upp")
 FEL_TEXT = env("FEL_TEXT", r"något gick fel|ett( oväntat)? fel (har )?uppstått|ett fel uppstod|tekniskt fel|internal server error|server error|tjänsten är (inte|tillfälligt) tillgänglig")
 FORSOK_VID_FEL = int(env("FORSOK_VID_FEL", "3"))
 PAUS_VID_FEL = int(env("PAUS_VID_FEL", "10"))
@@ -67,14 +69,20 @@ def logg(msg: str) -> None:
     print(rad, flush=True)
 
 
-def notis(msg: str) -> None:
-    logg(msg)
-    if NTFY_URL:
-        try:
-            urllib.request.urlopen(urllib.request.Request(
-                NTFY_URL, data=msg.encode("utf-8"), method="POST"), timeout=10)
-        except Exception as e:  # en notis får aldrig stoppa bevakningen
-            logg(f"Kunde inte skicka notis: {e}")
+def notis(msg: str, prio: str = "default", taggar: str = "house") -> bool:
+    """Skickar push-notis via ntfy. prio: min/low/default/high/urgent."""
+    logg(f"Notis: {msg}")
+    if not NTFY_URL:
+        return False
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            NTFY_URL, data=msg.encode("utf-8"), method="POST",
+            headers={"Title": "K2A-bevakare", "Priority": prio, "Tags": taggar,
+                     **({"Authorization": f"Bearer {NTFY_TOKEN}"} if NTFY_TOKEN else {})}), timeout=10)
+        return True
+    except Exception as e:  # en notis får aldrig stoppa bevakningen
+        logg(f"Kunde inte skicka notis: {e}")
+        return False
 
 
 def skarmdump(sida, namn: str) -> None:
@@ -419,6 +427,9 @@ def kontrollera(sida, omstart: bool = False) -> str:
         if sida.get_by_text(re.compile(UPPSAGD_TEXT, re.I)).count():
             skarmdump(sida, "text-men-ingen-knapp")
             return "text-men-ingen-knapp"
+        if klickbar(sida, SAG_UPP_TEXT) is None:
+            skarmdump(sida, "saknar-sag-upp")
+            return "saknar-sag-upp"
         return "ingen-knapp"
 
     if TORR:
@@ -463,6 +474,7 @@ def kontrollera(sida, omstart: bool = False) -> str:
 STATUSTEXT = {
     "startar": ("Startar", "gra"),
     "ingen-knapp": ("Ingen uppsägning att avbryta", "gron"),
+    "saknar-sag-upp": ("Hittar varken 'Säg upp avtal' eller 'Avbryt uppsägning'", "rod"),
     "hittad-torr": ("Knappen finns – torrkörning, klickade inte", "gul"),
     "klar": ("Uppsägningen avbröts", "gron"),
     "oklart": ("Klickade, men knappen finns kvar", "rod"),
@@ -497,7 +509,9 @@ border-radius:99px;border:1px solid currentColor;margin-left:8px;vertical-align:
 <dt>Antal kontroller</dt><dd>{antal}</dd><dt>Intervall</dt><dd>{intervall} s</dd>
 <dt>Igång sedan</dt><dd>{start}</dd></dl>
 <form method="post" action="/kontrollera" style="margin-top:14px">
-<button>Kontrollera nu</button></form></div>
+<button>Kontrollera nu</button></form>
+<form method="post" action="/testnotis" style="margin-top:8px">
+<button style="background:transparent;color:var(--text)">Skicka testnotis</button></form></div>
 <div class="kort"><strong>Senaste vy</strong> – <a href="/bild/senaste.png">skärmdump</a> · <a href="/senaste.html">HTML</a>
 <a href="/bild/senaste.png"><img src="/bild/senaste.png" alt="" style="display:block;width:100%;margin-top:10px;border:1px solid var(--kant);border-radius:6px"></a></div>
 <div class="kort"><strong>Skärmdumpar</strong><ul>{bilder}</ul></div>
@@ -539,6 +553,10 @@ class Webb(BaseHTTPRequestHandler):
             return
         if self.path == "/kontrollera":
             KONTROLLERA_NU.set()
+        elif self.path == "/testnotis":
+            ok = notis("Testnotis från K2A-bevakaren – notiser fungerar.", "default", "bell")
+            if not ok:
+                logg("Testnotis skickades inte – är NTFY_URL ifylld?")
         self.send_response(303)
         self.send_header("Location", "/")
         self.end_headers()
@@ -590,6 +608,27 @@ def starta_webb() -> None:
     logg(f"Webbgränssnitt på port {WEBB_PORT}")
 
 
+def skicka_statusnotis(status: str, forra, felorsak: str) -> None:
+    """Notis när statusen ändras."""
+    if status == "klar":
+        notis("Uppsägningen är avbruten! Knappen 'Avbryt uppsägning' är borta.", "high", "white_check_mark")
+    elif status == "hittad-torr":
+        notis("TORRKÖRNING: 'Avbryt uppsägning' finns – klickade inte.", "high", "warning")
+    elif status == "saknar-sag-upp":
+        notis("Hittar inte knappen 'Säg upp avtal' på avtalssidan. Kolla statussidan.", "high", "warning")
+    elif status == "text-men-ingen-knapp":
+        notis("En uppsägning pågår men knappen 'Avbryt uppsägning' hittades inte!", "urgent", "rotating_light")
+    elif status == "oklart":
+        notis("Tryckte på 'Avbryt uppsägning' men knappen finns kvar. Kolla statussidan!", "urgent", "rotating_light")
+    elif status == "fel":
+        if re.search(r"inlogg|lösenord|användarnamn|signin", felorsak, re.I):
+            notis(f"Kunde inte logga in på K2A: {felorsak}", "high", "lock")
+        else:
+            notis(f"Bevakaren får fel: {felorsak}", "high", "x")
+    elif status == "ingen-knapp" and forra in ("fel", "saknar-sag-upp", "text-men-ingen-knapp", "oklart"):
+        notis("Bevakaren fungerar igen.", "low", "ok")
+
+
 def kontrollera_med_omstart(sida) -> str:
     """Kör kontrollen; vid fel börjar den om från avtalslistan upp till FORSOK_VID_FEL gånger."""
     for forsok in range(1, FORSOK_VID_FEL + 1):
@@ -626,31 +665,21 @@ def main() -> int:
         sida.on("dialog", lambda d: (logg(f"Webbläsardialog: {d.message!r} – accepterar"), d.accept()))
 
         senaste = None
-        fel_i_rad = 0
         while True:
+            felorsak = ""
             try:
                 status = kontrollera_med_omstart(sida)
-                fel_i_rad = 0
             except Exception as e:
                 status = "fel"
-                fel_i_rad += 1
+                felorsak = str(e)
                 logg(f"Fel: {e}")
                 skarmdump(sida, "fel")
-                if fel_i_rad == 3:
-                    notis(f"Bevakaren har fått fel 3 gånger i rad: {e}")
 
             LAGE.update(status=status, senast=datetime.now(), antal=LAGE["antal"] + 1,
                         nasta=datetime.now() + timedelta(seconds=INTERVALL))
             logg(f"Status: {status}")
             if status != senaste:
-                if status == "hittad-torr":
-                    notis("TORRKÖRNING: knappen 'Avbryt uppsägning' finns – klickade inte.")
-                elif status == "klar":
-                    notis("Uppsägningen är avbruten – knappen är borta.")
-                elif status == "text-men-ingen-knapp":
-                    notis("Sidan säger att en uppsägning pågår men knappen hittades inte. Kolla skärmdumparna!")
-                elif status == "oklart":
-                    notis("Tryckte på 'Avbryt uppsägning' men knappen finns kvar. Kolla skärmdumparna!")
+                skicka_statusnotis(status, senaste, felorsak)
             senaste = status
 
             if a.en_gang:
