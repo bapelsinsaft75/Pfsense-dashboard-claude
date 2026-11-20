@@ -1,0 +1,236 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fyra optimerade dashboards</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: fyra förslag på en optimerad översiktssida – se direkt om något är fel eller var flaskhalsen sitter. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--ok:#3ddc84;--err:#ff6b6b;--lan:#2fd4c0;--in:#b46cff;
+  --track:#0b131c;--sel:#1a2c40;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding:22px 16px 40px;display:grid;gap:34px}
+.opt>header{display:grid;gap:3px;margin-bottom:10px}
+.opt>header h2{margin:0;font-family:var(--cond);font-size:24px;letter-spacing:.06em;text-transform:uppercase}
+.opt>header h2 span{color:var(--accent)}
+.opt>header p{margin:0;color:var(--muted);max-width:110ch}
+.opt>header p b{color:var(--fg);font-weight:500}
+.screen{border:1px solid #2a3d52;background:var(--bg);padding:14px;display:grid;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);padding:12px 14px;display:grid;gap:8px;min-width:0}
+.h3{font-family:var(--cond);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.h3 small{font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--muted);font-size:10.5px;font-weight:400}
+.big{font-family:var(--cond);font-size:30px;font-weight:600;line-height:1.05}
+.big small{font-size:13px;color:var(--muted);margin-left:3px;font-weight:500}
+.m{color:var(--muted);font-size:11px}
+.ok{color:var(--ok)}.warn{color:var(--accent)}.err{color:var(--err)}
+.d{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--ok);box-shadow:0 0 6px var(--ok);flex:none}
+.d.w{background:var(--accent);box-shadow:0 0 6px var(--accent)}.d.e{background:var(--err);box-shadow:0 0 6px var(--err)}
+.meter{height:6px;background:var(--track);position:relative}.meter i{display:block;height:100%;background:#5b8bb5}
+.meter i.w{background:var(--accent)}.meter i.e{background:var(--err)}
+.meter b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--muted)}
+.pro{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;font-size:11.5px;margin-top:10px}
+@media (max-width:900px){.pro{grid-template-columns:1fr}}
+.pro div{border-left:2px solid var(--ok);padding-left:8px;color:var(--muted)}
+.pro div.con{border-color:var(--err)}.pro div.src{border-color:var(--up)}
+.pro b{color:var(--fg);font-weight:500;display:block}
+svg text{font-family:var(--mono)}
+/* A */
+.verdict{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid rgba(255,181,71,.5);background:linear-gradient(90deg,rgba(255,181,71,.10),transparent)}
+.verdict .ic{font-size:26px}
+.verdict b{font-family:var(--cond);font-size:22px;letter-spacing:.04em}
+.verdict .m{font-size:11.5px}
+.probs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.prob{border:1px solid rgba(255,181,71,.45);background:var(--card);padding:12px 14px;display:grid;gap:6px}
+.prob.e{border-color:rgba(255,107,107,.55)}
+.prob .t{display:flex;gap:8px;align-items:center;font-weight:500}
+.prob .why{color:var(--muted);font-size:11px}
+.prob .act{display:flex;gap:6px}
+.btn{font-family:var(--cond);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border:1px solid #2a3d52;background:var(--sel);color:var(--fg)}
+.tiles{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+@media (max-width:1000px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tile{background:var(--card);border:1px solid var(--line);padding:8px 10px;display:grid;gap:3px}
+.tile .l{display:flex;gap:6px;align-items:center;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-family:var(--cond);font-size:20px;font-weight:600;line-height:1.1}
+.tile .v small{font-size:11px;color:var(--muted);margin-left:2px}
+.tile.w{border-color:rgba(255,181,71,.5)}.tile.e{border-color:rgba(255,107,107,.55)}
+/* B */
+.gs{width:100%;border-collapse:collapse}
+.gs th{font-weight:400;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:6px 8px;text-align:left;border-bottom:1px solid var(--line)}
+.gs td{padding:7px 8px;border-bottom:1px solid #131e2a;vertical-align:middle}
+.gs td.lay{white-space:nowrap}
+.gs td.lay b{font-family:var(--cond);font-size:16px;letter-spacing:.05em;text-transform:uppercase;font-weight:600}
+.gs td.lay .m{display:block}
+.cell{display:grid;grid-template-columns:auto 64px;gap:2px 8px;align-items:center}
+.cell .v{font-weight:500}
+.cell .v small{color:var(--muted);font-weight:400}
+.cell .b{grid-column:1/-1;font-size:10px;color:var(--muted)}
+.cell svg{width:64px;height:18px}
+.cell.w{background:rgba(255,181,71,.07);outline:1px solid rgba(255,181,71,.35);padding:3px 5px}
+.cell.e{background:rgba(255,107,107,.08);outline:1px solid rgba(255,107,107,.45);padding:3px 5px}
+.flow{color:#2a3d52;font-size:16px;text-align:center}
+/* C */
+.cgrid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:12px}
+@media (max-width:1000px){.cgrid{grid-template-columns:1fr}}
+.rank{display:grid;gap:8px}
+.rk{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 8px;align-items:center}
+.rk .n{font-family:var(--cond);font-size:18px;color:var(--muted)}
+.rk .meter{grid-column:2/-1}
+.rk .m{grid-column:2/-1}
+/* D */
+.dgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px}
+@media (max-width:1000px){.dgrid{grid-template-columns:1fr}}
+.score{display:flex;gap:16px;align-items:center}
+.score svg{width:110px;height:110px;flex:none}
+.qrow{display:grid;grid-template-columns:110px minmax(0,1fr) 90px;gap:8px;align-items:center;font-size:11.5px}
+.qrow .v{text-align:right}
+.who{display:grid;gap:6px}
+.wh{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}
+.wh .meter{grid-column:1/-1}
+.wifi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ap{border:1px solid var(--line);background:var(--bg);padding:8px 10px;display:grid;gap:4px;font-size:11px}
+.ap b{font-weight:500;font-size:12px}
+.ap.w{border-color:rgba(255,181,71,.5)}
+</style>
+<div class="wrap">
+
+<!-- ═════════ A ═════════ -->
+<section class="opt">
+<header><h2><span>A</span> · Bara det som är fel</h2>
+<p>Från NOC-praxis: <b>visa problem, inte status</b>, max ~10 rutor. Överst en enda mening som svarar på ”är allt OK?”. Problem blir stora kort med orsak och åtgärd; allt som fungerar krymper till små gröna rutor. Är allt grönt syns bara en grön rad.</p></header>
+<div class="screen">
+  <div class="verdict"><span class="ic">⚠</span><div><b>2 saker behöver uppmärksamhet</b><div class="m">Allt annat fungerar · kontrollerat 22:14:08 · nästa om 5 s</div></div></div>
+  <div class="probs">
+    <div class="prob e"><span class="t"><i class="d e"></i>Internet: hög fördröjning under last</span>
+      <span class="big">184<small>ms</small> <small>(normalt 12 ms)</small></span>
+      <div class="meter"><i class="e" style="width:92%"></i><b style="left:30%"></b></div>
+      <span class="why">Uppladdningen är full (19,6 av 20 Mbit/s) – <b style="color:var(--fg);font-weight:500">Tower</b> laddar upp backup till molnet. Det gör Teams/spel sega för alla.</span>
+      <span class="act"><span class="btn">Visa Tower</span><span class="btn">Visa trafiken</span></span></div>
+    <div class="prob"><span class="t"><i class="d w"></i>Wi-Fi: AP Vardagsrum är trång</span>
+      <span class="big">71<small>%</small> <small>kanalbeläggning 5 GHz</small></span>
+      <div class="meter"><i class="w" style="width:71%"></i><b style="left:50%"></b></div>
+      <span class="why">14 klienter, varav 3 med svag signal (under −72 dBm). Över ~50 % ger fördröjning för alla på AP:n.</span>
+      <span class="act"><span class="btn">Visa klienter</span></span></div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><span class="l"><i class="d"></i>WAN ned</span><span class="v">212<small>/1000</small></span><span class="m">21 % av linjen</span></div>
+    <div class="tile e"><span class="l"><i class="d e"></i>WAN upp</span><span class="v">19,6<small>/20</small></span><span class="m">98 % – full</span></div>
+    <div class="tile"><span class="l"><i class="d"></i>VPN</span><span class="v">Uppe</span><span class="m">24 ms</span></div>
+    <div class="tile"><span class="l"><i class="d"></i>pfSense</span><span class="v">14<small>% CPU</small></span><span class="m">782 tillstånd</span></div>
+    <div class="tile"><span class="l"><i class="d"></i>DNS</span><span class="v">3<small>ms</small></span><span class="m">Pi-hole · 17 % block</span></div>
+    <div class="tile w"><span class="l"><i class="d w"></i>Wi-Fi</span><span class="v">71<small>%</small></span><span class="m">trängst AP</span></div>
+    <div class="tile"><span class="l"><i class="d"></i>Servrar</span><span class="v">2<small>/2</small></span><span class="m">alla OK</span></div>
+    <div class="tile"><span class="l"><i class="d"></i>Säkerhet</span><span class="v">0</span><span class="m">nya larm 1 h</span></div>
+  </div>
+</div>
+<div class="pro"><div><b>Fördel</b>Svaret på ”är något fel?” på en sekund. Orsaken står i klartext, inte bara en röd siffra.</div><div class="con"><b>Nackdel</b>Mindre att ”titta på” när allt är grönt – detaljerna ligger ett klick bort.</div><div class="src"><b>Inspirerat av</b>NOC-dashboards (visa problem, max 10 rutor), Grafanas ”jämfört med vad?” – varje värde har ett normalvärde/gräns.</div></div>
+</section>
+
+<!-- ═════════ B ═════════ -->
+<section class="opt">
+<header><h2><span>B</span> · Signaler per lager</h2>
+<p>Googles <b>fyra gyllene signaler</b> – trafik, fördröjning, fel, mättnad – en rad per lager i den ordning trafiken går: Internet → brandvägg → DNS → nät/Wi-Fi → servrar. <b>Flaskhalsen är cellen som lyser</b>; raden visar var i kedjan den sitter.</p></header>
+<div class="screen"><div class="card" style="padding:6px 8px">
+<table class="gs">
+<tr><th>Lager</th><th>Trafik</th><th>Fördröjning</th><th>Fel</th><th>Mättnad</th></tr>
+<tr><td class="lay"><b>Internet</b><span class="m">linje 1000/20 Mbit/s</span></td>
+ <td><div class="cell"><span class="v">212 <small>↓</small> 19,6 <small>↑ Mbit/s</small></span><svg viewBox="0 0 64 18"><path d="M0 14 L10 12 L20 13 L30 9 L40 10 L50 5 L64 4" fill="none" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">normalt 180 / 6</span></div></td>
+ <td><div class="cell e"><span class="v err">184 <small>ms</small></span><svg viewBox="0 0 64 18"><path d="M0 15 L20 15 L30 14 L40 8 L50 3 L64 2" fill="none" stroke="#ff6b6b" stroke-width="1.5"/></svg><span class="b">vilande 12 ms · jitter 38 ms</span></div></td>
+ <td><div class="cell"><span class="v">0,1 <small>% förlust</small></span><svg viewBox="0 0 64 18"><path d="M0 16 L64 16" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">gräns 1 %</span></div></td>
+ <td><div class="cell e"><span class="v err">98 <small>% upp</small></span><svg viewBox="0 0 64 18"><path d="M0 14 L20 13 L30 8 L40 3 L64 2" fill="none" stroke="#ff6b6b" stroke-width="1.5"/></svg><span class="b">ned 21 %</span></div></td></tr>
+<tr><td class="lay"><b>Brandvägg</b><span class="m">pfSense</span></td>
+ <td><div class="cell"><span class="v">782 <small>tillstånd</small></span><svg viewBox="0 0 64 18"><path d="M0 10 L64 9" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">av 400 000</span></div></td>
+ <td><div class="cell"><span class="v">0,4 <small>ms till LAN</small></span><svg viewBox="0 0 64 18"><path d="M0 15 L64 15" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">gateway-ping</span></div></td>
+ <td><div class="cell"><span class="v">0 <small>gränssnittsfel</small></span><svg viewBox="0 0 64 18"><path d="M0 16 L64 16" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">31 blockerade/min</span></div></td>
+ <td><div class="cell"><span class="v">14 <small>% CPU · 38 % RAM</small></span><svg viewBox="0 0 64 18"><path d="M0 13 L20 12 L40 13 L64 12" stroke="#5aa9ff" stroke-width="1.5" fill="none"/></svg><span class="b">topp 41 % i dag</span></div></td></tr>
+<tr><td class="lay"><b>DNS</b><span class="m">Pi-hole</span></td>
+ <td><div class="cell"><span class="v">34 <small>frågor/s</small></span><svg viewBox="0 0 64 18"><path d="M0 12 L20 10 L40 11 L64 9" stroke="#5aa9ff" stroke-width="1.5" fill="none"/></svg><span class="b">17 % blockerade</span></div></td>
+ <td><div class="cell"><span class="v">3 <small>ms</small></span><svg viewBox="0 0 64 18"><path d="M0 15 L64 15" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">uppströms 14 ms</span></div></td>
+ <td><div class="cell"><span class="v">0 <small>SERVFAIL</small></span><svg viewBox="0 0 64 18"><path d="M0 16 L64 16" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">&nbsp;</span></div></td>
+ <td><div class="cell"><span class="v">61 <small>% från cache</small></span><svg viewBox="0 0 64 18"><path d="M0 10 L64 9" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">&nbsp;</span></div></td></tr>
+<tr><td class="lay"><b>Nät och Wi-Fi</b><span class="m">UniFi · 3 switchar · 1 AP</span></td>
+ <td><div class="cell"><span class="v">28 <small>klienter</small></span><svg viewBox="0 0 64 18"><path d="M0 11 L64 10" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">14 trådlösa</span></div></td>
+ <td><div class="cell w"><span class="v warn">3 <small>svag signal</small></span><svg viewBox="0 0 64 18"><path d="M0 14 L30 12 L64 8" stroke="#ffb547" stroke-width="1.5" fill="none"/></svg><span class="b">&lt; −72 dBm</span></div></td>
+ <td><div class="cell"><span class="v">0 <small>portfel</small></span><svg viewBox="0 0 64 18"><path d="M0 16 L64 16" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">1 port på 100 Mbit</span></div></td>
+ <td><div class="cell w"><span class="v warn">71 <small>% kanal</small></span><svg viewBox="0 0 64 18"><path d="M0 12 L30 10 L64 6" stroke="#ffb547" stroke-width="1.5" fill="none"/></svg><span class="b">upplänk 34 %</span></div></td></tr>
+<tr><td class="lay"><b>Servrar</b><span class="m">LillaNasen · Tower · Plex</span></td>
+ <td><div class="cell"><span class="v">4 <small>strömmar</small></span><svg viewBox="0 0 64 18"><path d="M0 12 L64 10" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">39 Mbit/s</span></div></td>
+ <td><div class="cell"><span class="v">alla svarar</span><svg viewBox="0 0 64 18"><path d="M0 15 L64 15" stroke="#3ddc84" stroke-width="1.5"/></svg><span class="b">&nbsp;</span></div></td>
+ <td><div class="cell w"><span class="v warn">1 <small>docker stoppad</small></span><svg viewBox="0 0 64 18"><path d="M0 16 L50 16 L64 8" stroke="#ffb547" stroke-width="1.5" fill="none"/></svg><span class="b">qbittorrent</span></div></td>
+ <td><div class="cell"><span class="v">65 <small>% lagring</small></span><svg viewBox="0 0 64 18"><path d="M0 10 L64 9" stroke="#5aa9ff" stroke-width="1.5"/></svg><span class="b">varmast 52 °C</span></div></td></tr>
+</table></div></div>
+<div class="pro"><div><b>Fördel</b>Visar <i>var</i> i kedjan problemet sitter – Internet, brandvägg, DNS, Wi-Fi eller server – och vilken signal.</div><div class="con"><b>Nackdel</b>Tätt med siffror; kräver att man vänjer sig vid tabellen.</div><div class="src"><b>Inspirerat av</b>Google SRE:s fyra gyllene signaler och Grafanas RED-mönster (en rad per tjänst, i flödesordning).</div></div>
+</section>
+
+<!-- ═════════ C ═════════ -->
+<section class="opt">
+<header><h2><span>C</span> · Nätverkskarta med flaskhalsar</h2>
+<p>En karta över ditt nät – Internet → pfSense → switchar → AP och servrar – där <b>varje länk färgas efter hur full den är</b> (grönt/gult/rött) och varje enhet efter hälsa. Bredvid: en topplista över de mest belastade länkarna just nu.</p></header>
+<div class="screen"><div class="cgrid">
+<div class="card"><span class="h3">Nätverket just nu <small>länkens färg = beläggning · tjocklek = trafik</small></span>
+<svg viewBox="0 0 760 330" style="width:100%;height:auto">
+ <defs><style>.nd{fill:#0b131c;stroke:#2a3d52;stroke-width:1.5}.nt{fill:#d4e0ec;font-size:12px}.ns{fill:#6d8195;font-size:10px}.lk{fill:#d4e0ec;font-size:10.5px}</style></defs>
+ <path d="M380 46 L380 92" stroke="#ff6b6b" stroke-width="7"/><text class="lk" x="390" y="74">↑ 98 % · 19,6/20</text>
+ <path d="M380 128 L380 170" stroke="#3ddc84" stroke-width="5"/><text class="lk" x="390" y="154">23 % av 1 G</text>
+ <path d="M380 206 L150 252" stroke="#ffb547" stroke-width="6"/><text class="lk" x="190" y="220">74 % · 740 M</text>
+ <path d="M380 206 L380 252" stroke="#3ddc84" stroke-width="3"/><text class="lk" x="388" y="236">8 %</text>
+ <path d="M380 206 L610 252" stroke="#3ddc84" stroke-width="4"/><text class="lk" x="520" y="220">31 %</text>
+ <path d="M150 288 L80 310" stroke="#3ddc84" stroke-width="3"/><path d="M150 288 L220 310" stroke="#ffb547" stroke-width="3"/>
+ <path d="M610 288 L560 310" stroke="#ffb547" stroke-width="3"/><path d="M610 288 L670 310" stroke="#3ddc84" stroke-width="2"/>
+ <rect class="nd" x="300" y="14" width="160" height="32" style="stroke:#ff6b6b"/><text class="nt" x="380" y="35" text-anchor="middle">Internet · 184 ms</text>
+ <rect class="nd" x="320" y="92" width="120" height="36"/><text class="nt" x="380" y="110" text-anchor="middle">pfSense</text><text class="ns" x="380" y="122" text-anchor="middle">CPU 14 %</text>
+ <rect class="nd" x="310" y="170" width="140" height="36"/><text class="nt" x="380" y="188" text-anchor="middle">Switch Kontor</text><text class="ns" x="380" y="200" text-anchor="middle">16 portar</text>
+ <rect class="nd" x="80" y="252" width="140" height="36"/><text class="nt" x="150" y="270" text-anchor="middle">Switch Förråd</text><text class="ns" x="150" y="282" text-anchor="middle">Tower · LillaNasen</text>
+ <rect class="nd" x="310" y="252" width="140" height="36"/><text class="nt" x="380" y="270" text-anchor="middle">Switch Vardagsrum</text><text class="ns" x="380" y="282" text-anchor="middle">TV · PS5</text>
+ <rect class="nd" x="540" y="252" width="140" height="36" style="stroke:#ffb547"/><text class="nt" x="610" y="270" text-anchor="middle">AP Vardagsrum</text><text class="ns" x="610" y="282" text-anchor="middle">14 kl · kanal 71 %</text>
+ <text class="ns" x="80" y="324" text-anchor="middle">LillaNasen</text><text class="ns" x="220" y="324" text-anchor="middle">Tower ↑ backup</text>
+ <text class="ns" x="560" y="324" text-anchor="middle">3 svag signal</text><text class="ns" x="670" y="324" text-anchor="middle">11 OK</text>
+</svg>
+<span class="m"><i class="d" style="width:7px;height:7px"></i> under 50 % &nbsp; <i class="d w" style="width:7px;height:7px"></i> 50–85 % &nbsp; <i class="d e" style="width:7px;height:7px"></i> över 85 % · håll musen över en länk för graf</span>
+</div>
+<div class="card"><span class="h3">Mest belastat just nu</span>
+<div class="rank">
+ <div class="rk"><span class="n">1</span><b class="err" style="font-weight:500">WAN uppladdning</b><span class="err">98 %</span><div class="meter"><i class="e" style="width:98%"></i></div><span class="m">Tower 17 Mbit/s → Backblaze · sedan 21:40</span></div>
+ <div class="rk"><span class="n">2</span><b class="warn" style="font-weight:500">Kontor ↔ Förråd</b><span class="warn">74 %</span><div class="meter"><i class="w" style="width:74%"></i></div><span class="m">LillaNasen → Tower, filkopiering</span></div>
+ <div class="rk"><span class="n">3</span><b class="warn" style="font-weight:500">Wi-Fi 5 GHz Vardagsrum</b><span class="warn">71 %</span><div class="meter"><i class="w" style="width:71%"></i></div><span class="m">14 klienter, 3 svaga</span></div>
+ <div class="rk"><span class="n">4</span><b style="font-weight:500">Kontor ↔ AP</b><span>31 %</span><div class="meter"><i style="width:31%"></i></div><span class="m">&nbsp;</span></div>
+ <div class="rk"><span class="n">5</span><b style="font-weight:500">WAN nedladdning</b><span>21 %</span><div class="meter"><i style="width:21%"></i></div><span class="m">PS5 85 Mbit/s</span></div>
+</div></div>
+</div></div>
+<div class="pro"><div><b>Fördel</b>Flaskhalsen syns direkt som en röd/gul länk – även interna (switch ↔ switch), inte bara internet.</div><div class="con"><b>Nackdel</b>Kräver att UniFi rapporterar portarnas hastighet och trafik; kartan byggs automatiskt men kan behöva justeras.</div><div class="src"><b>Inspirerat av</b>Network Weathermap (Cacti/Grafana), Observium Netmap, Netdatas topologi och Junipers värmekarta.</div></div>
+</section>
+
+<!-- ═════════ D ═════════ -->
+<section class="opt">
+<header><h2><span>D</span> · Upplevd kvalitet</h2>
+<p>Utgår från det man märker: <b>”känns internet segt?”</b>. Ett kvalitetsbetyg byggt på fördröjning i vila och <b>under last</b> (bufferbloat), jitter och förlust – kopplat till vem som använder bandbredden just då, plus Wi-Fi-upplevelsen per accesspunkt.</p></header>
+<div class="screen"><div class="dgrid">
+<div class="card"><span class="h3">Internetkvalitet <small>mot 1.1.1.1 och 8.8.8.8 · var 5:e s</small></span>
+ <div class="score"><svg viewBox="0 0 110 110"><circle cx="55" cy="55" r="46" fill="none" stroke="#0b131c" stroke-width="10"/><circle cx="55" cy="55" r="46" fill="none" stroke="#ffb547" stroke-width="10" stroke-dasharray="289" stroke-dashoffset="130" transform="rotate(-90 55 55)" stroke-linecap="round"/><text x="55" y="58" text-anchor="middle" fill="#ffb547" style="font:600 30px 'Barlow Condensed'">C</text><text x="55" y="76" text-anchor="middle" fill="#6d8195" style="font-size:10px">godkänt</text></svg>
+ <div style="display:grid;gap:7px;flex:1">
+  <div class="qrow"><span class="m">I vila</span><div class="meter"><i style="width:8%"></i></div><span class="v">12 ms</span></div>
+  <div class="qrow"><span class="m">Under last</span><div class="meter"><i class="e" style="width:92%"></i></div><span class="v err">184 ms</span></div>
+  <div class="qrow"><span class="m">Jitter</span><div class="meter"><i class="w" style="width:45%"></i></div><span class="v warn">38 ms</span></div>
+  <div class="qrow"><span class="m">Förlust</span><div class="meter"><i style="width:2%"></i></div><span class="v">0,1 %</span></div>
+ </div></div>
+ <svg viewBox="0 0 600 90" style="width:100%;height:auto"><path d="M0 75 L60 74 L120 73 L180 75 L240 72 L300 70 L360 40 L400 18 L440 22 L480 15 L540 20 L600 18" fill="none" stroke="#ffb547" stroke-width="2"/><path d="M0 85 L340 85 L360 60 L600 58" fill="rgba(90,169,255,.15)" stroke="#5aa9ff" stroke-width="1"/><text x="2" y="12" fill="#6d8195" style="font-size:10px">fördröjning (gul) och uppladdning (blå) senaste timmen</text><text x="360" y="12" fill="#ff6b6b" style="font-size:10px">↑ uppladdningen blev full 21:40</text></svg>
+ <span class="m">Tips: begränsa uppladdningen i pfSense (fq_codel/limiter) till ~18 Mbit/s så hålls fördröjningen nere även när den är full.</span>
+</div>
+<div style="display:grid;gap:12px;align-content:start">
+<div class="card"><span class="h3">Vem tar bandbredden just nu</span>
+ <div class="who">
+  <div class="wh"><span>Tower <span class="m">· backup → Backblaze</span></span><span class="err">↑ 17,1 Mbit/s</span><div class="meter"><i class="e" style="width:86%"></i></div></div>
+  <div class="wh"><span>PS5 <span class="m">· nedladdning</span></span><span>↓ 85 Mbit/s</span><div class="meter"><i style="width:9%"></i></div></div>
+  <div class="wh"><span>Peters iPhone <span class="m">· FaceTime</span></span><span>↑ 1,2 Mbit/s</span><div class="meter"><i style="width:6%"></i></div></div>
+ </div></div>
+<div class="card"><span class="h3">Wi-Fi-upplevelse <small>per accesspunkt</small></span>
+ <div class="wifi">
+  <div class="ap w"><b>Vardagsrum 5 GHz</b><span class="warn">71 % kanal · 3 svaga</span><span class="m">upplevelse 78 %</span></div>
+  <div class="ap"><b>Vardagsrum 2,4 GHz</b><span class="ok">22 % kanal</span><span class="m">upplevelse 96 %</span></div>
+  <div class="ap"><b>Sämst klient</b><span class="warn">Roborock −79 dBm</span><span class="m">1 Mbit/s länk</span></div>
+ </div></div>
+</div>
+</div></div>
+<div class="pro"><div><b>Fördel</b>Svarar på frågan man faktiskt har – ”varför laggar det?” – och pekar ut boven.</div><div class="con"><b>Nackdel</b>Säger mindre om servrar och säkerhet; de får ligga längre ner.</div><div class="src"><b>Inspirerat av</b>UniFis Wi-Fi-upplevelse och Internet Insights, Firewalla (live-trafik per enhet), SmokePing/bufferbloat-tester (Waveform, Cloudflare).</div></div>
+</section>
+
+</div>
