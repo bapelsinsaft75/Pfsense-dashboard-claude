@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sammanfattning efter tysta tider</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Skiss: sammanfattningen efter tysta tider som en egen larmtyp, och hur den formuleras. */
+:root{--bg:#0a1017;--card:#0f1822;--fg:#d4e0ec;--muted:#6d8195;--line:#1c2937;--accent:#ffb547;--up:#5aa9ff;--ok:#3ddc84;--err:#ff6b6b;--vio:#8a9cff;
+  --track:#0b131c;--sel:#1a2c40;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--mono);font-size:12px;line-height:1.55}
+.wrap{max-width:1400px;margin:0 auto;padding:22px 16px 40px;display:grid;gap:22px}
+.tag{font-family:var(--cond);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.tag em{font-style:normal;color:var(--muted);letter-spacing:.02em;text-transform:none;font-family:var(--mono);font-size:11.5px;margin-left:8px}
+.card{background:var(--card);border:1px solid var(--line);padding:14px;display:grid;gap:10px;min-width:0}
+table{width:100%;border-collapse:collapse}
+th{font-weight:400;color:var(--muted);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid var(--line);text-align:center}
+th:first-child,td:first-child{text-align:left}
+th.ml{color:var(--up);text-transform:none;letter-spacing:0}
+td{padding:6px;border-bottom:1px solid #131e2a;text-align:center}
+tr.grp td{color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding-top:12px;border:0}
+tr.new td{background:rgba(255,181,71,.07)}
+.x{display:inline-block;width:14px;height:14px;border:1px solid #2a3d52;background:var(--bg);vertical-align:-2px;position:relative}
+.x.on{background:var(--accent);border-color:var(--accent)}
+.x.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #1a1205;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.muted{color:var(--muted)}
+.newb{font-size:9.5px;padding:0 5px;background:var(--accent);color:#1a1205;margin-left:6px}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+@media (max-width:1100px){.three{grid-template-columns:1fr}}
+.mail{background:#f6f7f9;color:#1d2430;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13.5px;line-height:1.5;border:1px solid #c9d1db}
+.mail .hd{padding:10px 14px;border-bottom:1px solid #dde3ea;font-size:12px;color:#5a6676;display:grid;gap:2px}
+.mail .hd b{color:#1d2430}
+.mail .bd{padding:14px;display:grid;gap:10px}
+.mail h4{margin:0;font-size:15px}
+.mail ul{margin:0;padding-left:0;list-style:none;display:grid;gap:6px}
+.mail li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px}
+.mail li .t{color:#5a6676;font-variant-numeric:tabular-nums}
+.mail li small{display:block;color:#3f7d4f}
+.mail .ok{background:#e7f5ec;border:1px solid #b9e2c6;padding:8px 10px;color:#1f5b33}
+.mail .note{color:#5a6676;font-size:12px;border-top:1px solid #dde3ea;padding-top:8px}
+.slack{background:#1a1d21;color:#d1d2d3;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13.5px;line-height:1.45;border:1px solid #2c2f33;padding:12px}
+.slack .who{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.slack .av{width:28px;height:28px;border-radius:4px;background:#2a3d52;display:grid;place-items:center;color:#ffb547;font-weight:700}
+.slack .who b{color:#fff}.slack .who span{color:#9a9b9d;font-size:12px}
+.slack .att{border-left:4px solid #3ddc84;padding:4px 10px;display:grid;gap:6px}
+.slack .att b.t{color:#fff}
+.slack ul{margin:0;padding-left:18px}
+.slack .ft{color:#9a9b9d;font-size:12px}
+.banner{border:1px solid rgba(138,156,255,.55);background:linear-gradient(90deg,rgba(138,156,255,.10),transparent);padding:10px 12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start}
+.banner .lvl{font-family:var(--cond);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px;padding:2px 8px;background:var(--vio);color:#0b1020}
+.banner b{font-weight:500}
+.banner .m{color:var(--muted);font-size:11.5px}
+.banner ul{margin:4px 0 0;padding-left:16px;color:var(--fg);font-size:11.5px}
+.btn{font-family:var(--cond);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 9px;border:1px solid #2a3d52;background:var(--sel);color:var(--fg)}
+.note2{color:var(--muted);font-size:11.5px;border-left:2px solid var(--accent);padding-left:10px;display:grid;gap:4px}
+.note2 b{color:var(--fg);font-weight:500}
+h5{margin:0 0 6px;font-family:var(--cond);font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+</style>
+<div class="wrap">
+
+<div class="tag">1 · Inställningar → Larm <em>sammanfattningen blir en egen rad i tabellen – kryssrutan under Aviseringar tas bort</em></div>
+<div class="card">
+<table>
+<tr><th>Larm</th><th>Banner</th><th>Slack</th><th class="ml">peter</th><th class="ml">ida</th></tr>
+<tr class="grp"><td colspan="5">Servrar</td></tr>
+<tr><td>Övervakad container har stannat</td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td></tr>
+<tr class="grp"><td colspan="5">Sammanfattningar</td></tr>
+<tr class="new"><td>Sammanfattning efter tysta tider<span class="newb">ny</span> <span class="muted">· skickas när den tysta tiden är slut, bara om något hänt</span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x on"></span></td><td><span class="x"></span></td></tr>
+</table>
+<span class="muted" style="font-size:11px">Varje mottagare får bara med de larm den själv skulle ha fått – Ida ser t.ex. bara sina VM-larm i sin sammanfattning.</span>
+</div>
+
+<div class="tag">2 · Hur sammanfattningen formuleras <em>exempel: tysta tider 22:00–07:00, saker hände mellan 03:12 och 05:48</em></div>
+<div class="three">
+<div><h5>E-post</h5>
+<div class="mail">
+ <div class="hd"><span>Från: <b>Nätverket hemma</b></span><span>Ämne: <b>Sammanfattning av natten: 4 händelser mellan 03:12 och 05:48</b></span><span>Lördag 21 november 07:00</span></div>
+ <div class="bd">
+  <h4>Mellan 03:12 och 05:48 hände följande:</h4>
+  <ul>
+   <li><span class="t">03:12</span><span><b>Tower svarade inte</b><small>✓ uppe igen 03:19 – nere i 7 min</small></span></li>
+   <li><span class="t">03:40</span><span><b>Containern plex på Tower stannade</b><small>✓ igång igen 03:44 – nere i 4 min</small></span></li>
+   <li><span class="t">04:05</span><span><b>VPN-anslutningen Littorin VPN var nere</b><small>✓ uppe igen 04:06 – nere i 1 min</small></span></li>
+   <li><span class="t">05:48</span><span><b>Suricata: 3 larm</b> – ET SCAN Suspicious inbound to mySQL port 3306<small style="color:#5a6676">händelse, ingen åtgärd behövs</small></span></li>
+  </ul>
+  <div class="ok">✓ Samtliga enheter, servrar, containrar och virtuella maskiner är nu uppe.</div>
+  <div class="note">Larmen skickades inte när de hände eftersom tysta tider var på (22:00–07:00).<br>Dashboard: http://192.168.2.30:8080</div>
+ </div>
+</div></div>
+
+<div><h5>Slack</h5>
+<div class="slack">
+ <div class="who"><span class="av">N</span><b>Nätverket hemma</b><span>07:00</span></div>
+ <div class="att">
+  <b class="t">Sammanfattning av natten: 4 händelser</b>
+  <span>Mellan 03:12 och 05:48 hände följande:</span>
+  <ul>
+   <li>03:12 Tower svarade inte – uppe igen 03:19 (7 min)</li>
+   <li>03:40 Containern plex på Tower stannade – igång igen 03:44 (4 min)</li>
+   <li>04:05 VPN Littorin VPN nere – uppe igen 04:06 (1 min)</li>
+   <li>05:48 Suricata: 3 larm (ET SCAN … port 3306)</li>
+  </ul>
+  <span>✅ Samtliga enheter, servrar, containrar och virtuella maskiner är nu uppe.</span>
+  <span class="ft">Larmen skickades inte när de hände eftersom tysta tider var på (22:00–07:00).</span>
+ </div>
+</div>
+<h5 style="margin-top:14px">Om något fortfarande är nere</h5>
+<div class="slack"><div class="att" style="border-color:#ff6b6b">
+ <span>⚠️ <b style="color:#fff">Fortfarande nere:</b> Containern immich på Tower (sedan 04:52).</span>
+ <span>Allt annat är uppe igen.</span>
+</div></div>
+</div>
+
+<div><h5>Banner i dashboarden</h5>
+<div class="banner">
+ <span class="lvl">Natten</span>
+ <div><b>Sammanfattning av natten: 4 händelser mellan 03:12 och 05:48</b>
+  <ul><li>03:12 Tower svarade inte – uppe 03:19</li><li>03:40 plex på Tower stannade – igång 03:44</li><li>04:05 VPN nere – uppe 04:06</li><li>05:48 Suricata: 3 larm</li></ul>
+  <div class="m" style="margin-top:4px">✓ Allt är uppe nu · skickades inte under tysta tider (22:00–07:00)</div></div>
+ <span class="btn">OK</span>
+</div>
+<div class="note2" style="margin-top:14px">
+ <span><b>Ingenting hände?</b> Då skickas ingen sammanfattning alls.</span>
+ <span><b>Samma sak flera gånger</b> (t.ex. VPN nere 5 gånger) slås ihop: ”VPN var nere 5 gånger, totalt 12 min”.</span>
+ <span><b>Händelser</b> som Suricata och ny enhet räknas ihop per typ.</span>
+ <span><b>Kritiska larm</b> som du valt att släppa igenom under tysta tider skickas som vanligt och tas inte med igen.</span>
+</div>
+</div>
+</div>
+</div>
