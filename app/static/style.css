@@ -863,3 +863,9 @@ h2:focus{outline:none}
 .partrow .check{margin:0}
 .partrow .btn.sm{padding:1px 8px}
 .partfoot{display:flex;justify-content:flex-end}
+
+/* sammanfattning efter tysta tider i bannern */
+.alert.digest{background:#151a2e;border-bottom-color:#2c3560;align-items:start}
+.alert.digest .lvl{background:#8a9cff;color:#0b1020}
+.alert.digest ul{margin:4px 0;padding-left:18px;font-size:12px}
+.ev.info.digest i{background:#8a9cff}

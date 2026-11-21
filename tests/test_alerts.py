@@ -279,8 +279,10 @@ def test_quiet_hours_and_digest(engine, monkeypatch):
     assert not engine.alerts.flush_quiet_digest()  # fortfarande tyst
     quiet["on"] = False
     assert engine.alerts.flush_quiet_digest()
-    assert FakeSMTP.sent[-1]["Subject"].endswith("Sammanfattning av tysta tiden: 1 larm")
-    assert "Gatewayen X är nere" in FakeSMTP.sent[-1].get_content()
+    assert "Sammanfattning: 1 händelse" in FakeSMTP.sent[-1]["Subject"]
+    body = FakeSMTP.sent[-1].get_content()
+    assert "Gatewayen X är nere – fortfarande nere" in body and "Fortfarande nere: Gatewayen X är nere" in body
+    assert "tysta tider var på (22:00–07:00)" in body
 
 
 def test_disabled_kind_and_watch(engine):
@@ -517,3 +519,34 @@ def test_profiles_saved_and_cleaned(engine):
         s.update({"profiles": [{"id": "a", "name": ""}]})
     with pytest.raises(ValueError):
         s.update({"profiles": [{"id": "a", "name": "A"}, {"id": "a", "name": "B"}]})
+
+
+def test_digest_text_and_banner(engine, monkeypatch):
+    from app.alerts import digest_text
+    t = 1_700_000_000
+    rows = [
+        {"key": "unraid:t", "kind": "unraid_down", "level": "critical", "title": "Tower svarar inte", "created": t, "resolved": t + 420, "source": "Tower"},
+        {"key": "ovpn:A", "kind": "vpn_down", "level": "critical", "title": "VPN nere", "created": t + 600, "resolved": t + 660, "source": None},
+        {"key": "ovpn:A", "kind": "vpn_down", "level": "critical", "title": "VPN nere", "created": t + 900, "resolved": t + 1200, "source": None},
+        {"key": "s1", "kind": "suricata", "level": "warning", "title": "ET SCAN x", "created": t + 1000, "resolved": None, "source": None},
+        {"key": "s2", "kind": "suricata", "level": "warning", "title": "ET SCAN y", "created": t + 1100, "resolved": None, "source": None},
+    ]
+    d = digest_text(rows, t + 2000, "22:00", "07:00")
+    assert d["head"].startswith("Mellan ") and d["head"].endswith("hände följande:")
+    assert any("Tower svarar inte – uppe igen" in x and "(7 min)" in x for x in d["lines"])
+    assert any("VPN nere – 2 gånger, totalt 6 min" in x for x in d["lines"])
+    assert any("Suricata-larm: 2 st" in x for x in d["lines"])
+    assert d["status"].startswith("✓ Samtliga enheter, servrar, containrar och virtuella maskiner är nu uppe")
+    # bannern, som egen larmtyp
+    s = engine.settings
+    s.update({"routes": {"quiet_digest": {"banner": True, "slack": False, "emails": []}}})
+    quiet = {"on": True}
+    monkeypatch.setattr(s, "quiet_now", lambda now=None: (quiet["on"], "07:00" if quiet["on"] else None))
+    engine.alerts.raise_("gw:Z", "critical", "gateway_down", "Gatewayen Z är nere", "nere")
+    engine.alerts.resolve("gw:Z", "uppe")
+    quiet["on"] = False
+    n = len(FakeSMTP.sent)
+    assert engine.alerts.flush_quiet_digest()
+    assert len(FakeSMTP.sent) == n  # bara banner valt
+    b = [a for a in engine.alerts.banner() if a["kind"] == "quiet_digest"]
+    assert b and "Gatewayen Z är nere – uppe igen" in b[0]["message"] and "Samtliga" in b[0]["message"]

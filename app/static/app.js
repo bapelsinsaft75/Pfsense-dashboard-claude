@@ -171,6 +171,15 @@ function renderAlerts(d) {
     const resolved = !!a.resolved;
     const isNew = !firstAlertRender && !seenAlerts.has(a.id);
     const meta = resolved ? `Löst ${ago(a.resolved)} · började ${ago(a.created)}` : `${ago(a.created)}${a.count > 1 ? ` · ${a.count} gånger` : ""}${a.emailed ? " · mejlat" : ""}`;
+    if (a.kind === "quiet_digest") {
+      const [first, ...rest] = (a.message || "").split("\n");
+      const lines = [first, ...rest].filter(Boolean);
+      const status = lines.filter((l) => /^(✓|⚠️|Fortfarande|Samtliga)/.test(l) || l.startsWith("Larmen skickades"));
+      const items = lines.filter((l) => !status.includes(l));
+      return `<div class="alert digest${isNew ? " new" : ""}" role="status"><span class="lvl">Sammanfattning</span>
+        <div class="txt"><b>${esc(a.title)}</b><ul>${items.map((l) => `<li>${esc(l)}</li>`).join("")}</ul><span>${status.map(esc).join(" · ")}</span></div>
+        <div class="acts"><button type="button" class="btn" data-ack="${a.id}">OK</button></div></div>`;
+    }
     return `<div class="alert ${resolved ? "resolved" : a.level}${isNew ? " new" : ""}" role="${a.level === "critical" && !resolved ? "alert" : "status"}">
       <span class="lvl">${resolved ? "Löst" : LVL[a.level] || a.level}</span>
       <div class="txt"><b>${esc(a.title)}</b><span>${esc(a.message || "")} · ${meta}</span></div>
@@ -179,7 +188,7 @@ function renderAlerts(d) {
   $("alerts").innerHTML = html;
   list.forEach((a) => seenAlerts.add(a.id));
   firstAlertRender = false;
-  const active = list.filter((a) => !a.resolved).length;
+  const active = list.filter((a) => !a.resolved && a.kind !== "quiet_digest").length;
   document.title = (active ? `(${active}) ` : "") + "pfSense Nätverkskarta";
 }
 
@@ -699,7 +708,7 @@ async function openSettings() {
     $("s-interval").value = st.confirm_interval; $("s-count").value = st.confirm_count; confirmHint();
     $("s-quiet").checked = !!st.quiet_enabled; setTime("s-qstart", st.quiet_start); setTime("s-qend", st.quiet_end);
     $("s-qdays").innerHTML = DAYS.map((d, i) => `<label class="day"><input type="checkbox" value="${i}" ${st.quiet_days.includes(i) ? "checked" : ""}><span>${d}</span></label>`).join("");
-    $("s-qcrit").checked = !!st.quiet_allow_critical; $("s-qdigest").checked = !!st.quiet_digest;
+    $("s-qcrit").checked = !!st.quiet_allow_critical;
 
     mailConfigured = j.email.enabled;
     serverList = [...(j.servers?.plex || []).map((n) => ({ name: n, type: "Plex" })), ...(j.servers?.unraid || []).map((n) => ({ name: n, type: "Unraid" })), ...(j.servers?.pihole || []).map((n) => ({ name: n, type: "Pi-hole" }))];
@@ -733,7 +742,7 @@ $("settings-form").addEventListener("submit", async (e) => {
     confirm_interval: +$("s-interval").value, confirm_count: +$("s-count").value, alert_kinds: rt.alert_kinds,
     quiet_enabled: $("s-quiet").checked, quiet_start: getTime("s-qstart"), quiet_end: getTime("s-qend"),
     quiet_days: [...$("s-qdays").querySelectorAll("input:checked")].map((c) => +c.value),
-    quiet_allow_critical: $("s-qcrit").checked, quiet_digest: $("s-qdigest").checked,
+    quiet_allow_critical: $("s-qcrit").checked,
     channels: rt.channels,
     recipients: rt.recipients,
     routes: rt.routes,

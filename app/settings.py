@@ -35,6 +35,7 @@ ALERT_KINDS = {
     "unraid_vm": ("Övervakad virtuell maskin har stannat", True, True),
     "plex_down": ("Plex-server svarar inte", True, True),
     "pihole_down": ("Pi-hole svarar inte", True, True),
+    "quiet_digest": ("Sammanfattning efter tysta tider", True, False),
 }
 
 # Grupper i larmtabellen
@@ -43,6 +44,7 @@ ALERT_GROUPS = [
     ("Säkerhet", ["suricata", "pfblocker"]),
     ("Klienter", ["new_device", "data_anomaly"]),
     ("Servrar", ["unraid_down", "unraid_problem", "unraid_watch", "unraid_vm", "plex_down", "pihole_down"]),
+    ("Sammanfattningar", ["quiet_digest"]),
 ]
 ROUTE_SEP = "|"
 # profiler: vilka val i webbläsaren en profil kommer ihåg, och vilka delar som kan döljas
@@ -168,6 +170,11 @@ class Settings:
 
     def _legacy_route(self, kind: str, server: str | None) -> dict:
         """Det som gällde innan tabellen fanns: larmtyp på/av, kanal per typ och mottagare per typ och server."""
+        if kind == "quiet_digest":  # tidigare en kryssruta under Aviseringar: e-post och Slack till alla
+            on = bool(self.get("quiet_digest"))
+            rec = self.get("recipients")
+            emails = [r["email"] for r in rec] if rec is not None else list(self.mail_to)
+            return {"banner": False, "slack": on, "emails": emails if on else []}
         ch = self.get("channels").get(kind) or {"email": True, "slack": bool(self.get("slack_warnings"))}
         emails: list[str] = []
         if ch.get("email", True):

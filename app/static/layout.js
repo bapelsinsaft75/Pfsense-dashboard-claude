@@ -83,7 +83,7 @@ let built = {};
 /* ── sammanfattningar ── */
 function summary(d) {
   const k = d.kpi, sec = d.security || {}, t = sec.totals || {};
-  const alerts = (d.alerts || []).filter((a) => !a.resolved);
+  const alerts = (d.alerts || []).filter((a) => !a.resolved && a.kind !== "quiet_digest");
   const crit = alerts.filter((a) => a.level === "critical").length;
   const unraids = d.unraids || [];
   const plex = d.plex || { servers: [], totals: {} };

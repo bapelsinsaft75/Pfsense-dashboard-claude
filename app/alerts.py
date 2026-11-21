@@ -19,6 +19,56 @@ MAIL_COOLDOWN = 30 * 60
 LEVEL_LABEL = {"critical": "Kritiskt", "warning": "Varning", "info": "Info"}
 
 
+# larm som är händelser (inget som går ner och upp igen) – räknas ihop per typ i sammanfattningen
+EVENT_KINDS = {"suricata", "pfblocker", "new_device", "data_anomaly", "gateway_degraded"}
+EVENT_LABEL = {"suricata": "Suricata-larm", "pfblocker": "pfBlockerNG-blockeringar", "new_device": "Nya enheter",
+               "data_anomaly": "Ovanligt hög dataförbrukning", "gateway_degraded": "Paketförlust eller hög fördröjning"}
+
+
+def _hm(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts, TZ).strftime("%H:%M")
+
+
+def digest_text(rows: list[dict], now: float, quiet_start: str, quiet_end: str, emoji: bool = False) -> dict:
+    """Formulera sammanfattningen: ”Mellan 03:12 och 05:48 hände följande: …”."""
+    groups: dict[str, list[dict]] = {}
+    events: dict[str, list[dict]] = {}
+    for r in sorted(rows, key=lambda r: r["created"]):
+        (events.setdefault(r["kind"], []) if r["kind"] in EVENT_KINDS else groups.setdefault(r["key"], [])).append(r)
+    lines: list[tuple[float, str]] = []
+    still = []
+    for rs in groups.values():
+        first, last = rs[0], rs[-1]
+        mins = sum(max(1, round(((r["resolved"] or now) - r["created"]) / 60)) for r in rs)
+        if len(rs) == 1:
+            txt = f"{_hm(first['created'])} {first['title']}"
+            txt += f" – uppe igen {_hm(first['resolved'])} ({mins} min)" if first["resolved"] else " – fortfarande nere"
+        else:
+            txt = f"{_hm(first['created'])} {first['title']} – {len(rs)} gånger, totalt {mins} min"
+            if not last["resolved"]:
+                txt += ", fortfarande nere"
+        if not last["resolved"]:
+            still.append(f"{first['title']} (sedan {_hm(last['created'])})")
+        lines.append((first["created"], txt))
+    for kind, rs in events.items():
+        names = ", ".join(dict.fromkeys(r["title"] for r in rs[:3]))
+        label = EVENT_LABEL.get(kind, kind)
+        lines.append((rs[0]["created"], f"{_hm(rs[0]['created'])} {label}: {len(rs)} st – {names}" if len(rs) > 1 else f"{_hm(rs[0]['created'])} {rs[0]['title']}"))
+    lines.sort()
+    times = [r["created"] for r in rows] + [r["resolved"] for r in rows if r["resolved"]]
+    start, end = min(times), max(times)
+    head = f"Kl {_hm(start)} hände följande:" if _hm(start) == _hm(end) else f"Mellan {_hm(start)} och {_hm(end)} hände följande:"
+    n = len(lines)
+    if still:
+        status = ("⚠️ " if emoji else "") + "Fortfarande nere: " + ", ".join(still) + ". Allt annat är uppe igen."
+    else:
+        status = ("✅ " if emoji else "✓ ") + "Samtliga enheter, servrar, containrar och virtuella maskiner är nu uppe."
+    return {"subject": f"Sammanfattning: {n} {'händelse' if n == 1 else 'händelser'} mellan {_hm(start)} och {_hm(end)}"
+            if _hm(start) != _hm(end) else f"Sammanfattning: {n} {'händelse' if n == 1 else 'händelser'} kl {_hm(start)}",
+            "head": head, "lines": [t for _, t in lines], "status": status, "still": still,
+            "footer": f"Larmen skickades inte när de hände eftersom tysta tider var på ({quiet_start}–{quiet_end})."}
+
+
 def _when(ts: float) -> str:
     return dt.datetime.fromtimestamp(ts, TZ).strftime("%Y-%m-%d %H:%M")
 
@@ -44,36 +94,64 @@ class Alerts:
         return quiet and not (level == "critical" and self.settings.get("quiet_allow_critical"))
 
     def flush_quiet_digest(self) -> bool:
-        """Skicka en sammanfattning av det som hände under den tysta tiden, när den är slut."""
+        """Sammanfattning av det som hände under den tysta tiden, när den är slut.
+
+        Den är en egen larmtyp (quiet_digest) som kan gå till bannern, Slack och valda e-postadresser.
+        Varje mottagare får bara med de larm den själv skulle ha fått.
+        """
         if not self.quiet_queue or self.settings.quiet_now()[0]:
             return False
         items, self.quiet_queue = self.quiet_queue, []
-        if not self.settings.get("quiet_digest"):
+        route = self.settings.route("quiet_digest")
+        if not (route["banner"] or route["slack"] or route["emails"]):
             return False
-        def digest(subset):
-            raised = [i for i in subset if i[0] == "raised"]
-            still = [i for i in raised if self.is_active_title(i[2])]
-            lines = [f"{_when(i[4])}  {'Löst: ' if i[0] == 'resolved' else ''}{LEVEL_LABEL.get(i[1], i[1])}: {i[2]}"
-                     for i in subset]
-            head = (f"Under den tysta tiden kom {len(raised)} larm"
-                    + (f", varav {len(still)} fortfarande aktiva." if still else ", alla är lösta nu." if raised else "."))
-            return raised, still, lines, head
-
-        per_addr: dict[str, list] = {}
-        for item in items:
-            for addr in self.recipients_for(item[5], item[1], item[6] if len(item) > 6 else None):
-                per_addr.setdefault(addr, []).append(item)
-        for addr, subset in per_addr.items():
-            raised, _still, lines, head = digest(subset)
-            self.mailer.send_background(f"Sammanfattning av tysta tiden: {len(raised)} larm",
-                                        head + "\n\n" + "\n".join(lines) + "\n", [addr])
-        slack_items = [i for i in items if self._should_slack(i[5], i[1], i[6] if len(i) > 6 else None)]
-        raised, still, lines, head = digest(slack_items)
-        subject = f"Sammanfattning av tysta tiden: {len(raised)} larm"
-        if self.slack and self.slack.enabled and slack_items:
-            level = "critical" if any(i[1] == "critical" for i in still) else "warning" if still else "info"
-            self.slack.send_background(level, subject, head + "\n" + "\n".join(lines[:25]), _when(time.time()))
-        return True
+        ids = [i[8] for i in items if len(i) > 8 and i[8]]
+        if not ids:
+            return False
+        marks = ",".join("?" * len(ids))
+        with self.h.lock:
+            rows = self.h.db.execute(
+                f"SELECT id, key, level, kind, title, created, resolved, source FROM alerts WHERE id IN ({marks})", ids).fetchall()
+        rows = [dict(zip(("id", "key", "level", "kind", "title", "created", "resolved", "source"), r)) for r in rows]
+        if not rows:
+            return False
+        now = time.time()
+        qs, qe = self.settings.get("quiet_start"), self.settings.get("quiet_end")
+        dash = self.slack.dashboard_url if self.slack and self.slack.dashboard_url else ""
+        sent = False
+        # e-post: per adress, bara de larm adressen själv skulle ha fått
+        allowed = {e.lower() for e in route["emails"]}
+        if allowed and self.mailer.configured:
+            per_addr: dict[str, list] = {}
+            for r in rows:
+                for addr in self.recipients_for(r["kind"], r["level"], r["source"]):
+                    if addr.lower() in allowed:
+                        per_addr.setdefault(addr, []).append(r)
+            for addr, subset in per_addr.items():
+                d = digest_text(subset, now, qs, qe)
+                body = "\n".join([d["head"], "", *d["lines"], "", d["status"], "", d["footer"]]) + "\n"
+                if dash:
+                    body += f"Dashboard: {dash}\n"
+                self.mailer.send_background(d["subject"], body, [addr])
+                sent = True
+        if route["slack"] and self.slack and self.slack.enabled:
+            subset = [r for r in rows if self._should_slack(r["kind"], r["level"], r["source"])]
+            if subset:
+                d = digest_text(subset, now, qs, qe, emoji=True)
+                self.slack.send_background("resolved" if not d["still"] else "warning", d["subject"],
+                                           "\n".join([d["head"], *("• " + x for x in d["lines"][:25]), d["status"], f"_{d['footer']}_"]),
+                                           _when(now))
+                sent = True
+        if route["banner"]:
+            d = digest_text(rows, now, qs, qe)
+            with self.h.lock:
+                self.h.db.execute(
+                    "INSERT INTO alerts(key, level, kind, title, message, created, updated, source) VALUES(?,?,?,?,?,?,?,?)",
+                    (f"digest:{int(now)}", "info", "quiet_digest", d["subject"],
+                     "\n".join([*d["lines"], d["status"], d["footer"]]), int(now), int(now), None))
+                self.h.db.commit()
+            sent = True
+        return sent
 
     def is_active_title(self, title: str) -> bool:
         with self.h.lock:
@@ -131,9 +209,11 @@ class Alerts:
                 self.h.db.commit()
         log.info("Larm (%s): %s – %s", level, title, message)
         to = self.recipients_for(kind, level, source)
-        if self._quiet_blocks(level) and (to or self._should_slack(kind, level, source)):
-            self.quiet_queue.append(("raised", level, title, message, now, kind, source))
-            return alert_id
+        if self._quiet_blocks(level):
+            # sparas till sammanfattningen när den tysta tiden är slut
+            self.quiet_queue.append(("raised", level, title, message, now, kind, source, key, alert_id))
+            if to or self._should_slack(kind, level, source):
+                return alert_id
         if to:
             body = f"{LEVEL_LABEL.get(level, level)}: {title}\n\n{message}\n\nTid: {_when(now)}\n"
             if self.slack and self.slack.dashboard_url:
