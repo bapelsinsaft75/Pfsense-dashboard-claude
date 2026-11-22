@@ -1633,6 +1633,26 @@ setInterval(() => {
   if (left === 0 && Date.now() - ph.fetchedAt > 3000) load();
 }, 1000);
 
+/* ── Uppdatera status: hämta allt direkt ── */
+$("refresh-all").addEventListener("click", async () => {
+  const b = $("refresh-all"), t = b.querySelector(".rt");
+  if (b.classList.contains("busy")) return;
+  b.classList.add("busy"); b.disabled = true; t.textContent = "Uppdaterar …";
+  try {
+    const r = await fetch("api/refresh", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.status);
+    await load();
+    t.textContent = j.failed && j.failed.length ? `Klart – fel: ${j.failed.join(", ")}` : `Uppdaterat ${clock(Date.now() / 1000)}`;
+    b.title = `Hämtade ${j.sources.join(", ")} på ${String(j.seconds).replace(".", ",")} s`;
+  } catch (e) {
+    t.textContent = `Misslyckades (${e.message})`;
+  } finally {
+    b.classList.remove("busy"); b.disabled = false;
+    setTimeout(() => { t.textContent = "Uppdatera status"; }, 6000);
+  }
+});
+
 /* ── knapp till toppen (sidan, eller panelen i Statusrutor) ── */
 const totop = $("totop");
 const scroller = () => (document.body.classList.contains("ldrawer-open") && $("ldrawer-body")) || null;

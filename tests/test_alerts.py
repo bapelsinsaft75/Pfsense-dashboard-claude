@@ -550,3 +550,34 @@ def test_digest_text_and_banner(engine, monkeypatch):
     assert len(FakeSMTP.sent) == n  # bara banner valt
     b = [a for a in engine.alerts.banner() if a["kind"] == "quiet_digest"]
     assert b and "Gatewayen Z är nere – uppe igen" in b[0]["message"] and "Samtliga" in b[0]["message"]
+
+
+def test_unraid_problems_split(engine):
+    from app.unraid import Unraid
+    _fast_confirm(engine)
+    engine.settings.update({"alert_kinds": {"unraid_disk_error": True, "unraid_array": True, "unraid_disk_hot": True, "unraid_warn": True},
+                            "confirm_count": 1})
+    u = Unraid("Tower", "http://t", "k", False)
+    u.status.update(ok=True, name="Tower")
+    u.data = {"array_state": "STOPPED", "capacity": {"pct": 40},
+              "disks": [{"name": "disk1", "status": "err", "label": "Fel", "temp": 40, "used_pct": 10, "role": "data"},
+                        {"name": "disk2", "status": "warn", "label": "Varm", "temp": 53, "used_pct": 10, "role": "data"}],
+              "containers": []}
+    engine.unraids = [u]
+    engine.check_unraid(u)
+    kinds = {a["kind"]: a["title"] for a in engine.alerts.banner()}
+    assert kinds["unraid_array"] == "Tower: arrayen är stoppad"
+    assert kinds["unraid_disk_error"] == "Tower: disk med fel"
+    assert kinds["unraid_disk_hot"] == "Tower: varm disk"
+    assert "unraid_warn" not in kinds
+    # varm disk löst – de andra ligger kvar
+    u.data["disks"][1].update(label="OK", status="ok", temp=40)
+    engine.check_unraid(u)
+    kinds = {a["kind"] for a in engine.alerts.banner() if not a["resolved"]}
+    assert "unraid_disk_hot" not in kinds and "unraid_array" in kinds
+
+
+def test_old_unraid_problem_choice_carries_over(engine):
+    engine.settings.update({"routes": {"unraid_problem|Tower": {"banner": True, "slack": True, "emails": ["jag@exempel.se"]}}})
+    for k in ("unraid_disk_error", "unraid_array", "unraid_disk_hot", "unraid_warn"):
+        assert engine.settings.route(k, "Tower") == {"banner": True, "slack": True, "emails": ["jag@exempel.se"]}

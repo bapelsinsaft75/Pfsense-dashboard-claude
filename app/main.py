@@ -41,98 +41,124 @@ log = logging.getLogger("main")
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
+# ── en hämtning per källa: används både av looparna och av knappen ”Uppdatera status” ──
+async def pfsense_once(engine: Engine, pf: PfSense, clients: bool = True) -> None:
+    try:
+        if clients:
+            leases, arp = await asyncio.gather(pf.leases(), pf.arp())
+            engine.update_clients(leases, arp)
+        engine.update_interfaces(await pf.interfaces())
+        engine.update_states(await pf.states())
+        engine.mark("pfsense", True)
+    except PfSenseError as exc:
+        engine.mark("pfsense", False, str(exc))
+        log.warning("%s", exc)
+    except Exception as exc:  # noqa: BLE001
+        engine.mark("pfsense", False, f"Oväntat fel: {exc}")
+        log.exception("pfSense-insamling misslyckades")
+
+
+_openvpn = {"supported": True}
+
+
+async def vpn_once(engine: Engine, pf: PfSense) -> None:
+    """Gateways (inklusive VPN-gateways), systemstatus och OpenVPN-klienter."""
+    try:
+        engine.update_gateways(await pf.gateways())
+    except PfSenseError as exc:
+        log.debug("Gateways: %s", exc)
+    except Exception:  # noqa: BLE001
+        log.exception("Kunde inte läsa gateways")
+    try:
+        engine.update_system(await pf.system())
+    except Exception as exc:  # noqa: BLE001 – bara för Överblick
+        log.debug("Systemstatus: %s", exc)
+    if _openvpn["supported"]:
+        try:
+            engine.update_openvpn(await pf.openvpn_clients())
+        except PfSenseError as exc:
+            if "404" in str(exc):
+                _openvpn["supported"] = False
+        except Exception:  # noqa: BLE001
+            log.exception("Kunde inte läsa OpenVPN-status")
+
+
+async def unraid_once(engine: Engine) -> None:
+    try:
+        await asyncio.gather(*(u.poll() for u in engine.unraids), return_exceptions=True)
+        for u in engine.unraids:
+            engine.check_unraid(u)
+    except Exception:  # noqa: BLE001
+        log.exception("Unraid-insamling misslyckades")
+
+
+async def plex_once(engine: Engine) -> None:
+    await asyncio.gather(*(s.poll() for s in engine.plex_servers), return_exceptions=True)
+    for s in engine.plex_servers:
+        try:
+            engine.check_plex(s)
+        except Exception:  # noqa: BLE001
+            log.exception("Plex-kontroll misslyckades")
+
+
+async def pihole_once(engine: Engine) -> None:
+    await engine.pihole.poll()
+    try:
+        engine.check_pihole()
+    except Exception:  # noqa: BLE001
+        log.exception("Pi-hole-kontroll misslyckades")
+
+
+async def unifi_once(engine: Engine, uf: UniFi) -> None:
+    try:
+        sta, dev = await uf.fetch()
+        engine.update_unifi(sta, dev)
+        engine.mark("unifi", True)
+    except UniFiError as exc:
+        engine.mark("unifi", False, str(exc))
+        log.warning("%s", exc)
+    except Exception as exc:  # noqa: BLE001
+        engine.mark("unifi", False, f"Oväntat fel: {exc}")
+        log.exception("UniFi-insamling misslyckades")
+
+
 async def pfsense_loop(engine: Engine, pf: PfSense) -> None:
-    cfg = engine.cfg
     last_clients = 0.0
     while True:
-        try:
-            if time.time() - last_clients >= cfg.pfsense_client_poll:
-                leases, arp = await asyncio.gather(pf.leases(), pf.arp())
-                engine.update_clients(leases, arp)
-                last_clients = time.time()
-            ifaces = await pf.interfaces()
-            engine.update_interfaces(ifaces)
-            states = await pf.states()
-            engine.update_states(states)
-            engine.mark("pfsense", True)
-        except PfSenseError as exc:
-            engine.mark("pfsense", False, str(exc))
-            log.warning("%s", exc)
-        except Exception as exc:  # noqa: BLE001
-            engine.mark("pfsense", False, f"Oväntat fel: {exc}")
-            log.exception("pfSense-insamling misslyckades")
-        await asyncio.sleep(cfg.pfsense_poll)
+        due = time.time() - last_clients >= engine.cfg.pfsense_client_poll
+        await pfsense_once(engine, pf, clients=due)
+        if due:
+            last_clients = time.time()
+        await asyncio.sleep(engine.cfg.pfsense_poll)
 
 
 async def vpn_loop(engine: Engine, pf: PfSense) -> None:
-    """Gateways (inklusive VPN-gateways) och OpenVPN-klienter."""
-    openvpn_supported = True
     while True:
-        try:
-            engine.update_gateways(await pf.gateways())
-        except PfSenseError as exc:
-            log.debug("Gateways: %s", exc)
-        except Exception:  # noqa: BLE001
-            log.exception("Kunde inte läsa gateways")
-        try:
-            engine.update_system(await pf.system())
-        except Exception as exc:  # noqa: BLE001 – bara för Överblick
-            log.debug("Systemstatus: %s", exc)
-        if openvpn_supported:
-            try:
-                engine.update_openvpn(await pf.openvpn_clients())
-            except PfSenseError as exc:
-                if "404" in str(exc):
-                    openvpn_supported = False
-            except Exception:  # noqa: BLE001
-                log.exception("Kunde inte läsa OpenVPN-status")
+        await vpn_once(engine, pf)
         await asyncio.sleep(min(engine.cfg.vpn_poll, engine.settings.get("confirm_interval")))
 
 
 async def unraid_loop(engine: Engine) -> None:
     while True:
-        try:
-            await asyncio.gather(*(u.poll() for u in engine.unraids), return_exceptions=True)
-            for u in engine.unraids:
-                engine.check_unraid(u)
-        except Exception:  # noqa: BLE001
-            log.exception("Unraid-insamling misslyckades")
+        await unraid_once(engine)
         await asyncio.sleep(min(engine.cfg.unraid_poll, engine.settings.get("confirm_interval")))
 
 
 async def plex_loop(engine: Engine) -> None:
     while True:
-        await asyncio.gather(*(s.poll() for s in engine.plex_servers), return_exceptions=True)
-        for s in engine.plex_servers:
-            try:
-                engine.check_plex(s)
-            except Exception:  # noqa: BLE001
-                log.exception("Plex-kontroll misslyckades")
+        await plex_once(engine)
         await asyncio.sleep(engine.cfg.plex_poll)
 
 
 async def pihole_loop(engine: Engine) -> None:
     while True:
-        await engine.pihole.poll()
-        try:
-            engine.check_pihole()
-        except Exception:  # noqa: BLE001
-            log.exception("Pi-hole-kontroll misslyckades")
+        await pihole_once(engine)
         await asyncio.sleep(min(engine.cfg.pihole_poll, engine.settings.get("confirm_interval")))
 
 
 async def unifi_loop(engine: Engine, uf: UniFi) -> None:
     while True:
-        try:
-            sta, dev = await uf.fetch()
-            engine.update_unifi(sta, dev)
-            engine.mark("unifi", True)
-        except UniFiError as exc:
-            engine.mark("unifi", False, str(exc))
-            log.warning("%s", exc)
-        except Exception as exc:  # noqa: BLE001
-            engine.mark("unifi", False, f"Oväntat fel: {exc}")
-            log.exception("UniFi-insamling misslyckades")
+        await unifi_once(engine, uf)
         await asyncio.sleep(engine.cfg.unifi_poll)
 
 
@@ -178,11 +204,13 @@ async def lifespan(app: FastAPI):
         await engine.geo.ensure()
         tasks.append(asyncio.create_task(engine.geo.refresh_loop()))
         pf = PfSense(cfg)
+        app.state.pf = pf
         closers.append(pf.close)
         tasks.append(asyncio.create_task(pfsense_loop(engine, pf)))
         tasks.append(asyncio.create_task(vpn_loop(engine, pf)))
         if cfg.unifi_enabled:
             uf = UniFi(cfg)
+            app.state.uf = uf
             closers.append(uf.close)
             tasks.append(asyncio.create_task(unifi_loop(engine, uf)))
         if engine.unraids:
@@ -403,6 +431,40 @@ async def plex_refresh(server: int, body: dict = Body(default={})):
     what = next((x["title"] for x in p.libraries if x["key"] == key), None) if key else "alla bibliotek"
     engine.alerts.note("plex_refresh", f"Plex: uppdaterar {what} på {p.name}", "Startat från dashboarden.")
     return {"libraries": p.libraries}
+
+
+_refresh_lock = asyncio.Lock()
+
+
+@app.post("/api/refresh")
+async def refresh_all():
+    """Knappen ”Uppdatera status”: hämta aktuell status från alla källor direkt, i stället för att vänta."""
+    engine: Engine = app.state.engine
+    if _refresh_lock.locked():
+        raise HTTPException(409, "En uppdatering pågår redan.")
+    async with _refresh_lock:
+        started = time.time()
+        jobs, names = [], []
+        pf = getattr(app.state, "pf", None)
+        uf = getattr(app.state, "uf", None)
+        if pf:
+            jobs += [pfsense_once(engine, pf), vpn_once(engine, pf)]
+            names += ["pfSense", "gateways och VPN"]
+        if uf:
+            jobs.append(unifi_once(engine, uf)); names.append("UniFi")
+        if engine.unraids and not engine.cfg.demo:
+            jobs.append(unraid_once(engine)); names.append("Unraid")
+        if engine.plex_servers and not engine.cfg.demo:
+            jobs.append(plex_once(engine)); names.append("Plex")
+        if engine.pihole:
+            engine.pihole._version_at = engine.pihole._rules_at = 0
+            engine.pihole._period_cache.clear()
+            jobs.append(pihole_once(engine)); names.append("Pi-hole")
+        results = await asyncio.wait_for(asyncio.gather(*jobs, return_exceptions=True), timeout=40) if jobs else []
+        failed = [n for n, r in zip(names, results) if isinstance(r, Exception)]
+        if engine.cfg.demo:
+            demo.tick(engine)
+        return {"sources": names, "failed": failed, "seconds": round(time.time() - started, 1)}
 
 
 @app.get("/api/profiles")

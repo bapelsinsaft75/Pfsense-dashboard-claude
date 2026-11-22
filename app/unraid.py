@@ -247,3 +247,24 @@ def health(d: dict) -> tuple[str, list[str]]:
     if bad:
         warns.append(f"stoppad oväntat: {', '.join(bad)}")
     return ("err" if errs else "warn" if warns else "ok"), errs + warns
+
+
+def problems(d: dict) -> dict[str, list[str]]:
+    """Problemen uppdelade per larmtyp: disk med fel, stoppad array, varm disk och övriga varningar."""
+    out: dict[str, list[str]] = {"unraid_disk_error": [], "unraid_array": [], "unraid_disk_hot": [], "unraid_warn": []}
+    if d.get("array_state") and d["array_state"] != "STARTED":
+        out["unraid_array"].append(f"arrayen är {d['array_state'].lower()}")
+    for disk in d.get("disks", []):
+        if disk["status"] == "err":
+            out["unraid_disk_error"].append(f"{disk['name']}: {disk['label'].lower()}")
+        elif disk["label"] == "Varm":
+            out["unraid_disk_hot"].append(f"{disk['name']} är {disk['temp']:.0f} °C")
+        if disk["used_pct"] is not None and disk["used_pct"] >= FULL_PCT and disk["role"] == "cache":
+            out["unraid_warn"].append(f"{disk['name']} är {disk['used_pct']:.0f} % full")
+    cap = d.get("capacity") or {}
+    if cap.get("pct") is not None and cap["pct"] >= FULL_PCT:
+        out["unraid_warn"].append(f"arrayen är {cap['pct']:.0f} % full")
+    bad = [c["name"] for c in d.get("containers", []) if c["state"] == "bad"]
+    if bad:
+        out["unraid_warn"].append(f"stoppad oväntat: {', '.join(bad)}")
+    return out

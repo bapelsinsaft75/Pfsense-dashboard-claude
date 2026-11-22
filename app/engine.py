@@ -14,6 +14,7 @@ from .config import Config, is_public
 from .geoip import GeoIP
 from .history import RECENT_SLOT, History
 from .pihole import PiHole
+from .unraid import problems as unraid_problems
 from .mailer import Mailer
 from .netflow import Flow, FlowParser
 from .pfsense import (Conn, guess_initiator, parse_arp, parse_gateway, parse_interfaces, parse_lease, parse_openvpn_client,
@@ -571,14 +572,19 @@ class Engine:
         if not u.status["ok"]:
             return
         self.alerts.resolve(key, f"{name} svarar igen.")
-        level = u.status.get("level")
-        pkey = f"unraidp:{u.url}"
-        if self.confirm(pkey, level in ("err", "warn")):
-            self.alerts.raise_(pkey, "critical" if level == "err" else "warning", "unraid_problem",
-                               f"{name}: {'fel' if level == 'err' else 'varning'}",
-                               f"{u.status.get('detail')}.{self.confirm_note(pkey)}", source=name)
-        elif level == "ok":
-            self.alerts.resolve(pkey, f"{name}: allt ser bra ut igen.")
+        self.alerts.resolve(f"unraidp:{u.url}")  # den gamla, sammanslagna typen
+        found = unraid_problems(u.data)
+        what = {"unraid_disk_error": ("disk med fel", "critical"), "unraid_array": ("arrayen är stoppad", "critical"),
+                "unraid_disk_hot": ("varm disk", "warning"), "unraid_warn": ("varning", "warning")}
+        for kind, texts in found.items():
+            pkey = f"unraidp:{kind}:{u.url}"
+            label, level = what[kind]
+            if self.confirm(pkey, bool(texts)):
+                detail = "; ".join(texts)
+                self.alerts.raise_(pkey, level, kind, f"{name}: {label}",
+                                   f"{detail[:1].upper() + detail[1:]}.{self.confirm_note(pkey)}", source=name)
+            elif not texts:
+                self.alerts.resolve(pkey, f"{name}: {label} – löst.")
         # övervakade containrar och virtuella maskiner
         running = {c["name"]: c for c in u.data.get("containers", [])}
         vms = {v["name"]: v for v in u.data.get("vms", [])}
@@ -629,7 +635,7 @@ class Engine:
             for kind in kinds:
                 label, _default, confirmed = ALERT_KINDS[kind]
                 children = []
-                if kind in ("unraid_down", "unraid_problem"):
+                if kind in ("unraid_down", "unraid_disk_error", "unraid_array", "unraid_disk_hot", "unraid_warn"):
                     children = [{"key": f"{kind}|{s}", "label": s, "source": s} for s in unraid]
                 elif kind == "plex_down":
                     children = [{"key": f"{kind}|{s}", "label": s, "source": s} for s in plex]
@@ -639,7 +645,7 @@ class Engine:
                         for item in sorted(self.settings.watched(s, what)):
                             children.append({"key": f"{kind}|{s}|{item}", "label": f"{s} · {item}", "source": f"{s}|{item}",
                                              "server": s, "item": item})
-                if kind in ("unraid_down", "unraid_problem", "unraid_watch", "unraid_vm") and not unraid:
+                if kind.startswith("unraid_") and not unraid:
                     continue
                 if kind == "plex_down" and not plex:
                     continue

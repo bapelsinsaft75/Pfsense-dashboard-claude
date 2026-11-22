@@ -30,7 +30,10 @@ ALERT_KINDS = {
     "data_anomaly": ("Ovanligt hög dataförbrukning", True, False),
     "new_device": ("Ny enhet i nätverket", True, False),
     "unraid_down": ("Unraid-server svarar inte", False, True),
-    "unraid_problem": ("Unraid: disk med fel, array stoppad eller varm disk", False, True),
+    "unraid_disk_error": ("Unraid: disk med fel", False, True),
+    "unraid_array": ("Unraid: arrayen är stoppad", False, True),
+    "unraid_disk_hot": ("Unraid: varm disk", False, True),
+    "unraid_warn": ("Unraid: nästan full, eller container stoppad oväntat", False, True),
     "unraid_watch": ("Övervakad container har stannat", True, True),
     "unraid_vm": ("Övervakad virtuell maskin har stannat", True, True),
     "plex_down": ("Plex-server svarar inte", True, True),
@@ -43,19 +46,24 @@ ALERT_GROUPS = [
     ("Nätverk", ["vpn_down", "gateway_down", "gateway_degraded", "source_down", "unifi_offline"]),
     ("Säkerhet", ["suricata", "pfblocker"]),
     ("Klienter", ["new_device", "data_anomaly"]),
-    ("Servrar", ["unraid_down", "unraid_problem", "unraid_watch", "unraid_vm", "plex_down", "pihole_down"]),
+    ("Servrar", ["unraid_down", "unraid_disk_error", "unraid_array", "unraid_disk_hot", "unraid_warn", "unraid_watch", "unraid_vm", "plex_down", "pihole_down"]),
     ("Sammanfattningar", ["quiet_digest"]),
 ]
 ROUTE_SEP = "|"
+# larmtyper som delats upp: tidigare val för den gamla typen gäller tills något annat valts
+KIND_ALIAS = {"unraid_disk_error": "unraid_problem", "unraid_array": "unraid_problem",
+              "unraid_disk_hot": "unraid_problem", "unraid_warn": "unraid_problem"}
 # profiler: vilka val i webbläsaren en profil kommer ihåg, och vilka delar som kan döljas
 PROFILE_KEYS = {"layout", "tileOrder", "partOrder", "period", "chartView2", "topList", "clientsAll", "layoutCollapsed", "urFilters",
                 "urTab", "plexTab", "phDomTab", "phClTab", "phQn", "phQf", "hiddenParts"}
 PROFILE_LAYOUTS = {"klassisk", "sidomeny", "rutor", "flikar", "overblick"}  # larmtyp|server|container – mer specifika rader går före mindre specifika
 
 # Larmtyper som normalt är kritiska. En ny e-postmottagare får dessa från början.
-CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_problem",
+CRITICAL_KINDS = {"vpn_down", "gateway_down", "source_down", "suricata", "unraid_down", "unraid_disk_error", "unraid_array",
                   "unraid_watch", "unraid_vm", "plex_down", "pihole_down"}
 EMAIL_RE = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+")
+
+VALID_KINDS = set(ALERT_KINDS) | set(KIND_ALIAS.values())  # gamla typer behålls i sparade inställningar
 
 # namn: (typ, min, max)
 SCHEMA = {
@@ -162,11 +170,15 @@ class Settings:
         """Vart ett larm ska: {"banner", "slack", "emails"}. source kan vara "server" eller "server|container"."""
         routes = self.saved.get("routes") or {}
         parts = [p for p in (source or "").split(ROUTE_SEP) if p]
-        for n in range(len(parts), -1, -1):
-            key = ROUTE_SEP.join([kind, *parts[:n]])
-            if key in routes:
-                return copy.deepcopy(routes[key])
-        return self._legacy_route(kind, parts[0] if parts else None)
+        for k in (kind, KIND_ALIAS.get(kind)):
+            if not k:
+                continue
+            for n in range(len(parts), -1, -1):
+                key = ROUTE_SEP.join([k, *parts[:n]])
+                if key in routes:
+                    return copy.deepcopy(routes[key])
+        own = kind in (self.saved.get("alert_kinds") or {}) or kind in (self.saved.get("channels") or {})
+        return self._legacy_route(kind if own or kind not in KIND_ALIAS else KIND_ALIAS[kind], parts[0] if parts else None)
 
     def _legacy_route(self, kind: str, server: str | None) -> dict:
         """Det som gällde innan tabellen fanns: larmtyp på/av, kanal per typ och mottagare per typ och server."""
@@ -175,6 +187,14 @@ class Settings:
             rec = self.get("recipients")
             emails = [r["email"] for r in rec] if rec is not None else list(self.mail_to)
             return {"banner": False, "slack": on, "emails": emails if on else []}
+        if kind == "unraid_problem":  # den gamla, sammanslagna typen
+            saved_ch = (self.saved.get("channels") or {}).get(kind)
+            on = (self.saved.get("alert_kinds") or {}).get(kind, False)
+            ch = saved_ch or {"email": on, "slack": on}
+            rec = self.get("recipients")
+            emails = ([r["email"] for r in rec if kind in r.get("kinds", []) and (server is None or r.get("servers") is None or server in r["servers"])]
+                      if rec is not None else (list(self.mail_to) if on else [])) if ch.get("email") else []
+            return {"banner": bool(on), "slack": bool(ch.get("slack")), "emails": emails}
         ch = self.get("channels").get(kind) or {"email": True, "slack": bool(self.get("slack_warnings"))}
         emails: list[str] = []
         if ch.get("email", True):
@@ -265,7 +285,7 @@ class Settings:
                 elif typ == "kinds":
                     if not isinstance(raw, dict):
                         raise ValueError
-                    val = {k: bool(v) for k, v in raw.items() if k in ALERT_KINDS}
+                    val = {k: bool(v) for k, v in raw.items() if k in VALID_KINDS}
                 elif typ == "recipients":
                     if raw is None:
                         val = None
@@ -282,21 +302,21 @@ class Settings:
                             seen.add(email.lower())
                             servers = r.get("servers")
                             val.append({"email": email, "name": str(r.get("name") or "").strip()[:60],
-                                        "kinds": sorted({k for k in r.get("kinds", []) if k in ALERT_KINDS}),
+                                        "kinds": sorted({k for k in r.get("kinds", []) if k in VALID_KINDS}),
                                         # None = alla servrar, annars en lista med servernamn
                                         "servers": None if servers is None else sorted({str(x) for x in servers})})
                 elif typ == "channels":
                     if not isinstance(raw, dict):
                         raise ValueError
                     val = {k: {"email": bool((v or {}).get("email", True)), "slack": bool((v or {}).get("slack", True))}
-                           for k, v in raw.items() if k in ALERT_KINDS}
+                           for k, v in raw.items() if k in VALID_KINDS}
                 elif typ == "routes":
                     if not isinstance(raw, dict) or len(raw) > 2000:
                         raise ValueError
                     val = {}
                     for k, v in raw.items():
                         k = str(k)[:300]
-                        if k.split(ROUTE_SEP)[0] not in ALERT_KINDS or not isinstance(v, dict):
+                        if k.split(ROUTE_SEP)[0] not in VALID_KINDS or not isinstance(v, dict):
                             continue
                         emails = [str(e).strip() for e in (v.get("emails") or []) if EMAIL_RE.fullmatch(str(e).strip())]
                         val[k] = {"banner": bool(v.get("banner")), "slack": bool(v.get("slack")),
