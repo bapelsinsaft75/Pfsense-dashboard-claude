@@ -342,6 +342,73 @@ async def sync_loop():
 
 # ---------- Önskningar ----------
 
+# ---------- Plex-watchlist (via användarens eget Plex-konto) ----------
+
+def _guid_ids(meta):
+    ids = set()
+    for g in meta.get("Guid", []) or []:
+        ids.add(str(g.get("id", "")))
+    return ids
+
+
+async def _discover_match(c, token, title, year, tmdb_id, is_tv):
+    """Hittar titeln i Plex Discover och returnerar Plex ratingKey. Verifierar mot TMDB-id när det går."""
+    r = await c.get(f"{config.PLEX_DISCOVER_URL}/library/search", headers=_headers(token), params={
+        "query": title, "limit": 15, "searchTypes": "tv" if is_tv else "movies",
+        "searchProviders": "discover", "includeMetadata": 1, "includeGuids": 1})
+    r.raise_for_status()
+    cands = []
+    for group in r.json().get("MediaContainer", {}).get("SearchResults", []) or []:
+        for res in group.get("SearchResult", []) or []:
+            m = res.get("Metadata") or {}
+            if m.get("type") == ("show" if is_tv else "movie") and m.get("ratingKey"):
+                cands.append(m)
+    want = f"tmdb://{tmdb_id}"
+    # 1) Guid finns redan i sökträffen
+    for m in cands:
+        if want in _guid_ids(m):
+            return m["ratingKey"]
+    # 2) Hämta detaljer för de närmaste träffarna och jämför TMDB-id
+    near = [m for m in cands if not year or not m.get("year") or abs(int(m["year"]) - int(year)) <= 1][:4]
+    for m in near:
+        for base in (config.PLEX_METADATA_URL, config.PLEX_DISCOVER_URL):
+            try:
+                d = await c.get(f"{base}/library/metadata/{m['ratingKey']}", headers=_headers(token),
+                                params={"includeGuids": 1})
+            except httpx.HTTPError:
+                continue
+            if d.status_code == 200:
+                md = (d.json().get("MediaContainer", {}).get("Metadata") or [{}])[0]
+                if want in _guid_ids(md):
+                    return m["ratingKey"]
+                break
+    # 3) Exakt titel + år som reserv
+    exact = [m for m in near if (m.get("title") or "").strip().lower() == title.strip().lower()]
+    return exact[0]["ratingKey"] if len(exact) == 1 else None
+
+
+async def add_to_watchlist(user_row, movie_row):
+    """Lägger titeln på användarens Plex-watchlist. Returnerar (status, detalj)."""
+    token = user_row["plex_token"]
+    if not token:
+        return "failed", "Logga in med Plex igen så att din watchlist kan uppdateras."
+    is_tv = (movie_row["media_type"] or "movie") == "tv"
+    tmdb_id = movie_row["id"] - db.TV_OFFSET if is_tv else movie_row["id"]
+    async with _client() as c:
+        rk = await _discover_match(c, token, movie_row["title"], movie_row["year"], tmdb_id, is_tv)
+        if not rk:
+            return "failed", "Hittade inte titeln i Plex. Lägg till den på watchlist direkt i Plex."
+        last = None
+        for base in (config.PLEX_DISCOVER_URL, config.PLEX_METADATA_URL):
+            r = await c.put(f"{base}/actions/addToWatchlist", params={"ratingKey": rk}, headers=_headers(token))
+            if r.status_code in (200, 204):
+                return "watchlist", "Lagd på din Plex-watchlist"
+            if r.status_code == 401:
+                return "failed", "Plex nekade – logga in med Plex igen."
+            last = r.status_code
+        return "failed", f"Plex svarade {last} när titeln skulle läggas på watchlist."
+
+
 # ---------- Seerr (seerr.dev, även Overseerr/Jellyseerr) ----------
 
 SEERR_REQUEST_STATUS = {1: "pending", 2: "sent", 3: "declined", 4: "failed", 5: "available"}

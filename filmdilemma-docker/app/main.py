@@ -803,6 +803,7 @@ async def local_config(request):
     return ok({
         "plex_configured": bool(config.PLEX_URL and config.PLEX_TOKEN),
         "request_backend": config.request_backend(),
+        "request_mode": config.REQUEST_MODE,
         "require_login": config.REQUIRE_LOGIN,
         "user": auth.user_json(u) if u else None,
         "import_status": db.get_meta("import_status"),
@@ -830,6 +831,7 @@ async def local_movie_status(request):
         "watched": mid in st.watched,
         "request_status": req["status"] if req else None,
         "request_backend": config.request_backend(),
+        "request_mode": config.REQUEST_MODE,
         "request_detail": req["detail"] if req else None,
         "logged_in": bool(u),
         "plex_configured": bool(config.PLEX_URL and config.PLEX_TOKEN),
@@ -850,8 +852,13 @@ async def local_request_create(request):
     if conn.execute("SELECT 1 FROM plex_library WHERE tmdb_id=?", (mid,)).fetchone():
         return err("Filmen finns redan i Plex.", 409)
     try:
-        status, detail, seerr_id = await plex.send_request(row, u)
+        if config.REQUEST_MODE == "watchlist":
+            status, detail = await plex.add_to_watchlist(u, row)
+            seerr_id = None
+        else:
+            status, detail, seerr_id = await plex.send_request(row, u)
     except Exception as ex:  # noqa: BLE001
+        log.warning("Request misslyckades: %s", ex)
         status, detail, seerr_id = "failed", f"Kunde inte skicka önskan: {ex}", None
     conn.execute("""INSERT INTO requests(user_id,movie_id,status,detail,media_type,seerr_id,updated_at)
         VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)

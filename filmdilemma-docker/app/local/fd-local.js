@@ -186,6 +186,7 @@
         pending: st.request_backend === "seerr" ? "Önskad – väntar på godkännande" : "Önskad – väntar på att läggas till",
         sent: "Önskad – laddas ner",
         declined: "Nekad i Seerr",
+        watchlist: "På din Plex-watchlist",
         available: "Tillagd i Plex"
       }[st.request_status] || "Önskad";
       children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));

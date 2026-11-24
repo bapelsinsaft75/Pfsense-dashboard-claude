@@ -48,7 +48,8 @@ async def _title(media, tmdb_id):
 def _stages(req_status, media_status, downloads, in_plex):
     """Bygger stegen. state: done / current / todo / failed."""
     st = []
-    st.append({"key": "sent", "label": "Skickad till Seerr", "state": "done"})
+    st.append({"key": "sent", "label": "Mottagen av Seerr" if config.REQUEST_MODE == "watchlist" else "Skickad till Seerr",
+               "state": "done"})
 
     if req_status == "declined":
         st.append({"key": "approved", "label": "Nekad", "state": "failed"})
@@ -152,17 +153,30 @@ async def build(user_row, scope="mine"):
                 "created_at": q.get("createdAt"), "stages": stages, "summary": summary, "progress": pct,
                 "seasons": len(q.get("seasons") or []) or None, "mine": q.get("_mine", False),
             })
-        # Lokala önskningar som aldrig nådde Seerr (t.ex. misslyckade)
-        local_where = "r.seerr_id IS NULL AND r.status='failed'"
+        # Lokala önskningar som Seerr inte (ännu) har: misslyckade och sådana som ligger på Plex-watchlist
+        local_where = "r.seerr_id IS NULL AND r.status IN ('failed','watchlist')"
     else:
         local_where = "1=1"
+    seerr_keys = {(i["media_type"], i["title"]) for i in items}
+    seerr_lids = {int(i["url"].rsplit("/", 1)[1]) for i in items if i.get("url")}
 
     where = local_where + ("" if show_all else f" AND r.user_id={int(user_row['id'])}")
     for r in conn.execute(f"""SELECT r.*, u.username, m.title, m.year, m.poster_path, m.media_type mt FROM requests r
             JOIN users u ON u.id=r.user_id JOIN movies m ON m.id=r.movie_id WHERE {where}
             ORDER BY r.created_at DESC""").fetchall():
         in_plex = r["movie_id"] in plex_ids
-        if r["status"] == "failed":
+        if r["movie_id"] in seerr_lids or ((r["mt"] or "movie"), r["title"]) in seerr_keys:
+            continue   # Seerr har redan önskan – visas via Seerr ovan
+        if r["status"] == "watchlist":
+            has_seerr = config.request_backend() == "seerr"
+            stages = [{"key": "watchlist", "label": "På din Plex-watchlist", "state": "done"}]
+            if has_seerr:
+                stages += [{"key": "seerr", "label": "Väntar på Seerr", "state": "current"},
+                           {"key": "download", "label": "Laddas ner", "state": "todo"}]
+            stages.append({"key": "plex", "label": "Uppe i Plex", "state": "done" if in_plex else "todo"})
+            summary = "Uppe i Plex" if in_plex else ("Lagd på Plex-watchlist – Seerr önskar den inom några minuter"
+                                                     if has_seerr else "Lagd på din Plex-watchlist")
+        elif r["status"] == "failed":
             stages = [{"key": "sent", "label": "Kunde inte skickas", "state": "failed"}]
             summary = r["detail"] or "Misslyckades"
         else:

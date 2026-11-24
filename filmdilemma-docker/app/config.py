@@ -25,7 +25,13 @@ RADARR_URL = env("RADARR_URL").rstrip("/")
 RADARR_API_KEY = env("RADARR_API_KEY")
 RADARR_ROOT_FOLDER = env("RADARR_ROOT_FOLDER")
 RADARR_QUALITY_PROFILE = env("RADARR_QUALITY_PROFILE")
-OMDB_API_KEY = env("OMDB_API_KEY")       # valfri, för IMDb-betyg när Plex saknar dem
+OMDB_API_KEY = env("OMDB_API_KEY")
+# Hur "Request movie/show" fungerar:
+#   watchlist (standard) – lägg titeln på den inloggades Plex-watchlist; Seerr:s "Plex Watchlist Sync" önskar den
+#   seerr               – skicka önskan direkt till Seerr (eller Radarr) via API
+REQUEST_MODE = (env("REQUEST_MODE", "watchlist") or "watchlist").lower()
+PLEX_DISCOVER_URL = env("PLEX_DISCOVER_URL", "https://discover.provider.plex.tv").rstrip("/")
+PLEX_METADATA_URL = env("PLEX_METADATA_URL", "https://metadata.provider.plex.tv").rstrip("/")       # valfri, för IMDb-betyg när Plex saknar dem
 
 
 def secret_key():

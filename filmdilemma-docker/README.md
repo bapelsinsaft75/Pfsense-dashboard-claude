@@ -16,7 +16,8 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Dilemma solver | Föreslår filmer och serier utifrån känsla, era och språk. Välj **Mina filmer i Plex** eller **Plex + TMDB**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
 | Plex-koppling | Fungerar med både nya och äldre Plex-agenter (TMDB-, IMDb- och TVDB-id). Filmer och serier i Plex som saknas i databasen hämtas automatiskt från TMDB |
 | Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
-| Seerr | Önskningar skickas till Seerr **i den inloggades namn** (matchas på Plex-id, e-post eller Plex-användarnamn). Finns personen inte i Seerr skickas ingen önskan. Status läses tillbaka: väntar på godkännande, godkänd, nekad, tillgänglig |
+| Request via Plex-watchlist | Standard (`REQUEST_MODE=watchlist`): **Request movie/show** lägger titeln på den inloggades **egen Plex-watchlist**. Seerr:s *Plex Watchlist Sync* önskar den sedan i användarens namn. Kräver att användarna har behörigheten *Auto-Request* i Seerr |
+| Seerr | Med `REQUEST_MODE=seerr` skickas önskningar direkt till Seerr **i den inloggades namn** (matchas på Plex-id, e-post eller Plex-användarnamn). Finns personen inte i Seerr skickas ingen önskan. Status läses tillbaka: väntar på godkännande, godkänd, nekad, tillgänglig |
 | Requests | Under användarmenyn (**Profile → Requests**). Visar varje önskan steg för steg: skickad till Seerr → godkänd/nekad → laddas ner (med förlopp) → tillgänglig i Seerr → uppe i Plex. Användare ser sina egna, admin ser allas |
 | Önskningar | **Önska film** på filmer som saknas → Overseerr/Jellyseerr eller Radarr, annars en lista på `/onskningar` |
 | Betyg, bevakningslista, sedda | Sparas lokalt per användare |
@@ -117,6 +118,7 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `PLEX_SYNC_MINUTES` | `30` | Hur ofta bibliotek och sett-historik synkas |
 | `REQUIRE_LOGIN` | `false` | `true` = hela sidan kräver Plex-inloggning |
 | `OMDB_API_KEY` | – | Valfri. IMDb-betyg tas från Plex; den här gratisnyckeln (omdbapi.com) används när Plex saknar dem |
+| `REQUEST_MODE` | `watchlist` | `watchlist` = lägg på användarens Plex-watchlist, `seerr` = skicka direkt till Seerr |
 | `SEERR_URL` / `SEERR_API_KEY` | – | Skicka önskningar till Seerr (även Overseerr/Jellyseerr). Gamla namnen `OVERSEERR_URL`/`OVERSEERR_API_KEY` fungerar också |
 | `RADARR_URL` / `RADARR_API_KEY` | – | ... eller direkt till Radarr |
 | `RADARR_ROOT_FOLDER` / `RADARR_QUALITY_PROFILE` | första i Radarr | Var och i vilken kvalitet Radarr laddar ner |
