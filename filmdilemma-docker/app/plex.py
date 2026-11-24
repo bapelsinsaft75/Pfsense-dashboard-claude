@@ -346,7 +346,7 @@ async def sync_loop():
 
 SEERR_REQUEST_STATUS = {1: "pending", 2: "sent", 3: "declined", 4: "failed", 5: "available"}
 SEERR_MEDIA_AVAILABLE = (4, 5)   # 4 = delvis tillgänglig, 5 = tillgänglig
-_seerr_users = {"at": 0, "map": {}}
+_seerr_users = {"at": 0, "list": None}
 
 
 def _seerr_headers(seerr_user=None):
@@ -356,26 +356,50 @@ def _seerr_headers(seerr_user=None):
     return h
 
 
-async def seerr_user_id(c, plex_id):
-    """Seerr-användarens id för ett Plex-konto (matchas via plexId). Cachas i 10 minuter."""
-    if not plex_id:
+async def _load_seerr_users(c):
+    users, skip = [], 0
+    while True:
+        r = await c.get(f"{config.SEERR_URL}/api/v1/user", params={"take": 100, "skip": skip},
+                        headers=_seerr_headers())
+        r.raise_for_status()
+        d = r.json()
+        users += d.get("results", [])
+        skip += 100
+        if skip >= (d.get("pageInfo") or {}).get("results", 0):
+            break
+    _seerr_users.update(at=time.time(), list=users)
+    return users
+
+
+def _match_seerr_user(users, user_row):
+    """Matchar en inloggad användare mot Seerr: Plex-id, sedan e-post, sedan Plex-användarnamn."""
+    plex_id = user_row["plex_id"]
+    email = (user_row["email"] or "").strip().lower()
+    name = (user_row["username"] or "").strip().lower()
+    for u in users:
+        if plex_id and u.get("plexId") and int(u["plexId"]) == int(plex_id):
+            return u["id"]
+    for u in users:
+        if email and (u.get("email") or "").strip().lower() == email:
+            return u["id"]
+    for u in users:
+        if name and (u.get("plexUsername") or "").strip().lower() == name:
+            return u["id"]
+    return None
+
+
+async def seerr_user_id(c, user_row):
+    """Seerr-användarens id för den inloggade Plex-användaren. Hämtar om listan direkt om personen saknas."""
+    if not user_row:
         return None
-    if time.time() - _seerr_users["at"] > 600:
-        mapping, skip = {}, 0
-        while True:
-            r = await c.get(f"{config.SEERR_URL}/api/v1/user", params={"take": 100, "skip": skip},
-                            headers=_seerr_headers())
-            if r.status_code != 200:
-                break
-            d = r.json()
-            for u in d.get("results", []):
-                if u.get("plexId"):
-                    mapping[int(u["plexId"])] = u["id"]
-            skip += 100
-            if skip >= (d.get("pageInfo") or {}).get("results", 0):
-                break
-        _seerr_users.update(at=time.time(), map=mapping)
-    return _seerr_users["map"].get(int(plex_id))
+    users = _seerr_users.get("list")
+    if users is None or time.time() - _seerr_users["at"] > 600:
+        users = await _load_seerr_users(c)
+    sid = _match_seerr_user(users, user_row)
+    if sid is None and time.time() - _seerr_users["at"] > 5:
+        # Personen kan ha importerats i Seerr nyss – hämta listan igen
+        sid = _match_seerr_user(await _load_seerr_users(c), user_row)
+    return sid
 
 
 def _seerr_detail(status):
@@ -437,17 +461,19 @@ async def send_request(movie_row, user_row=None):
         if backend == "seerr":
             plex_id = user_row["plex_id"] if user_row else None
             try:
-                su = await seerr_user_id(c, plex_id)
-            except httpx.HTTPError:
-                su = None
+                su = await seerr_user_id(c, user_row)
+            except httpx.HTTPError as ex:
+                return "failed", f"Kunde inte läsa användarna i Seerr: {ex}", None
+            if not su:
+                # Skicka aldrig i någon annans namn
+                return "failed", "Ditt Plex-konto finns inte i Seerr. Be admin importera Plex-användare i Seerr.", None
             body = {"mediaType": "tv", "mediaId": tmdb_id, "seasons": "all"} if is_tv \
                 else {"mediaType": "movie", "mediaId": tmdb_id}
             r = await c.post(f"{config.SEERR_URL}/api/v1/request", json=body, headers=_seerr_headers(su))
             if r.status_code in (200, 201):
                 d = r.json()
                 st = SEERR_REQUEST_STATUS.get(d.get("status"), "pending")
-                who = "" if su else " (som admin – Plex-kontot finns inte i Seerr)"
-                return st, _seerr_detail(st) + who, d.get("id")
+                return st, _seerr_detail(st), d.get("id")
             if r.status_code == 409:
                 st, sid = await seerr_status(c, "tv" if is_tv else "movie", tmdb_id, None, plex_id)
                 st = st or "pending"
