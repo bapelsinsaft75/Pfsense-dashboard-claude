@@ -29,67 +29,69 @@ Bilder (affischer, porträtt) laddas direkt från `image.tmdb.org`.
 3. **Plex-serverns adress** sett från containern, t.ex. `http://192.168.2.10:32400`.
 4. Valfritt: Overseerr/Jellyseerr (URL + API-nyckel) eller Radarr (URL + API-nyckel) för önskningar.
 
-## Installera på Unraid
+## Installera på Unraid (med Force update)
 
-Kör i Unraids terminal (`>_` uppe till höger).
+Imagen byggs automatiskt av GitHub Actions vid varje ändring och publiceras som
+`ghcr.io/bapelsinsaft75/filmdilemma:latest`. Unraid hämtar den därifrån, så uppdateringar görs med
+**Force update** i Docker-fliken.
 
-**1. Hämta koden**
+**1. Logga in mot GitHubs register (en gång, om paketet är privat)**
 
-```bash
-mkdir -p /mnt/user/appdata && cd /mnt/user/appdata
-git clone -b claude/cool-ramanujan-mp5fff https://github.com/bapelsinsaft75/Pfsense-dashboard-claude.git filmdilemma-src
-```
-
-Finns mappen redan: `cd /mnt/user/appdata/filmdilemma-src && git pull`
-
-**2. Fyll i inställningar**
+Skapa en token på GitHub: *Settings → Developer settings → Personal access tokens → Tokens (classic)*
+med behörigheten `read:packages`. Kör sedan i Unraids terminal:
 
 ```bash
-cd /mnt/user/appdata/filmdilemma-src/filmdilemma-docker
-cp .env.example .env
-nano .env
+docker login ghcr.io -u bapelsinsaft75
 ```
 
-Fyll minst i `TMDB_TOKEN`, `PLEX_URL` och `PLEX_TOKEN`. Spara med Ctrl+O, Enter, Ctrl+X.
+Klistra in token som lösenord. Inloggningen sparas och används av Force update.
 
-**3. Bygg och starta**
+**2. Lägg in mallen**
 
 ```bash
-docker build -t filmdilemma-local .
-docker rm -f filmdilemma 2>/dev/null
-docker run -d --name filmdilemma --restart unless-stopped \
-  --network br0 --ip 192.168.2.50 \
-  --env-file .env \
-  -v /mnt/user/appdata/filmdilemma:/data \
-  filmdilemma-local
+wget -O /boot/config/plugins/dockerMan/templates-user/my-filmdilemma.xml \
+  https://raw.githubusercontent.com/bapelsinsaft75/Pfsense-dashboard-claude/claude/cool-ramanujan-mp5fff/filmdilemma-docker/unraid/my-filmdilemma.xml
 ```
 
-**4. Följ första importen**
+Om repot är privat fungerar inte `wget`; kopiera då `unraid/my-filmdilemma.xml` från din klon:
+`cp /mnt/user/appdata/filmdilemma-src/filmdilemma-docker/unraid/my-filmdilemma.xml /boot/config/plugins/dockerMan/templates-user/`
 
-```bash
-docker logs -f filmdilemma
-```
+**3. Skapa containern**
 
-Första starten importerar filmer från TMDB (`MAX_MOVIES`, standard 20 000 ≈ 15 min).
-Sidan går att använda under tiden och fylls på efterhand. Avsluta loggvisningen med Ctrl+C.
+Docker-fliken → **Add Container** → välj mallen **filmdilemma** → fyll i `TMDB_TOKEN`, `PLEX_URL` och
+`PLEX_TOKEN` → **Apply**. Nätverk `br0` och IP `192.168.2.50` är redan ifyllda.
 
-Öppna sedan **http://192.168.2.50** från en annan dator eller mobilen och tryck **Sign in** → **Logga in med Plex**.
-Unraid-servern själv når inte adresser på `br0` om inte *Settings → Docker → Host access to custom networks* är på.
+Har du en gammal container som heter `filmdilemma` (från `docker run`), ta bort den först:
+`docker rm -f filmdilemma`. Databasen i `/mnt/user/appdata/filmdilemma` ligger kvar.
+
+**4. Uppdatera i framtiden**
+
+Docker-fliken → klicka på containern → **Force update**. (Med *Advanced view* på syns även
+"update ready" när en ny image finns.)
+
+Första starten importerar filmer från TMDB (`MAX_MOVIES`, standard 20 000 ≈ 15 min). Följ den via
+containerns **Logs**. Öppna sedan **http://192.168.2.50** från en annan dator eller mobilen och tryck
+**Sign in** → **Logga in med Plex**. Unraid-servern själv når inte adresser på `br0` om inte
+*Settings → Docker → Host access to custom networks* är på.
 
 ### Alternativ: docker compose
 
 ```bash
-docker compose up -d --build
+cp .env.example .env && nano .env
+docker compose pull && docker compose up -d
 ```
 
-Compose-filen kopplar in containern på det befintliga nätverket `br0` (`DOCKER_NETWORK` i `.env`) och
-sparar data i `/mnt/user/appdata/filmdilemma`.
+### Bygga själv i stället
+
+```bash
+docker build -t filmdilemma-local .
+```
 
 ## Underhåll
 
-| Vad | Kommando |
+| Vad | Hur |
 |---|---|
-| Uppdatera koden | `cd /mnt/user/appdata/filmdilemma-src && git pull`, sedan steg 3 igen |
+| Uppdatera | **Force update** i Docker-fliken |
 | Importera fler/nyare filmer | `docker exec filmdilemma python -m app.tmdb_import --max 49000` |
 | Uppdatera befintliga filmer | `docker exec filmdilemma python -m app.tmdb_import --refresh` |
 | Synka Plex direkt | Knappen **Synka Plex nu** på `/onskningar` (admin), annars var `PLEX_SYNC_MINUTES` |

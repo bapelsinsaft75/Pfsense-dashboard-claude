@@ -1,7 +1,6 @@
 services:
   filmdilemma:
-    build: .
-    image: filmdilemma-local:latest
+    image: ghcr.io/bapelsinsaft75/filmdilemma:latest
     container_name: filmdilemma
     restart: unless-stopped
     env_file: .env

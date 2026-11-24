@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>filmdilemma</Name>
+  <Repository>ghcr.io/bapelsinsaft75/filmdilemma:latest</Repository>
+  <Registry>https://github.com/bapelsinsaft75/Pfsense-dashboard-claude/pkgs/container/filmdilemma</Registry>
+  <Network>br0</Network>
+  <MyIP>192.168.2.50</MyIP>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Overview>Fristående Film Dilemma med filmdata från TMDB och inloggning via Plex.</Overview>
+  <Category>MediaApp:Video</Category>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/bapelsinsaft75/Pfsense-dashboard-claude/claude/cool-ramanujan-mp5fff/filmdilemma-docker/web/icon-192.png</Icon>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/filmdilemma" Mode="rw" Description="Databas med filmer, användare och önskningar" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/filmdilemma</Config>
+  <Config Name="Webbport" Target="80" Default="80" Mode="tcp" Description="Port i containern" Type="Port" Display="advanced" Required="true" Mask="false">80</Config>
+  <Config Name="PUBLIC_URL" Target="PUBLIC_URL" Default="http://192.168.2.50" Mode="" Description="Adressen du surfar till" Type="Variable" Display="always" Required="true" Mask="false">http://192.168.2.50</Config>
+  <Config Name="TMDB_TOKEN" Target="TMDB_TOKEN" Default="" Mode="" Description="TMDB API Read Access Token (börjar med eyJ)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="PLEX_URL" Target="PLEX_URL" Default="" Mode="" Description="Din Plex-server, t.ex. http://192.168.2.10:32400" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="PLEX_TOKEN" Target="PLEX_TOKEN" Default="" Mode="" Description="Plex-token för ditt admin-konto" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="WATCH_REGION" Target="WATCH_REGION" Default="SE" Mode="" Description="Land för streamingtjänster" Type="Variable" Display="always" Required="false" Mask="false">SE</Config>
+  <Config Name="MAX_MOVIES" Target="MAX_MOVIES" Default="20000" Mode="" Description="Antal filmer vid första importen" Type="Variable" Display="advanced" Required="false" Mask="false">20000</Config>
+  <Config Name="REQUIRE_LOGIN" Target="REQUIRE_LOGIN" Default="false" Mode="" Description="true = hela sidan kräver Plex-inloggning" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="PLEX_SYNC_MINUTES" Target="PLEX_SYNC_MINUTES" Default="30" Mode="" Description="Hur ofta Plex synkas (minuter)" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="OVERSEERR_URL" Target="OVERSEERR_URL" Default="" Mode="" Description="Overseerr/Jellyseerr för önskningar (valfritt)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="OVERSEERR_API_KEY" Target="OVERSEERR_API_KEY" Default="" Mode="" Description="API-nyckel till Overseerr/Jellyseerr" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="RADARR_URL" Target="RADARR_URL" Default="" Mode="" Description="Radarr för önskningar (om Overseerr inte används)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="RADARR_API_KEY" Target="RADARR_API_KEY" Default="" Mode="" Description="API-nyckel till Radarr" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="RADARR_ROOT_FOLDER" Target="RADARR_ROOT_FOLDER" Default="" Mode="" Description="Radarr-mapp (tom = första)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="RADARR_QUALITY_PROFILE" Target="RADARR_QUALITY_PROFILE" Default="" Mode="" Description="Radarr-kvalitetsprofil, namn eller id (tom = första)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>

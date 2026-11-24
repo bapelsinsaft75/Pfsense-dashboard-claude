@@ -1,0 +1,41 @@
+name: Bygg Film Dilemma-image
+
+on:
+  push:
+    branches: [main, master, claude/cool-ramanujan-mp5fff]
+    paths:
+      - "filmdilemma-docker/**"
+      - ".github/workflows/filmdilemma-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: filmdilemma-docker
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/bapelsinsaft75/filmdilemma:latest
+            ghcr.io/bapelsinsaft75/filmdilemma:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=filmdilemma
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
