@@ -558,10 +558,16 @@ async def master_genres(request):
     return ok(sorted(gs))
 
 
+_provider_cache = {}
+
+
 @route("/api/v1/utils/watch-providers", methods=("GET",))
 async def watch_providers(request):
     region = (request.query_params.get("region") or config.WATCH_REGION).upper()
     conn = db.connect()
+    key = (region, conn.execute("SELECT COUNT(*), MAX(updated_at) FROM movies").fetchone()[:])
+    if key in _provider_cache:
+        return ok(_provider_cache[key])
     counts = {}
     for (p,) in conn.execute("SELECT providers FROM movies"):
         for i in db.jl(p, {}).get(region, {}).get("flatrate", []):
@@ -572,6 +578,8 @@ async def watch_providers(request):
             "display_priority": r["priority"], "movie_count": counts.get(r["id"], 0)}
            for r in rows if counts.get(r["id"])]
     out.sort(key=lambda x: -x["movie_count"])
+    _provider_cache.clear()
+    _provider_cache[key] = out
     return ok(out)
 
 
