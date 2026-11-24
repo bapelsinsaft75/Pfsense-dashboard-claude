@@ -1,13 +1,21 @@
-FROM nginx:1.27-alpine
+FROM python:3.12-slim
 
-ENV API_UPSTREAM=https://api.filmdilemma.com
-# Bara ${API_UPSTREAM} ska bytas ut i mallen, inte nginx egna $-variabler
-ENV NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DATA_DIR=/data \
+    WEB_DIR=/srv/web \
+    PORT=80
 
-RUN rm -f /etc/nginx/conf.d/default.conf
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY docker-entrypoint.d-40-api-url.sh /docker-entrypoint.d/40-api-url.sh
-COPY site/ /usr/share/nginx/html/
+WORKDIR /srv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+COPY app/ /srv/app/
+COPY web/ /srv/web/
+
+VOLUME /data
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD python -c "import urllib.request,os;urllib.request.urlopen('http://127.0.0.1:%s/api/local/config' % os.environ.get('PORT','80'), timeout=4)" || exit 1
+
+CMD ["python", "-m", "app.main"]

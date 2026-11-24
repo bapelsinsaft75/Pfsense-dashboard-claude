@@ -1,0 +1,63 @@
+"""Inställningar som läses från miljövariabler."""
+import os
+import secrets
+
+from . import db
+
+
+def env(name, default=""):
+    return os.environ.get(name, default).strip()
+
+
+PUBLIC_URL = env("PUBLIC_URL", "http://192.168.2.50").rstrip("/")
+WATCH_REGION = env("WATCH_REGION", "SE").upper()
+REQUIRE_LOGIN = env("REQUIRE_LOGIN", "false").lower() in ("1", "true", "yes")
+
+PLEX_URL = env("PLEX_URL").rstrip("/")
+PLEX_TOKEN = env("PLEX_TOKEN")
+PLEX_SYNC_MINUTES = int(env("PLEX_SYNC_MINUTES", "30") or 30)
+
+OVERSEERR_URL = env("OVERSEERR_URL").rstrip("/")      # fungerar även för Jellyseerr
+OVERSEERR_API_KEY = env("OVERSEERR_API_KEY")
+RADARR_URL = env("RADARR_URL").rstrip("/")
+RADARR_API_KEY = env("RADARR_API_KEY")
+RADARR_ROOT_FOLDER = env("RADARR_ROOT_FOLDER")
+RADARR_QUALITY_PROFILE = env("RADARR_QUALITY_PROFILE")
+
+
+def secret_key():
+    key = env("SECRET_KEY")
+    if key:
+        return key
+    key = db.get_meta("secret_key")
+    if not key:
+        key = secrets.token_urlsafe(48)
+        db.set_meta("secret_key", key)
+    return key
+
+
+def plex_client_id():
+    cid = db.get_meta("plex_client_id")
+    if not cid:
+        cid = "filmdilemma-local-" + secrets.token_hex(8)
+        db.set_meta("plex_client_id", cid)
+    return cid
+
+
+def plex_machine_id():
+    return db.get_meta("plex_machine_id")
+
+
+def plex_web_url(rating_key):
+    mid = plex_machine_id()
+    if not mid or not rating_key:
+        return None
+    return (f"https://app.plex.tv/desktop/#!/server/{mid}/details?key=%2Flibrary%2Fmetadata%2F{rating_key}")
+
+
+def request_backend():
+    if OVERSEERR_URL and OVERSEERR_API_KEY:
+        return "overseerr"
+    if RADARR_URL and RADARR_API_KEY:
+        return "radarr"
+    return "list"

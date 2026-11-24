@@ -1,20 +1,18 @@
 services:
   filmdilemma:
     build: .
-    image: filmdilemma-mirror:latest
+    image: filmdilemma-local:latest
     container_name: filmdilemma
     restart: unless-stopped
-    environment:
-      # Ta bort kommentaren och sätt tomt för att köra API via nginx-proxy
-      # API_URL: ""
-      API_UPSTREAM: ${API_UPSTREAM:-https://api.filmdilemma.com}
+    env_file: .env
+    volumes:
+      - ${DATA_PATH:-/mnt/user/appdata/filmdilemma}:/data
     networks:
       lan:
         ipv4_address: ${CONTAINER_IP:-192.168.2.50}
 
 networks:
-  # Befintligt macvlan-nätverk på värden (t.ex. "br0" på Unraid).
-  # Kolla namnet med: docker network ls
+  # Befintligt macvlan-nätverk på värden ("br0" på Unraid). Kolla med: docker network ls
   lan:
     name: ${DOCKER_NETWORK:-br0}
     external: true

@@ -1,0 +1,47 @@
+@font-face{font-family:'Source Sans 3';font-weight:200 900;font-display:swap;src:url('/fonts/source-sans-3-latin-variable.woff2') format('woff2')}
+@font-face{font-family:'Fraunces Display';font-weight:100 900;font-display:swap;src:url('/fonts/fraunces-latin-variable.woff2') format('woff2')}
+:root{
+  --bg:#0e0e10;--surface:#18181c;--surface-2:#212127;--hairline:#2e2e36;--hairline-2:#3e3e48;
+  --text:#f2efe8;--text-2:#b3b0aa;--text-3:#8d8a85;--accent:#ffc800;--accent-hover:#ffd22e;--accent-ink:#141000;
+  --success:#4cc38a;--error:#f0614f;--info:#5aa0f0;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 'Source Sans 3',system-ui,sans-serif}
+a{color:var(--accent)}
+h1{font-family:'Fraunces Display',Georgia,serif;font-weight:600;font-size:34px;line-height:1.15;margin:8px 0 8px}
+.card{max-width:420px;margin:12vh auto 40px;padding:32px 28px;background:var(--surface);border:1px solid var(--hairline);border-radius:16px}
+.wide{max-width:860px;margin:0 auto;padding:16px 16px 60px}
+.brand{display:inline-flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-family:'Fraunces Display',Georgia,serif;font-weight:600;font-size:20px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0 24px;border-bottom:1px solid var(--hairline);margin-bottom:24px}
+.top nav{display:flex;gap:18px}
+.top nav a{color:var(--text-2);text-decoration:none}
+.top nav a:hover{color:var(--text)}
+.lead{color:var(--text-2);margin:0 0 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--hairline-2);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.6;cursor:default}
+.btn.primary{width:100%;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn:focus-visible,a:focus-visible{outline:2px solid var(--accent-hover);outline-offset:2px}
+.msg{min-height:24px;margin:14px 0 0;color:var(--text-2)}
+.msg.error{color:var(--error)}
+.small{font-size:14px;color:var(--text-3)}
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.reqs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.reqs li{display:flex;align-items:center;gap:14px;padding:10px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px}
+.reqs img{width:60px;height:90px;object-fit:cover;border-radius:6px;background:var(--surface-2);flex:none}
+.reqs li>div{flex:1;min-width:0}
+.reqs .title{color:var(--text);font-weight:600;text-decoration:none;overflow-wrap:anywhere}
+.reqs .title:hover{color:var(--accent)}
+.badge{flex:none;padding:3px 10px;border-radius:999px;border:1px solid currentColor;font-size:13px;color:var(--text-2)}
+.badge.pending{color:var(--accent)}
+.badge.sent{color:var(--info)}
+.badge.available{color:var(--success)}
+.badge.failed{color:var(--error)}
+.small-btn{min-height:34px;padding:0 12px;font-size:14px;flex:none}
+@media (max-width:560px){
+  .card{margin:6vh 16px;padding:24px 18px}
+  .reqs li{flex-wrap:wrap}
+  .reqs li>div{flex-basis:calc(100% - 80px)}
+}

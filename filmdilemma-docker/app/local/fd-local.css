@@ -1,0 +1,52 @@
+.fd-plex-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline-2, #3e3e48);
+  border-radius: 12px;
+  background: var(--surface, #18181c);
+  font-size: 14px;
+  color: var(--text, #f2efe8);
+}
+.fd-plex-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline-2, #3e3e48);
+  background: transparent;
+  color: var(--text, #f2efe8);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.fd-plex-btn:hover { background: var(--surface-2, #212127); }
+.fd-plex-btn:disabled { opacity: .6; cursor: default; }
+.fd-plex-primary {
+  background: var(--accent, #ffc800);
+  border-color: var(--accent, #ffc800);
+  color: var(--accent-ink, #141000);
+}
+.fd-plex-primary:hover { background: var(--accent-hover, #ffd22e); }
+.fd-plex-icon { font-size: 13px; line-height: 1; }
+.fd-plex-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-2, #3e3e48);
+  color: var(--text-2, #b3b0aa);
+  font-size: 13px;
+}
+.fd-plex-seen { color: var(--success, #4cc38a); border-color: currentColor; }
+.fd-plex-wish { color: var(--accent, #ffc800); border-color: currentColor; }
+.fd-plex-note { color: var(--text-2, #b3b0aa); }
+.fd-plex-err { color: var(--error, #f0614f); }
+.fd-plex-link { color: var(--accent, #ffc800); text-decoration: underline; text-underline-offset: 2px; }

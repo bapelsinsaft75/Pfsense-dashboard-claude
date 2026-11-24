@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Önskningar | Film Dilemma</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+<link rel="stylesheet" href="/local/page.css">
+</head>
+<body>
+<main class="wide">
+  <header class="top">
+    <a href="/" class="brand"><img src="/favicon.svg?v=2" alt="" width="32" height="32"><span>Film Dilemma</span></a>
+    <nav><a href="/movies">Filmer</a><a href="/watchlist">Bevakning</a></nav>
+  </header>
+  <h1>Önskningar</h1>
+  <p class="lead" id="intro">Filmer som har önskats till Plex.</p>
+  <div class="toolbar" id="toolbar" hidden>
+    <button class="btn" id="sync" type="button">Synka Plex nu</button>
+    <span class="small" id="syncmsg" role="status" aria-live="polite"></span>
+  </div>
+  <ul id="list" class="reqs"></ul>
+  <p id="empty" class="msg" hidden>Inga önskningar ännu. Öppna en film som inte finns i Plex och tryck på <b>Önska film</b>.</p>
+</main>
+<script>
+(function () {
+  var LABEL = { pending: "Väntar", sent: "Skickad", available: "Finns i Plex", failed: "Misslyckades" };
+
+  async function refresh() {
+    var rt = localStorage.getItem("refresh_token");
+    if (!rt) return false;
+    var r = await fetch("/api/v1/auth/refresh", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: rt }) });
+    if (!r.ok) return false;
+    var d = await r.json();
+    localStorage.setItem("access_token", d.access_token);
+    localStorage.setItem("refresh_token", d.refresh_token);
+    return true;
+  }
+
+  async function api(path, opts, retried) {
+    opts = opts || {};
+    var h = { "Authorization": "Bearer " + (localStorage.getItem("access_token") || "") };
+    var r = await fetch(path, Object.assign({}, opts, { headers: h }));
+    if (r.status === 401 && !retried && await refresh()) return api(path, opts, true);
+    if (r.status === 401) { location.replace("/plex-login?next=/onskningar"); throw new Error("401"); }
+    return r;
+  }
+
+  function fmtDate(s) {
+    try { return new Date(s.replace(" ", "T") + "Z").toLocaleDateString("sv-SE"); } catch (e) { return s; }
+  }
+
+  async function load() {
+    var me = await (await api("/api/v1/auth/me")).json();
+    if (me.is_superuser) {
+      document.getElementById("intro").textContent = "Alla önskningar från dina Plex-användare.";
+      document.getElementById("toolbar").hidden = false;
+    }
+    var items = await (await api("/api/local/requests")).json();
+    var list = document.getElementById("list");
+    list.innerHTML = "";
+    document.getElementById("empty").hidden = items.length > 0;
+    items.forEach(function (it) {
+      var li = document.createElement("li");
+      var img = document.createElement("img");
+      img.src = it.poster_url || "/favicon.svg?v=2"; img.alt = ""; img.width = 60; img.height = 90; img.loading = "lazy";
+      var body = document.createElement("div");
+      var a = document.createElement("a");
+      a.href = "/movies/" + it.movie_id; a.textContent = it.title + (it.year ? " (" + it.year + ")" : "");
+      a.className = "title";
+      var meta = document.createElement("div");
+      meta.className = "small";
+      meta.textContent = (me.is_superuser ? it.username + " · " : "") + fmtDate(it.created_at) +
+        (it.detail ? " · " + it.detail : "");
+      body.appendChild(a); body.appendChild(meta);
+      var badge = document.createElement("span");
+      badge.className = "badge " + it.status; badge.textContent = LABEL[it.status] || it.status;
+      var del = document.createElement("button");
+      del.className = "btn small-btn"; del.type = "button"; del.textContent = "Ta bort";
+      del.addEventListener("click", async function () {
+        await api("/api/local/requests/" + it.id, { method: "DELETE" });
+        load();
+      });
+      li.appendChild(img); li.appendChild(body); li.appendChild(badge);
+      if (it.mine || me.is_superuser) li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  document.getElementById("sync").addEventListener("click", async function () {
+    var m = document.getElementById("syncmsg");
+    m.textContent = "Synkar …";
+    await api("/api/local/plex/sync", { method: "POST" });
+    setTimeout(function () { m.textContent = "Synk startad. Ladda om sidan om en stund."; }, 800);
+  });
+
+  if (!localStorage.getItem("access_token")) location.replace("/plex-login?next=/onskningar");
+  else load().catch(function () {});
+})();
+</script>
+</body>
+</html>
