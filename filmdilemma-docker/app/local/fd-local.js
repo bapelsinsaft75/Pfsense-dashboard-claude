@@ -107,7 +107,7 @@
     cleanupQueued = true;
     requestAnimationFrame(function () { cleanupQueued = false; cleanup(); });
   }
-  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); })
+  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); hideServicePicker(); })
     .observe(document.documentElement, { childList: true, subtree: true });
 
   /* ---------- Dilemma solver: välj om den letar i Plex eller även i TMDB ---------- */
@@ -176,9 +176,10 @@
       children.push(el("a", {
         class: "fd-plex-btn fd-plex-primary", href: st.plex_url || "#", target: "_blank", rel: "noopener"
       }, [el("span", { class: "fd-plex-icon", text: "▶" }), el("span", { text: "Watch on Plex" })]));
+      children.push(el("span", { class: "fd-plex-badge fd-plex-src-plex", text: "Finns i Plex" }));
       if (st.watched) children.push(el("span", { class: "fd-plex-badge fd-plex-seen", text: "✓ Sedd" }));
     } else if (!st.logged_in) {
-      children.push(el("span", { class: "fd-plex-note", text: "Finns inte i Plex." }));
+      children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));
       children.push(el("a", { class: "fd-plex-btn", href: loginUrl(), text: "Logga in med Plex för att önska" }));
     } else if (st.request_status && st.request_status !== "failed") {
       var label = {
@@ -186,6 +187,7 @@
         sent: "Önskad – laddas ner",
         available: "Tillagd i Plex"
       }[st.request_status] || "Önskad";
+      children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));
       children.push(el("span", { class: "fd-plex-badge fd-plex-wish", text: "★ " + label }));
       children.push(el("a", { class: "fd-plex-link", href: "/onskningar", text: "Mina önskningar" }));
     } else {
@@ -205,7 +207,7 @@
         refreshBox(true);
       });
       children.push(btn);
-      children.push(el("span", { class: "fd-plex-note", text: "Finns inte i Plex." }));
+      children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));
       if (st.request_status === "failed") {
         children.push(el("span", { class: "fd-plex-note fd-plex-err", text: "Förra försöket misslyckades." }));
       }
@@ -244,18 +246,39 @@
   function renderDilemma(mid, st) {
     var block = null;
     var blocks = document.querySelectorAll('[data-testid="pick-buttons-block"]');
-    for (var i = 0; i < blocks.length; i++) if (visible(blocks[i])) { block = blocks[i]; break; }
-    if (!block) return;
+    for (var i = 0; i < blocks.length; i++) if (visible(blocks[i]) || blocks[i].querySelector('[data-testid^="watch-"]')) { block = blocks[i]; break; }
     // Göm originalets streaming-/affiliateknappar i kortet
-    block.querySelectorAll('[data-testid^="watch-"], a[target="_blank"]').forEach(function (n) {
-      if (!n.closest(".fd-plex-box")) n.style.display = "none";
-    });
+    if (block) {
+      block.querySelectorAll('[data-testid^="watch-"], a[target="_blank"]').forEach(function (n) {
+        if (!n.closest(".fd-plex-box")) n.style.display = "none";
+      });
+    }
     if (!st || !st.plex_configured) return;
     var old = document.getElementById("fd-dilemma-plex");
     if (upToDate(old, mid, st)) return;
     if (old) old.remove();
-    var host = block.firstElementChild || block;
-    host.insertBefore(buildPlexBox(mid, st, "fd-dilemma-plex", "fd-plex-compact"), host.firstChild);
+    var box = buildPlexBox(mid, st, "fd-dilemma-plex", "fd-plex-compact");
+    if (block) {
+      block.style.display = "";
+      block.insertBefore(box, block.firstChild);
+    } else {
+      var reasons = document.querySelector('[data-testid="dilemma-reasons"]');
+      var title = document.querySelector('[data-testid="pick-title"]');
+      var anchor = reasons || (title && title.parentElement && title.parentElement.parentElement);
+      if (anchor) anchor.insertAdjacentElement("afterend", box);
+    }
+  }
+
+  /* Dilemma solver: dölj tjänstväljaren ("Any service") */
+  function hideServicePicker() {
+    if (!/^\/(ka\/)?dilemma(\/|$)/.test(location.pathname)) return;
+    document.querySelectorAll('main button[aria-haspopup="true"]').forEach(function (b) {
+      if (b.closest(".fd-plex-box, #fd-dilemma-scope")) return;
+      if (/service/i.test(b.textContent || "") || b.querySelector("img")) {
+        var wrap = b.parentElement && b.parentElement.childElementCount === 1 ? b.parentElement : b;
+        hide(wrap);
+      }
+    });
   }
 
   async function refreshBox(force) {
@@ -434,6 +457,7 @@
     refreshBox(false);
     addNavLink();
     addDilemmaScope();
+    hideServicePicker();
     cleanup();
   }
 

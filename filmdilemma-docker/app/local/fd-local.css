@@ -113,3 +113,9 @@
 /* Plex-knappen i Dilemma solver-kortet */
 .fd-plex-compact { width: 100%; max-width: 24rem; margin: 0 0 6px; padding: 8px 10px; }
 .fd-plex-compact .fd-plex-btn { flex: 1; justify-content: center; min-height: 44px; font-size: 15px; }
+
+/* Var finns titeln: Plex eller bara TMDB */
+.fd-plex-src-plex { color: var(--accent, #ffc800); border-color: currentColor; }
+.fd-plex-src-tmdb { color: #01b4e4; border-color: currentColor; }
+.fd-plex-compact { flex-wrap: wrap; }
+.fd-plex-compact .fd-plex-btn { flex: 1 1 100%; }

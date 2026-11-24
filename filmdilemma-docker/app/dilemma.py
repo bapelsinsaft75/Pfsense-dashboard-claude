@@ -84,7 +84,7 @@ def finalists(params, user_id, scope):
     if w in ("kids", "family", "children"):
         where.append("EXISTS (SELECT 1 FROM json_each(m.genres) j WHERE j.value IN ('Family','Animation'))")
 
-    providers = [p for p in str(params.get("providers") or "").split(",") if p.strip().isdigit()]
+    providers = []   # tjänstväljaren är borttagen; filtrera aldrig på streamingtjänst
     if providers and not plex_only:
         region = (params.get("region") or "SE").upper().replace("'", "")
         where.append("""EXISTS (SELECT 1 FROM json_each(json_extract(m.providers, '$.%s.flatrate')) p
