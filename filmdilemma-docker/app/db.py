@@ -213,7 +213,8 @@ def connect():
 
 
 MIGRATIONS = [("plex_items", "art", "TEXT"), ("plex_items", "imdb_id", "TEXT"), ("plex_items", "tvdb_id", "TEXT"),
-              ("movies", "media_type", "TEXT DEFAULT 'movie'"), ("requests", "media_type", "TEXT DEFAULT 'movie'")]
+              ("movies", "media_type", "TEXT DEFAULT 'movie'"), ("requests", "media_type", "TEXT DEFAULT 'movie'"),
+              ("requests", "seerr_id", "INTEGER"), ("requests", "updated_at", "TEXT")]
 
 # Serier lagras i samma tabell som filmer med id = TV_OFFSET + TMDB:s serie-id (så att id:n inte krockar)
 TV_OFFSET = 1_000_000_000

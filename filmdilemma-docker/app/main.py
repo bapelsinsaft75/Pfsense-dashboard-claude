@@ -12,6 +12,7 @@ import random
 import re
 import shutil
 import sys
+import time
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -827,6 +828,7 @@ async def local_movie_status(request):
         "plex_url": config.plex_web_url(rk) if rk else None,
         "watched": mid in st.watched,
         "request_status": req["status"] if req else None,
+        "request_backend": config.request_backend(),
         "request_detail": req["detail"] if req else None,
         "logged_in": bool(u),
         "plex_configured": bool(config.PLEX_URL and config.PLEX_TOKEN),
@@ -847,14 +849,19 @@ async def local_request_create(request):
     if conn.execute("SELECT 1 FROM plex_library WHERE tmdb_id=?", (mid,)).fetchone():
         return err("Filmen finns redan i Plex.", 409)
     try:
-        status, detail = await plex.send_request(row)
+        status, detail, seerr_id = await plex.send_request(row, u)
     except Exception as ex:  # noqa: BLE001
-        status, detail = "failed", f"Kunde inte skicka önskan: {ex}"
-    conn.execute("""INSERT INTO requests(user_id,movie_id,status,detail,media_type) VALUES(?,?,?,?,?)
-        ON CONFLICT(user_id,movie_id) DO UPDATE SET status=excluded.status, detail=excluded.detail""",
-                 (u["id"], mid, status, detail, row["media_type"] or "movie"))
+        status, detail, seerr_id = "failed", f"Kunde inte skicka önskan: {ex}", None
+    conn.execute("""INSERT INTO requests(user_id,movie_id,status,detail,media_type,seerr_id,updated_at)
+        VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id,movie_id) DO UPDATE SET status=excluded.status, detail=excluded.detail,
+        seerr_id=excluded.seerr_id, updated_at=CURRENT_TIMESTAMP""",
+                 (u["id"], mid, status, detail, row["media_type"] or "movie", seerr_id))
     conn.commit()
     return ok({"status": status, "detail": detail}, 200 if status != "failed" else 502)
+
+
+_last_seerr_check = {}
 
 
 @route("/api/local/requests", methods=("GET",))
@@ -863,6 +870,16 @@ async def local_requests_list(request):
     if e:
         return e
     conn = db.connect()
+    # Hämta färsk status från Seerr för de önskningar som visas (högst var 30:e sekund)
+    if config.request_backend() == "seerr" and time.time() - _last_seerr_check.get(u["id"], 0) > 30:
+        _last_seerr_check[u["id"]] = time.time()
+        rows = conn.execute(f"""SELECT r.id, r.movie_id, r.status, r.seerr_id, r.media_type, uu.plex_id
+            FROM requests r JOIN users uu ON uu.id=r.user_id
+            WHERE r.status != 'available' {'' if u['is_admin'] else 'AND r.user_id=%d' % u['id']}""").fetchall()
+        try:
+            await asyncio.wait_for(plex.sync_requests(rows), timeout=8)
+        except Exception as ex:  # noqa: BLE001
+            log.info("Seerr-status kunde inte hämtas: %s", ex)
     where = "" if u["is_admin"] else "WHERE r.user_id=%d" % u["id"]
     rows = conn.execute(f"""SELECT r.*, u.username, m.title, m.year, m.poster_path FROM requests r
         JOIN users u ON u.id=r.user_id JOIN movies m ON m.id=r.movie_id {where} ORDER BY r.created_at DESC""").fetchall()

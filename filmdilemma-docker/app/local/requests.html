@@ -24,7 +24,8 @@
 </main>
 <script>
 (function () {
-  var LABEL = { pending: "Väntar", sent: "Skickad", available: "Finns i Plex", failed: "Misslyckades" };
+  var LABEL = { pending: "Väntar på godkännande", sent: "Godkänd – laddas ner", declined: "Nekad",
+                available: "Finns i Plex", failed: "Misslyckades" };
 
   async function refresh() {
     var rt = localStorage.getItem("refresh_token");

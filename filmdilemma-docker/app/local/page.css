@@ -120,3 +120,4 @@ a.d-chip:hover{border-color:var(--accent)}
   .d-poster{width:110px}
   .d-head h2{font-size:24px}
 }
+.badge.declined{color:var(--error)}

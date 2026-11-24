@@ -16,6 +16,7 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Dilemma solver | Föreslår filmer och serier utifrån känsla, era och språk. Välj **Mina filmer i Plex** eller **Plex + TMDB**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
 | Plex-koppling | Fungerar med både nya och äldre Plex-agenter (TMDB-, IMDb- och TVDB-id). Filmer och serier i Plex som saknas i databasen hämtas automatiskt från TMDB |
 | Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
+| Seerr | Önskningar skickas till Seerr **i den inloggades namn** (Plex-kontot matchas mot Seerr-användaren). Status läses tillbaka: väntar på godkännande, godkänd, nekad, tillgänglig |
 | Önskningar | **Önska film** på filmer som saknas → Overseerr/Jellyseerr eller Radarr, annars en lista på `/onskningar` |
 | Betyg, bevakningslista, sedda | Sparas lokalt per användare |
 | Allt som inte rör TMDB eller Plex | Borttaget: Coffee, Discover, Famous Fans, spel, recensioner, kommentarer, shop, affiliate-länkar, cookie-ruta och sidfotens länkar (TMDB-erkännandet är kvar, det kräver TMDB) |
@@ -30,7 +31,8 @@ Bilder (affischer, porträtt) laddas direkt från `image.tmdb.org`.
    [Finding an authentication token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
    (öppna valfri film i Plex Web → *⋯ → Get Info → View XML*, värdet efter `X-Plex-Token=` i adressen).
 3. **Plex-serverns adress** sett från containern, t.ex. `http://192.168.2.10:32400`.
-4. Valfritt: Overseerr/Jellyseerr (URL + API-nyckel) eller Radarr (URL + API-nyckel) för önskningar.
+4. Valfritt: [Seerr](https://seerr.dev) (URL + API-nyckel) eller Radarr (URL + API-nyckel) för önskningar.
+   Overseerr och Jellyseerr fungerar också (samma API).
 
 ## Installera på Unraid (med Force update)
 
@@ -114,7 +116,7 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `PLEX_SYNC_MINUTES` | `30` | Hur ofta bibliotek och sett-historik synkas |
 | `REQUIRE_LOGIN` | `false` | `true` = hela sidan kräver Plex-inloggning |
 | `OMDB_API_KEY` | – | Valfri. IMDb-betyg tas från Plex; den här gratisnyckeln (omdbapi.com) används när Plex saknar dem |
-| `OVERSEERR_URL` / `OVERSEERR_API_KEY` | – | Skicka önskningar till Overseerr eller Jellyseerr |
+| `SEERR_URL` / `SEERR_API_KEY` | – | Skicka önskningar till Seerr (även Overseerr/Jellyseerr). Gamla namnen `OVERSEERR_URL`/`OVERSEERR_API_KEY` fungerar också |
 | `RADARR_URL` / `RADARR_API_KEY` | – | ... eller direkt till Radarr |
 | `RADARR_ROOT_FOLDER` / `RADARR_QUALITY_PROFILE` | första i Radarr | Var och i vilken kvalitet Radarr laddar ner |
 

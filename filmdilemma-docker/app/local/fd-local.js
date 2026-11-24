@@ -183,8 +183,9 @@
       children.push(el("a", { class: "fd-plex-btn", href: loginUrl(), text: "Logga in med Plex för att önska" }));
     } else if (st.request_status && st.request_status !== "failed") {
       var label = {
-        pending: "Önskad – väntar på att läggas till",
+        pending: st.request_backend === "seerr" ? "Önskad – väntar på godkännande" : "Önskad – väntar på att läggas till",
         sent: "Önskad – laddas ner",
+        declined: "Nekad i Seerr",
         available: "Tillagd i Plex"
       }[st.request_status] || "Önskad";
       children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));

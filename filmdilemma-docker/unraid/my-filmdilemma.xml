@@ -23,8 +23,8 @@
   <Config Name="REQUIRE_LOGIN" Target="REQUIRE_LOGIN" Default="false" Mode="" Description="true = hela sidan kräver Plex-inloggning" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="PLEX_SYNC_MINUTES" Target="PLEX_SYNC_MINUTES" Default="30" Mode="" Description="Hur ofta Plex synkas (minuter)" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
   <Config Name="OMDB_API_KEY" Target="OMDB_API_KEY" Default="" Mode="" Description="Valfri gratis nyckel från omdbapi.com för IMDb-betyg när Plex saknar dem" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="OVERSEERR_URL" Target="OVERSEERR_URL" Default="" Mode="" Description="Overseerr/Jellyseerr för önskningar (valfritt)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="OVERSEERR_API_KEY" Target="OVERSEERR_API_KEY" Default="" Mode="" Description="API-nyckel till Overseerr/Jellyseerr" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="SEERR_URL" Target="SEERR_URL" Default="" Mode="" Description="Seerr för önskningar, t.ex. http://192.168.2.20:5055 (fungerar även med Overseerr/Jellyseerr)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="SEERR_API_KEY" Target="SEERR_API_KEY" Default="" Mode="" Description="Seerr API-nyckel (Settings -> General -> API Key)" Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="RADARR_URL" Target="RADARR_URL" Default="" Mode="" Description="Radarr för önskningar (om Overseerr inte används)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="RADARR_API_KEY" Target="RADARR_API_KEY" Default="" Mode="" Description="API-nyckel till Radarr" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="RADARR_ROOT_FOLDER" Target="RADARR_ROOT_FOLDER" Default="" Mode="" Description="Radarr-mapp (tom = första)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>

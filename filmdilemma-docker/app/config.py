@@ -17,8 +17,10 @@ PLEX_URL = env("PLEX_URL").rstrip("/")
 PLEX_TOKEN = env("PLEX_TOKEN")
 PLEX_SYNC_MINUTES = int(env("PLEX_SYNC_MINUTES", "30") or 30)
 
-OVERSEERR_URL = env("OVERSEERR_URL").rstrip("/")      # fungerar även för Jellyseerr
-OVERSEERR_API_KEY = env("OVERSEERR_API_KEY")
+# Seerr (seerr.dev) – efterföljaren till Overseerr/Jellyseerr, samma API. OVERSEERR_* fungerar som alias.
+SEERR_URL = (env("SEERR_URL") or env("OVERSEERR_URL")).rstrip("/")
+SEERR_API_KEY = env("SEERR_API_KEY") or env("OVERSEERR_API_KEY")
+OVERSEERR_URL, OVERSEERR_API_KEY = SEERR_URL, SEERR_API_KEY
 RADARR_URL = env("RADARR_URL").rstrip("/")
 RADARR_API_KEY = env("RADARR_API_KEY")
 RADARR_ROOT_FOLDER = env("RADARR_ROOT_FOLDER")
@@ -57,8 +59,8 @@ def plex_web_url(rating_key):
 
 
 def request_backend():
-    if OVERSEERR_URL and OVERSEERR_API_KEY:
-        return "overseerr"
+    if SEERR_URL and SEERR_API_KEY:
+        return "seerr"
     if RADARR_URL and RADARR_API_KEY:
         return "radarr"
     return "list"

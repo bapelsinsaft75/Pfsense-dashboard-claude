@@ -319,6 +319,10 @@ async def thumb(path, width=300, height=450):
 
 async def sync_all():
     try:
+        await sync_requests()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Seerr-synk misslyckades: %s", e)
+    try:
         await sync_library()
     except Exception as e:  # noqa: BLE001
         log.warning("Plex-synk av bibliotek misslyckades: %s", e)
@@ -338,24 +342,122 @@ async def sync_loop():
 
 # ---------- Önskningar ----------
 
-async def send_request(movie_row):
-    """Skickar en önskan vidare till Overseerr/Jellyseerr eller Radarr. Returnerar (status, detalj)."""
+# ---------- Seerr (seerr.dev, även Overseerr/Jellyseerr) ----------
+
+SEERR_REQUEST_STATUS = {1: "pending", 2: "sent", 3: "declined", 4: "failed", 5: "available"}
+SEERR_MEDIA_AVAILABLE = (4, 5)   # 4 = delvis tillgänglig, 5 = tillgänglig
+_seerr_users = {"at": 0, "map": {}}
+
+
+def _seerr_headers(seerr_user=None):
+    h = {"X-Api-Key": config.SEERR_API_KEY, "Accept": "application/json"}
+    if seerr_user:
+        h["X-Api-User"] = str(seerr_user)   # önskan registreras på rätt person i Seerr
+    return h
+
+
+async def seerr_user_id(c, plex_id):
+    """Seerr-användarens id för ett Plex-konto (matchas via plexId). Cachas i 10 minuter."""
+    if not plex_id:
+        return None
+    if time.time() - _seerr_users["at"] > 600:
+        mapping, skip = {}, 0
+        while True:
+            r = await c.get(f"{config.SEERR_URL}/api/v1/user", params={"take": 100, "skip": skip},
+                            headers=_seerr_headers())
+            if r.status_code != 200:
+                break
+            d = r.json()
+            for u in d.get("results", []):
+                if u.get("plexId"):
+                    mapping[int(u["plexId"])] = u["id"]
+            skip += 100
+            if skip >= (d.get("pageInfo") or {}).get("results", 0):
+                break
+        _seerr_users.update(at=time.time(), map=mapping)
+    return _seerr_users["map"].get(int(plex_id))
+
+
+def _seerr_detail(status):
+    return {"pending": "Väntar på godkännande i Seerr", "sent": "Godkänd i Seerr – laddas ner",
+            "declined": "Nekad i Seerr", "available": "Tillgänglig", "failed": "Misslyckades i Seerr"}.get(status, "")
+
+
+async def seerr_status(c, media_type, tmdb_id, seerr_id=None, plex_id=None):
+    """Läser status för en titel i Seerr. Returnerar (status, seerr_request_id) eller (None, None)."""
+    r = await c.get(f"{config.SEERR_URL}/api/v1/{'tv' if media_type == 'tv' else 'movie'}/{tmdb_id}",
+                    headers=_seerr_headers())
+    if r.status_code != 200:
+        return None, None
+    info = r.json().get("mediaInfo") or {}
+    if info.get("status") in SEERR_MEDIA_AVAILABLE:
+        return "available", seerr_id
+    reqs = info.get("requests") or []
+    mine = next((q for q in reqs if seerr_id and q.get("id") == seerr_id), None) \
+        or next((q for q in reqs if plex_id and (q.get("requestedBy") or {}).get("plexId") == plex_id), None) \
+        or (reqs[0] if reqs else None)
+    if not mine:
+        return None, None
+    return SEERR_REQUEST_STATUS.get(mine.get("status"), "pending"), mine.get("id")
+
+
+async def sync_requests(rows=None):
+    """Uppdaterar önskningarnas status från Seerr."""
+    if config.request_backend() != "seerr":
+        return 0
+    conn = db.connect()
+    if rows is None:
+        rows = conn.execute("""SELECT r.id, r.movie_id, r.status, r.seerr_id, r.media_type, u.plex_id
+            FROM requests r JOIN users u ON u.id=r.user_id WHERE r.status NOT IN ('available')""").fetchall()
+    changed = 0
+    async with _lan_client() as c:
+        for r in rows:
+            is_tv = (r["media_type"] or "movie") == "tv" or r["movie_id"] > db.TV_OFFSET
+            tmdb_id = r["movie_id"] - db.TV_OFFSET if r["movie_id"] > db.TV_OFFSET else r["movie_id"]
+            try:
+                status, sid = await seerr_status(c, "tv" if is_tv else "movie", tmdb_id, r["seerr_id"], r["plex_id"])
+            except httpx.HTTPError:
+                continue
+            if status and (status != r["status"] or sid != r["seerr_id"]):
+                conn.execute("UPDATE requests SET status=?, detail=?, seerr_id=?, updated_at=CURRENT_TIMESTAMP "
+                             "WHERE id=?", (status, _seerr_detail(status), sid, r["id"]))
+                changed += 1
+    conn.commit()
+    if changed:
+        log.info("Seerr: %d önskningar fick ny status", changed)
+    return changed
+
+
+async def send_request(movie_row, user_row=None):
+    """Skickar en önskan till Seerr (eller Radarr). Returnerar (status, detalj, seerr_id)."""
     backend = config.request_backend()
     is_tv = (movie_row["media_type"] or "movie") == "tv"
     tmdb_id = movie_row["id"] - db.TV_OFFSET if is_tv else movie_row["id"]
     async with _lan_client() as c:
-        if backend == "overseerr":
+        if backend == "seerr":
+            plex_id = user_row["plex_id"] if user_row else None
+            try:
+                su = await seerr_user_id(c, plex_id)
+            except httpx.HTTPError:
+                su = None
             body = {"mediaType": "tv", "mediaId": tmdb_id, "seasons": "all"} if is_tv \
                 else {"mediaType": "movie", "mediaId": tmdb_id}
-            r = await c.post(f"{config.OVERSEERR_URL}/api/v1/request", json=body,
-                             headers={"X-Api-Key": config.OVERSEERR_API_KEY})
+            r = await c.post(f"{config.SEERR_URL}/api/v1/request", json=body, headers=_seerr_headers(su))
             if r.status_code in (200, 201):
-                return "sent", "Skickad till Overseerr"
+                d = r.json()
+                st = SEERR_REQUEST_STATUS.get(d.get("status"), "pending")
+                who = "" if su else " (som admin – Plex-kontot finns inte i Seerr)"
+                return st, _seerr_detail(st) + who, d.get("id")
             if r.status_code == 409:
-                return "sent", "Redan önskad i Overseerr"
-            return "failed", f"Overseerr svarade {r.status_code}: {r.text[:200]}"
+                st, sid = await seerr_status(c, "tv" if is_tv else "movie", tmdb_id, None, plex_id)
+                st = st or "pending"
+                d = _seerr_detail(st)
+                return st, "Redan önskad i Seerr – " + (d[:1].lower() + d[1:]), sid
+            if r.status_code == 403 and su:
+                return "failed", "Seerr nekade: ditt Seerr-konto saknar rätt att önska " + ("serier" if is_tv else "filmer"), None
+            return "failed", f"Seerr svarade {r.status_code}: {r.text[:200]}", None
         if backend == "radarr" and is_tv:
-            return "pending", "Radarr hanterar inte serier – sparad i önskelistan"
+            return "pending", "Radarr hanterar inte serier – sparad i önskelistan", None
         if backend == "radarr":
             h = {"X-Api-Key": config.RADARR_API_KEY}
             root = config.RADARR_ROOT_FOLDER
@@ -371,8 +473,8 @@ async def send_request(movie_row):
                     "minimumAvailability": "released", "addOptions": {"searchForMovie": True}}
             r = await c.post(f"{config.RADARR_URL}/api/v3/movie", json=body, headers=h)
             if r.status_code in (200, 201):
-                return "sent", "Tillagd i Radarr"
+                return "sent", "Tillagd i Radarr", None
             if r.status_code == 400 and "already" in r.text.lower():
-                return "sent", "Finns redan i Radarr"
-            return "failed", f"Radarr svarade {r.status_code}: {r.text[:200]}"
-    return "pending", "Sparad i önskelistan"
+                return "sent", "Finns redan i Radarr", None
+            return "failed", f"Radarr svarade {r.status_code}: {r.text[:200]}", None
+    return "pending", "Sparad i önskelistan", None
