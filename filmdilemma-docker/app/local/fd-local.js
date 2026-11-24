@@ -85,6 +85,25 @@
     return false;
   }
 
+  /* Inloggningsrutan (Sign in / Create account) byts mot en Plex-knapp */
+  function patchAuthDialog() {
+    var dlg = document.querySelector('[data-testid="auth-dialog"]');
+    if (!dlg || dlg.querySelector("#fd-plex-auth")) return;
+    dlg.classList.add("fd-plex-auth-dlg");
+    var panel = dlg.querySelector('[role="tabpanel"]');
+    var tabs = dlg.querySelector('[role="tablist"]');
+    var anchor = tabs || panel;
+    if (!anchor || !anchor.parentElement) return;
+    var block = el("div", { id: "fd-plex-auth", class: "fd-plex-auth" }, [
+      el("p", { class: "fd-plex-note", text: "Logga in med ditt Plex-konto. Du kommer in om du har tillgång till Plex-servern." }),
+      el("a", { class: "fd-plex-btn fd-plex-primary fd-plex-wide", href: loginUrl(), text: "Logga in med Plex" })
+    ]);
+    anchor.parentElement.insertBefore(block, anchor);
+  }
+
+  new MutationObserver(function () { patchAuthDialog(); })
+    .observe(document.documentElement, { childList: true, subtree: true });
+
   /* ---------- Plex-ruta på filmsidor ---------- */
   function movieIdFromPath() {
     var m = /^\/(?:ka\/)?movies\/(\d+)/.exec(location.pathname);

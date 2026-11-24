@@ -50,3 +50,10 @@
 .fd-plex-note { color: var(--text-2, #b3b0aa); }
 .fd-plex-err { color: var(--error, #f0614f); }
 .fd-plex-link { color: var(--accent, #ffc800); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Inloggningsrutan: dölj e-post/lösenord/Google, visa Plex-knappen */
+.fd-plex-auth-dlg [role="tablist"],
+.fd-plex-auth-dlg [role="tabpanel"] { display: none !important; }
+.fd-plex-auth { display: flex; flex-direction: column; gap: 14px; margin: 12px 0 8px; }
+.fd-plex-auth .fd-plex-note { margin: 0; font-size: 14px; line-height: 1.5; }
+.fd-plex-wide { justify-content: center; width: 100%; min-height: 42px; }
