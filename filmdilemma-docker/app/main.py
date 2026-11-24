@@ -19,7 +19,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import auth, config, db, dilemma, plex, ratings, tmdb_import
+from . import auth, config, db, dilemma, plex, ratings, requests_view, tmdb_import
 from .search import search
 from .serializers import (UserState, list_summary, movie_card, movie_detail, person, poster_url, profile_url)
 
@@ -140,6 +140,7 @@ async def plex_login_page(request):
     return FileResponse(os.path.join(LOCAL, "plex-login.html"), headers={"Cache-Control": "no-cache"})
 
 
+@route("/requests")
 @route("/onskningar")
 async def requests_page(request):
     return FileResponse(os.path.join(LOCAL, "requests.html"), headers={"Cache-Control": "no-cache"})
@@ -857,6 +858,7 @@ async def local_request_create(request):
         ON CONFLICT(user_id,movie_id) DO UPDATE SET status=excluded.status, detail=excluded.detail,
         seerr_id=excluded.seerr_id, updated_at=CURRENT_TIMESTAMP""",
                  (u["id"], mid, status, detail, row["media_type"] or "movie", seerr_id))
+    requests_view.invalidate()
     conn.commit()
     return ok({"status": status, "detail": detail}, 200 if status != "failed" else 502)
 
@@ -875,18 +877,26 @@ async def local_requests_list(request):
         _last_seerr_check[u["id"]] = time.time()
         rows = conn.execute(f"""SELECT r.id, r.movie_id, r.status, r.seerr_id, r.media_type, uu.plex_id
             FROM requests r JOIN users uu ON uu.id=r.user_id
-            WHERE r.status != 'available' {'' if u['is_admin'] else 'AND r.user_id=%d' % u['id']}""").fetchall()
+            WHERE r.status != 'available' {'' if u['is_admin'] else 'AND r.user_id=%d' % int(u['id'])}""").fetchall()
         try:
             await asyncio.wait_for(plex.sync_requests(rows), timeout=8)
         except Exception as ex:  # noqa: BLE001
             log.info("Seerr-status kunde inte hämtas: %s", ex)
-    where = "" if u["is_admin"] else "WHERE r.user_id=%d" % u["id"]
+    where = "" if u["is_admin"] else "WHERE r.user_id=%d" % u["id"]   # admin ser allas, övriga sina egna
     rows = conn.execute(f"""SELECT r.*, u.username, m.title, m.year, m.poster_path FROM requests r
         JOIN users u ON u.id=r.user_id JOIN movies m ON m.id=r.movie_id {where} ORDER BY r.created_at DESC""").fetchall()
     return ok([{"id": r["id"], "movie_id": r["movie_id"], "title": r["title"], "year": r["year"],
                 "poster_url": poster_url(r["poster_path"], "w185"), "status": r["status"], "detail": r["detail"],
                 "username": r["username"], "created_at": r["created_at"], "mine": r["user_id"] == u["id"]}
                for r in rows])
+
+
+@route("/api/local/requests/view", methods=("GET",))
+async def local_requests_view(request):
+    u, e = require_user(request)
+    if e:
+        return e
+    return ok(await requests_view.build(u, request.query_params.get("scope", "mine")))
 
 
 @route("/api/local/requests/{rid:int}", methods=("DELETE",))
@@ -899,6 +909,7 @@ async def local_request_delete(request):
         conn.execute("DELETE FROM requests WHERE id=?", (request.path_params["rid"],))
     else:
         conn.execute("DELETE FROM requests WHERE id=? AND user_id=?", (request.path_params["rid"], u["id"]))
+    requests_view.invalidate()
     conn.commit()
     return ok()
 

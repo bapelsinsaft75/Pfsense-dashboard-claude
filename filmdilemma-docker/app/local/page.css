@@ -121,3 +121,30 @@ a.d-chip:hover{border-color:var(--accent)}
   .d-head h2{font-size:24px}
 }
 .badge.declined{color:var(--error)}
+
+/* Requests */
+.req-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.rq{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.rq-item{display:flex;gap:16px;padding:14px;background:var(--surface);border:1px solid var(--hairline);border-radius:12px}
+.rq-poster{flex:none;width:72px;height:108px;object-fit:cover;border-radius:8px;background:var(--surface-2)}
+.rq-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.rq-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rq-title{font-weight:700;font-size:17px;color:var(--text);text-decoration:none;overflow-wrap:anywhere}
+a.rq-title:hover{color:var(--accent)}
+.rq-kind{font-size:12px;color:var(--text-3);border:1px solid var(--hairline-2);border-radius:999px;padding:1px 8px}
+.rq-steps{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 0}
+.rq-step{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-3);padding-right:22px;position:relative}
+.rq-step:not(:last-child)::after{content:"";position:absolute;right:6px;top:50%;width:10px;height:1px;background:var(--hairline-2)}
+.rq-dot{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1px solid var(--hairline-2);font-size:11px;flex:none}
+.rq-step.done{color:var(--text-2)}
+.rq-step.done .rq-dot{background:var(--success);border-color:var(--success);color:#0b1a12;font-weight:700}
+.rq-step.current{color:var(--accent);font-weight:600}
+.rq-step.current .rq-dot{border-color:var(--accent);color:var(--accent);font-size:9px}
+.rq-step.failed{color:var(--error);font-weight:600}
+.rq-step.failed .rq-dot{background:var(--error);border-color:var(--error);color:#1a0b0b}
+.rq-bar{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;max-width:420px}
+.rq-bar span{display:block;height:100%;background:var(--accent)}
+.rq-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:2px}
+.rq-summary{font-size:14px;color:var(--text)}
+.rq-link{font-size:14px}
+@media (max-width:560px){.rq-item{gap:12px;padding:12px}.rq-poster{width:56px;height:84px}.rq-step{padding-right:14px}.rq-step:not(:last-child)::after{display:none}}

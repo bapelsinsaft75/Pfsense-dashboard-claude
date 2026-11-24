@@ -17,6 +17,7 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Plex-koppling | Fungerar med både nya och äldre Plex-agenter (TMDB-, IMDb- och TVDB-id). Filmer och serier i Plex som saknas i databasen hämtas automatiskt från TMDB |
 | Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
 | Seerr | Önskningar skickas till Seerr **i den inloggades namn** (matchas på Plex-id, e-post eller Plex-användarnamn). Finns personen inte i Seerr skickas ingen önskan. Status läses tillbaka: väntar på godkännande, godkänd, nekad, tillgänglig |
+| Requests | Under användarmenyn (**Profile → Requests**). Visar varje önskan steg för steg: skickad till Seerr → godkänd/nekad → laddas ner (med förlopp) → tillgänglig i Seerr → uppe i Plex. Användare ser sina egna, admin ser allas |
 | Önskningar | **Önska film** på filmer som saknas → Overseerr/Jellyseerr eller Radarr, annars en lista på `/onskningar` |
 | Betyg, bevakningslista, sedda | Sparas lokalt per användare |
 | Allt som inte rör TMDB eller Plex | Borttaget: Coffee, Discover, Famous Fans, spel, recensioner, kommentarer, shop, affiliate-länkar, cookie-ruta och sidfotens länkar (TMDB-erkännandet är kvar, det kräver TMDB) |

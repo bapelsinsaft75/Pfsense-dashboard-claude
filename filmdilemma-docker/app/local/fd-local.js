@@ -107,7 +107,7 @@
     cleanupQueued = true;
     requestAnimationFrame(function () { cleanupQueued = false; cleanup(); });
   }
-  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); hideServicePicker(); })
+  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); hideServicePicker(); patchUserMenu(); hideExtraLinks(); })
     .observe(document.documentElement, { childList: true, subtree: true });
 
   /* ---------- Dilemma solver: välj om den letar i Plex eller även i TMDB ---------- */
@@ -190,7 +190,7 @@
       }[st.request_status] || "Önskad";
       children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));
       children.push(el("span", { class: "fd-plex-badge fd-plex-wish", text: "★ " + label }));
-      children.push(el("a", { class: "fd-plex-link", href: "/onskningar", text: "Mina önskningar" }));
+      children.push(el("a", { class: "fd-plex-link", href: "/requests", text: "Mina requests" }));
     } else {
       var reqLabel = isTv ? "Request show" : "Request movie";
       var btn = el("button", { class: "fd-plex-btn fd-plex-primary", type: "button" },
@@ -330,7 +330,7 @@
     });
     if (!plexSections.length) menu.appendChild(el("span", { class: "fd-plex-empty", text: "Inga bibliotek än" }));
     menu.appendChild(el("a", { href: "/plex", role: "menuitem", class: "fd-plex-all", text: "Alla bibliotek" }));
-    menu.appendChild(el("a", { href: "/onskningar", role: "menuitem", text: "Önskningar" }));
+    menu.appendChild(el("a", { href: "/requests", role: "menuitem", text: "Requests" }));
   }
 
   function makeNavItem(lists, id, href, text) {
@@ -385,6 +385,55 @@
     });
     fillPlexMenu();
     loadSections();
+  }
+
+  /* ---------- Användarmenyn: "Requests" under Profile, bort med det som inte rör TMDB/Plex ---------- */
+  var USER_MENU_HIDE = /^(play & community|admin|tips:\s*(on|off)|sounds:\s*(on|off)|video tour)$/i;
+  var REQ_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
+
+  function patchUserMenu() {
+    var profile = null;
+    document.querySelectorAll('a[href="/profile"]').forEach(function (a) {
+      if (!profile && visible(a) && (a.textContent || "").trim() === "Profile" && !a.closest("main")) profile = a;
+    });
+    if (!profile) return;
+    var menu = profile.parentElement && profile.parentElement.parentElement;
+    if (!document.getElementById("fd-menu-requests")) {
+      var item = profile.cloneNode(true);
+      item.id = "fd-menu-requests";
+      item.setAttribute("href", "/requests");
+      var svg = item.querySelector("svg");
+      if (svg) {
+        var tmp = document.createElement("span");
+        tmp.innerHTML = REQ_ICON;
+        var icon = tmp.firstChild;
+        icon.setAttribute("class", svg.getAttribute("class") || "");
+        svg.replaceWith(icon);
+      }
+      // byt bara texten, behåll ikonen
+      Array.prototype.forEach.call(item.childNodes, function (n) { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = "Requests"; });
+      if ((item.textContent || "").indexOf("Requests") === -1) item.appendChild(document.createTextNode("Requests"));
+      item.addEventListener("click", function (e) { e.preventDefault(); location.href = "/requests"; }, true);
+      profile.insertAdjacentElement("afterend", item);
+    }
+    (menu || document).querySelectorAll("button, a").forEach(function (b) {
+      var t = (b.textContent || "").trim().replace(/\s+/g, " ");
+      if (USER_MENU_HIDE.test(t)) hide(b.parentElement && b.parentElement.childElementCount === 1 ? b.parentElement : b);
+    });
+  }
+
+  /* Länkar till Discover/Famous Fans/Coffee var de än dyker upp (t.ex. i "More"-menyn) */
+  function hideExtraLinks() {
+    document.querySelectorAll('a[href="/discover"], a[href="/famous-fans"], a[href="/recommended-by"]').forEach(function (a) {
+      if (!a.closest("main")) hide(a.parentElement && a.parentElement.tagName === "LI" ? a.parentElement : a);
+    });
+    document.querySelectorAll("header ~ * a, header ~ * button, [role=menu] a, [role=menu] button").forEach(function (b) {
+      if (b.closest("main")) return;
+      var t = (b.textContent || "").trim();
+      if (/^(famous fans|discover|coffee|buy me a coffee)$/i.test(t)) hide(b);
+    });
   }
 
   /* ---------- Bort med allt som inte har med TMDB eller Plex att göra ---------- */
