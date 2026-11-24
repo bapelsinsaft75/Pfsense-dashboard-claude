@@ -877,13 +877,25 @@ async def api_fallback(request):
 
 # ------------------------------------------------------------------ start
 
+def _run_import_thread(limit):
+    # Egen tråd med egen event-loop och egen databasanslutning, så att webbservern
+    # svarar som vanligt medan importen och listbygget pågår.
+    asyncio.run(tmdb_import.run(limit))
+
+
 async def import_if_empty():
-    count = db.connect().execute("SELECT COUNT(*) FROM movies").fetchone()[0]
-    if count == 0 and tmdb_import.configured():
-        log.info("Databasen är tom – startar import från TMDB i bakgrunden (max %d filmer).", tmdb_import.MAX_MOVIES)
-        await tmdb_import.run(tmdb_import.MAX_MOVIES)
+    conn = db.connect()
+    count = conn.execute("SELECT COUNT(*) FROM movies").fetchone()[0]
+    unfinished = db.get_meta("import_status") == "running"
+    if (count == 0 or unfinished) and tmdb_import.configured():
+        log.info("Startar import från TMDB i bakgrunden (max %d filmer, %d finns redan).",
+                 tmdb_import.MAX_MOVIES, count)
+        await asyncio.to_thread(_run_import_thread, tmdb_import.MAX_MOVIES)
     elif count == 0:
         log.warning("Databasen är tom och TMDB_TOKEN saknas – sidan kommer att vara tom.")
+    elif conn.execute("SELECT COUNT(*) FROM lists").fetchone()[0] == 0:
+        log.info("Inga listor finns – bygger listor.")
+        await asyncio.to_thread(tmdb_import.build_lists_standalone)
 
 
 @contextlib.asynccontextmanager

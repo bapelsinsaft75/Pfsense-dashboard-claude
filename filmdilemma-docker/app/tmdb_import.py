@@ -218,66 +218,72 @@ async def fetch_movie(t, mid):
 
 
 def build_lists(conn):
-    """Skapar listor av TMDB-samlingar, nyckelord och genre+årtionde."""
+    """Skapar listor av TMDB-nyckelord, samlingar och genre+årtionde (beräknas i minnet)."""
+    import math
     log.info("Bygger listor ...")
-    conn.execute("DELETE FROM list_movies")
-    conn.execute("DELETE FROM lists")
-    next_id = [1]
+    movies = {}
+    for r in conn.execute("SELECT id, title, year, release_date, genres, vote_average, vote_count, popularity, "
+                          "collection_id, collection_name FROM movies"):
+        movies[r["id"]] = r
+    score = {mid: (r["vote_average"] or 0) * math.log((r["vote_count"] or 0) + 2) for mid, r in movies.items()}
 
-    def add_list(name, description, kind, source_id, movie_rows):
-        if len(movie_rows) < 5:
-            return
-        lid = next_id[0]
-        next_id[0] += 1
-        pop = sum(r["popularity"] or 0 for r in movie_rows[:20])
-        conn.execute("INSERT INTO lists(id,name,description,kind,source_id,popularity) VALUES(?,?,?,?,?,?)",
-                     (lid, name, description, kind, source_id, pop))
-        conn.executemany("INSERT INTO list_movies(list_id,movie_id,rank) VALUES(?,?,?)",
-                         [(lid, r["id"], i + 1) for i, r in enumerate(movie_rows)])
+    lists = []   # (name, description, kind, source_id, [movie ids])
 
-    # Nyckelord med många filmer -> "Movies about X"
-    kws = conn.execute("""SELECT k.id, k.name, COUNT(*) n FROM keywords k JOIN movie_keywords mk ON mk.keyword_id=k.id
-        GROUP BY k.id HAVING n >= 8 ORDER BY n DESC LIMIT 3000""").fetchall()
+    # Nyckelord med många filmer -> "Best movies about X"
+    kw_names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM keywords")}
+    by_kw = {}
+    for mk in conn.execute("SELECT movie_id, keyword_id FROM movie_keywords"):
+        by_kw.setdefault(mk["keyword_id"], []).append(mk["movie_id"])
     skip = {"woman director", "duringcreditsstinger", "aftercreditsstinger", "independent film", "short film",
             "based on novel or book", "live action remake", "lgbt"}
-    for k in kws:
-        if k["name"] in skip:
+    for kid, mids in sorted(by_kw.items(), key=lambda kv: -len(kv[1]))[:3000]:
+        name = (kw_names.get(kid) or "").strip()
+        if len(mids) < 8 or not name or name in skip:
             continue
-        rows = conn.execute("""SELECT m.id, m.popularity FROM movies m JOIN movie_keywords mk ON mk.movie_id=m.id
-            WHERE mk.keyword_id=? ORDER BY (COALESCE(m.vote_average,0)*LOG(COALESCE(m.vote_count,1)+1)) DESC LIMIT 200""",
-                            (k["id"],)).fetchall()
-        name = k["name"].strip()
-        add_list(f"Best movies about {name}", f"Highly rated films tagged “{name}”.", "keyword", k["id"], rows)
+        mids = sorted((m for m in mids if m in movies), key=lambda m: -score[m])[:200]
+        lists.append((f"Best movies about {name}", f"Highly rated films tagged “{name}”.", "keyword", kid, mids))
 
-    # Samlingar (franchiser)
-    colls = conn.execute("""SELECT collection_id, collection_name, COUNT(*) n FROM movies WHERE collection_id IS NOT NULL
-        GROUP BY collection_id HAVING n >= 3""").fetchall()
-    for c in colls:
-        rows = conn.execute("SELECT id, popularity FROM movies WHERE collection_id=? ORDER BY release_date",
-                            (c["collection_id"],)).fetchall()
-        if len(rows) >= 3:
-            lid = next_id[0]
-            next_id[0] += 1
-            conn.execute("INSERT INTO lists(id,name,description,kind,source_id,popularity) VALUES(?,?,?,?,?,?)",
-                         (lid, c["collection_name"], "Every film in the series, in release order.", "collection",
-                          c["collection_id"], sum(r["popularity"] or 0 for r in rows)))
-            conn.executemany("INSERT INTO list_movies(list_id,movie_id,rank) VALUES(?,?,?)",
-                             [(lid, r["id"], i + 1) for i, r in enumerate(rows)])
+    # Samlingar (filmserier) i utgivningsordning
+    colls = {}
+    for mid, r in movies.items():
+        if r["collection_id"]:
+            colls.setdefault((r["collection_id"], r["collection_name"]), []).append(mid)
+    for (cid, cname), mids in colls.items():
+        if len(mids) >= 3:
+            mids.sort(key=lambda m: movies[m]["release_date"] or "")
+            lists.append((cname, "Every film in the series, in release order.", "collection", cid, mids))
 
     # Genre + årtionde
-    genres = set()
-    for (g,) in conn.execute("SELECT genres FROM movies"):
-        genres.update(db.jl(g))
-    for g in sorted(genres):
-        for decade in range(1950, 2030, 10):
-            rows = conn.execute("""SELECT m.id, m.popularity FROM movies m, json_each(m.genres) j
-                WHERE j.value=? AND m.year BETWEEN ? AND ? AND m.vote_count >= 200
-                ORDER BY m.vote_average DESC LIMIT 50""", (g, decade, decade + 9)).fetchall()
-            add_list(f"Best {g.lower()} movies of the {decade}s", f"Top-rated {g.lower()} films from {decade}–{decade + 9}.",
-                     "genre-decade", decade, rows)
-    conn.commit()
-    n = conn.execute("SELECT COUNT(*) FROM lists").fetchone()[0]
-    log.info("Klart: %d listor", n)
+    by_gd = {}
+    for mid, r in movies.items():
+        if not r["year"] or (r["vote_count"] or 0) < 200:
+            continue
+        decade = r["year"] // 10 * 10
+        for g in db.jl(r["genres"]):
+            by_gd.setdefault((g, decade), []).append(mid)
+    for (g, decade), mids in sorted(by_gd.items()):
+        if decade < 1950 or len(mids) < 5:
+            continue
+        mids = sorted(mids, key=lambda m: -(movies[m]["vote_average"] or 0))[:50]
+        lists.append((f"Best {g.lower()} movies of the {decade}s",
+                      f"Top-rated {g.lower()} films from {decade}–{decade + 9}.", "genre-decade", decade, mids))
+
+    # Skriv allt i en transaktion så att sidan ser gamla listor tills de nya är klara
+    rows, links = [], []
+    for i, (name, desc, kind, src, mids) in enumerate(lists, start=1):
+        rows.append((i, name, desc, kind, src, sum(movies[m]["popularity"] or 0 for m in mids[:20])))
+        links += [(i, m, rank) for rank, m in enumerate(mids, start=1)]
+    with conn:
+        conn.execute("DELETE FROM list_movies")
+        conn.execute("DELETE FROM lists")
+        conn.executemany("INSERT INTO lists(id,name,description,kind,source_id,popularity) VALUES(?,?,?,?,?,?)", rows)
+        conn.executemany("INSERT INTO list_movies(list_id,movie_id,rank) VALUES(?,?,?)", links)
+    log.info("Klart: %d listor", len(rows))
+
+
+def build_lists_standalone():
+    db.init()
+    build_lists(db.connect())
 
 
 async def run(limit, refresh=False):
