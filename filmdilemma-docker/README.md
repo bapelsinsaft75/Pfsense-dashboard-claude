@@ -25,12 +25,11 @@ docker compose up -d --build
 
 Öppna sedan http://192.168.2.50
 
-Containern ligger direkt på LAN:et via **macvlan**. Det innebär:
-- `PARENT_IF` måste vara värdens nätverkskort mot 192.168.2.0/24 (kolla med `ip -br addr`).
+Containern kopplas till värdens **befintliga macvlan-nätverk** (standard `br0`) och får 192.168.2.50.
+- Kolla nätverkets namn med `docker network ls` och sätt `DOCKER_NETWORK` i `.env` om det inte heter `br0`.
 - 192.168.2.50 får inte användas av något annat, och ska helst ligga utanför DHCP-poolen
   (eller reserveras i pfSense).
-- Docker-värden själv kan inte nå containern via macvlan. Testa från en annan dator,
-  eller lägg till ett macvlan-gränssnitt på värden.
+- Docker-värden själv kan inte nå containern via macvlan. Testa från en annan dator.
 
 Vill du hellre köra containern bakom värdens IP: byt `networks:`-blocket mot `ports: ["80:80"]`.
 

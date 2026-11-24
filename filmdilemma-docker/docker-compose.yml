@@ -13,11 +13,8 @@ services:
         ipv4_address: ${CONTAINER_IP:-192.168.2.50}
 
 networks:
+  # Befintligt macvlan-nätverk på värden (t.ex. "br0" på Unraid).
+  # Kolla namnet med: docker network ls
   lan:
-    driver: macvlan
-    driver_opts:
-      parent: ${PARENT_IF:-eth0}
-    ipam:
-      config:
-        - subnet: ${SUBNET:-192.168.2.0/24}
-          gateway: ${GATEWAY:-192.168.2.1}
+    name: ${DOCKER_NETWORK:-br0}
+    external: true
