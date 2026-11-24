@@ -49,7 +49,7 @@ Byt läge genom att bygga om containern: `docker compose up -d --force-recreate`
 
 Originalet byggs om ibland (nya filnamn med hash). Hämta då om innehållet i `site/`.
 
-## Observera
+## Borttaget jämfört med originalet
 
-Google Analytics, Microsoft Clarity och Cloudflare Web Analytics finns kvar som i originalet
-och skickar besöksdata till ägarens konton.
+Google Analytics, Microsoft Clarity och Cloudflare Web Analytics är borttagna ur `index.html`,
+så ingen besöksdata skickas till ägarens konton. Appens egna anrop är tysta när `window.gtag` saknas.
