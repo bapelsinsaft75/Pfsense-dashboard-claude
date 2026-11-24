@@ -23,6 +23,7 @@ RADARR_URL = env("RADARR_URL").rstrip("/")
 RADARR_API_KEY = env("RADARR_API_KEY")
 RADARR_ROOT_FOLDER = env("RADARR_ROOT_FOLDER")
 RADARR_QUALITY_PROFILE = env("RADARR_QUALITY_PROFILE")
+OMDB_API_KEY = env("OMDB_API_KEY")       # valfri, för IMDb-betyg när Plex saknar dem
 
 
 def secret_key():

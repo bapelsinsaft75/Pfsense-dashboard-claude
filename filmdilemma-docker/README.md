@@ -13,6 +13,7 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Inloggning | **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
 | Finns i Plex | Filmsidan visar **▶ Spela på Plex** om filmen finns i ditt bibliotek |
 | Sett-historik | Filmer som setts i Plex markeras som sedda (per användare) och kan filtreras bort |
+| Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
 | Önskningar | **Önska film** på filmer som saknas → Overseerr/Jellyseerr eller Radarr, annars en lista på `/onskningar` |
 | Betyg, bevakningslista, sedda | Sparas lokalt per användare |
 | Spel, chatt, recensioner från partners, "Famous fans" m.m. | Finns inte (tomma sektioner) |
@@ -91,7 +92,7 @@ docker build -t filmdilemma-local .
 
 | Vad | Hur |
 |---|---|
-| Uppdatera | **Force update** i Docker-fliken |
+| Uppdatera | **Force update** i Docker-fliken. En pågående import fortsätter där den slutade |
 | Importera fler/nyare filmer | `docker exec filmdilemma python -m app.tmdb_import --max 49000` |
 | Uppdatera befintliga filmer | `docker exec filmdilemma python -m app.tmdb_import --refresh` |
 | Synka Plex direkt | Knappen **Synka Plex nu** på `/onskningar` (admin), annars var `PLEX_SYNC_MINUTES` |
@@ -110,6 +111,7 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `PLEX_URL` / `PLEX_TOKEN` | – | Din Plex-server och admin-token (krävs för inloggning) |
 | `PLEX_SYNC_MINUTES` | `30` | Hur ofta bibliotek och sett-historik synkas |
 | `REQUIRE_LOGIN` | `false` | `true` = hela sidan kräver Plex-inloggning |
+| `OMDB_API_KEY` | – | Valfri. IMDb-betyg tas från Plex; den här gratisnyckeln (omdbapi.com) används när Plex saknar dem |
 | `OVERSEERR_URL` / `OVERSEERR_API_KEY` | – | Skicka önskningar till Overseerr eller Jellyseerr |
 | `RADARR_URL` / `RADARR_API_KEY` | – | ... eller direkt till Radarr |
 | `RADARR_ROOT_FOLDER` / `RADARR_QUALITY_PROFILE` | första i Radarr | Var och i vilken kvalitet Radarr laddar ner |

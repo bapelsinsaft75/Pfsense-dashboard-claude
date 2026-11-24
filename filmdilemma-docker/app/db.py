@@ -142,6 +142,39 @@ CREATE TABLE IF NOT EXISTS plex_library (
     year INTEGER,
     added_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS plex_sections (
+    key TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL,          -- movie / show
+    item_count INTEGER
+);
+CREATE TABLE IF NOT EXISTS plex_items (
+    section_key TEXT NOT NULL,
+    rating_key TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    thumb TEXT,
+    art TEXT,
+    tmdb_id INTEGER,
+    added_at INTEGER,
+    episodes INTEGER,
+    seasons INTEGER,
+    summary TEXT,
+    PRIMARY KEY (section_key, rating_key)
+);
+CREATE TABLE IF NOT EXISTS user_sections (
+    user_id INTEGER NOT NULL,
+    section_key TEXT NOT NULL,
+    PRIMARY KEY (user_id, section_key)
+);
+CREATE TABLE IF NOT EXISTS user_plex_watched (
+    user_id INTEGER NOT NULL,
+    rating_key TEXT NOT NULL,
+    viewed INTEGER,             -- sedda avsnitt (serier) eller 1 (film)
+    total INTEGER,              -- antal avsnitt (serier) eller 1 (film)
+    PRIMARY KEY (user_id, rating_key)
+);
 CREATE TABLE IF NOT EXISTS requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -174,9 +207,16 @@ def connect():
     return conn
 
 
+MIGRATIONS = [("plex_items", "art", "TEXT")]
+
+
 def init():
     conn = connect()
     conn.executescript(SCHEMA)
+    for table, column, ctype in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ctype}")
     conn.commit()
 
 

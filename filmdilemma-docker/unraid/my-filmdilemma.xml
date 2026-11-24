@@ -22,6 +22,7 @@
   <Config Name="MAX_MOVIES" Target="MAX_MOVIES" Default="20000" Mode="" Description="Antal filmer vid första importen" Type="Variable" Display="advanced" Required="false" Mask="false">20000</Config>
   <Config Name="REQUIRE_LOGIN" Target="REQUIRE_LOGIN" Default="false" Mode="" Description="true = hela sidan kräver Plex-inloggning" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="PLEX_SYNC_MINUTES" Target="PLEX_SYNC_MINUTES" Default="30" Mode="" Description="Hur ofta Plex synkas (minuter)" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="OMDB_API_KEY" Target="OMDB_API_KEY" Default="" Mode="" Description="Valfri gratis nyckel från omdbapi.com för IMDb-betyg när Plex saknar dem" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="OVERSEERR_URL" Target="OVERSEERR_URL" Default="" Mode="" Description="Overseerr/Jellyseerr för önskningar (valfritt)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="OVERSEERR_API_KEY" Target="OVERSEERR_API_KEY" Default="" Mode="" Description="API-nyckel till Overseerr/Jellyseerr" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="RADARR_URL" Target="RADARR_URL" Default="" Mode="" Description="Radarr för önskningar (om Overseerr inte används)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>

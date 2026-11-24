@@ -18,7 +18,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import auth, config, db, plex, tmdb_import
+from . import auth, config, db, plex, ratings, tmdb_import
 from .search import search
 from .serializers import (UserState, list_summary, movie_card, movie_detail, person, poster_url, profile_url)
 
@@ -858,6 +858,177 @@ async def local_request_delete(request):
         conn.execute("DELETE FROM requests WHERE id=? AND user_id=?", (request.path_params["rid"], u["id"]))
     conn.commit()
     return ok()
+
+
+def _user_section_keys(u):
+    conn = db.connect()
+    if u["is_admin"]:
+        return [r[0] for r in conn.execute("SELECT key FROM plex_sections")]
+    return [r[0] for r in conn.execute("SELECT section_key FROM user_sections WHERE user_id=?", (u["id"],))]
+
+
+@route("/api/local/plex/sections", methods=("GET",))
+async def local_plex_sections(request):
+    u, e = require_user(request)
+    if e:
+        return e
+    keys = _user_section_keys(u)
+    if not keys and not u["is_admin"]:
+        # Biblioteksbehörighet har inte synkats än för den här användaren
+        asyncio.create_task(_safe(plex.sync_watched(u["id"])))
+    rows = db.connect().execute("SELECT * FROM plex_sections ORDER BY rowid").fetchall()
+    return ok([{"key": r["key"], "title": r["title"], "type": r["type"], "count": r["item_count"]}
+               for r in rows if r["key"] in keys])
+
+
+@route("/api/local/plex/sections/{key}/items", methods=("GET",))
+async def local_plex_items(request):
+    u, e = require_user(request)
+    if e:
+        return e
+    key = request.path_params["key"]
+    if key not in _user_section_keys(u):
+        return err("Du har inte tillgång till det här biblioteket.", 403)
+    conn = db.connect()
+    sec = conn.execute("SELECT * FROM plex_sections WHERE key=?", (key,)).fetchone()
+    if not sec:
+        return err("Biblioteket finns inte.", 404)
+    rows = conn.execute("""SELECT i.*, m.poster_path, m.vote_average, m.id AS movie_id FROM plex_items i
+        LEFT JOIN movies m ON m.id=i.tmdb_id AND i.type='movie'
+        WHERE i.section_key=? ORDER BY i.title COLLATE NOCASE""", (key,)).fetchall()
+    watched = {r[0] for r in conn.execute("SELECT movie_id FROM watched WHERE user_id=?", (u["id"],))}
+    progress = {r["rating_key"]: (r["viewed"], r["total"]) for r in conn.execute(
+        "SELECT rating_key, viewed, total FROM user_plex_watched WHERE user_id=?", (u["id"],))}
+    items = []
+    for r in rows:
+        in_db = r["movie_id"] is not None
+        items.append({
+            "rating_key": r["rating_key"],
+            "title": r["title"],
+            "year": r["year"],
+            "type": r["type"],
+            "added_at": r["added_at"],
+            "seasons": r["seasons"],
+            "episodes": r["episodes"],
+            "rating": round(r["vote_average"], 1) if r["vote_average"] else None,
+            "poster_url": poster_url(r["poster_path"], "w342") if r["poster_path"]
+            else (f"/api/local/plex/thumb/{r['rating_key']}" if r["thumb"] else None),
+            "url": f"/movies/{r['movie_id']}" if in_db else config.plex_web_url(r["rating_key"]),
+            "external": not in_db,
+            "plex_url": config.plex_web_url(r["rating_key"]),
+            "watched": bool((in_db and r["movie_id"] in watched)
+                            or (r["rating_key"] in progress and progress[r["rating_key"]][0] >= (progress[r["rating_key"]][1] or 1))),
+            "viewed_episodes": progress.get(r["rating_key"], (None, None))[0] if r["type"] == "show" else None,
+        })
+    return ok({"key": sec["key"], "title": sec["title"], "type": sec["type"], "items": items})
+
+
+def _fmt_ms(ms):
+    if not ms:
+        return None
+    m = int(ms) // 60000
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m" if h else f"{m}m"
+
+
+@route("/api/local/plex/items/{rk}", methods=("GET",))
+async def local_plex_item(request):
+    u, e = require_user(request)
+    if e:
+        return e
+    rk = request.path_params["rk"]
+    conn = db.connect()
+    row = conn.execute("SELECT * FROM plex_items WHERE rating_key=? AND section_key IN (%s) LIMIT 1"
+                       % ",".join("?" * max(1, len(_user_section_keys(u)))),
+                       (rk, *(_user_section_keys(u) or [""]))).fetchone()
+    if not row:
+        return err("Du har inte tillgång till den här titeln.", 403)
+    token = (conn.execute("SELECT server_token FROM users WHERE id=?", (u["id"],)).fetchone() or {})["server_token"] \
+        or config.PLEX_TOKEN
+    try:
+        meta, seasons = await plex.item_details(rk, token)
+    except plex.PlexError as ex:
+        return err(str(ex), 404)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Plex-detaljer %s: %s", rk, ex)
+        return err("Kunde inte hämta uppgifter från Plex.", 502)
+
+    movie = conn.execute("SELECT * FROM movies WHERE id=?", (row["tmdb_id"],)).fetchone() \
+        if row["type"] == "movie" and row["tmdb_id"] else None
+    rating_info = await ratings.collect(meta, row["tmdb_id"], movie)
+
+    def tags(key, limit=None):
+        return [t.get("tag") for t in (meta.get(key) or [])[:limit] if t.get("tag")]
+
+    media = (meta.get("Media") or [{}])[0]
+    is_show = meta.get("type") == "show"
+    viewed = meta.get("viewedLeafCount") if is_show else None
+    total = meta.get("leafCount") if is_show else None
+    data = {
+        "rating_key": rk,
+        "type": meta.get("type"),
+        "title": meta.get("title"),
+        "original_title": meta.get("originalTitle"),
+        "year": meta.get("year"),
+        "tagline": meta.get("tagline"),
+        "summary": meta.get("summary") or (movie["overview"] if movie else None),
+        "genres": tags("Genre") or (db.jl(movie["genres"]) if movie else []),
+        "directors": tags("Director"),
+        "writers": tags("Writer", 4),
+        "studio": meta.get("studio"),
+        "content_rating": meta.get("contentRating"),
+        "released": meta.get("originallyAvailableAt"),
+        "duration": _fmt_ms(meta.get("duration")) if not is_show else None,
+        "cast": [{"name": r.get("tag"), "role": r.get("role"), "photo": r.get("thumb")}
+                 for r in (meta.get("Role") or [])[:12]],
+        "ratings": rating_info,
+        "poster_url": poster_url(movie["poster_path"], "w500") if movie and movie["poster_path"]
+        else (f"/api/local/plex/thumb/{rk}" if row["thumb"] else None),
+        "backdrop_url": poster_url(movie["backdrop_path"], "w1280") if movie and movie["backdrop_path"]
+        else (f"/api/local/plex/thumb/{rk}?kind=art" if row["art"] else None),
+        "plex_url": config.plex_web_url(rk),
+        "film_url": f"/movies/{movie['id']}" if movie else None,
+        "watched": (viewed is not None and total and viewed >= total) or (not is_show and (meta.get("viewCount") or 0) > 0),
+        "in_progress": bool(meta.get("viewOffset")) and not is_show,
+        "progress_pct": round(100 * meta["viewOffset"] / meta["duration"]) if meta.get("viewOffset") and meta.get("duration") else None,
+        "view_count": meta.get("viewCount"),
+        "last_viewed": meta.get("lastViewedAt"),
+        "episodes": total,
+        "viewed_episodes": viewed,
+        "seasons": [{"title": sn.get("title"), "episodes": sn.get("leafCount"), "viewed": sn.get("viewedLeafCount") or 0}
+                    for sn in seasons if sn.get("type") == "season"],
+        "video": " · ".join(x for x in [
+            (str(media.get("videoResolution")).upper() + ("p" if str(media.get("videoResolution", "")).isdigit() else ""))
+            if media.get("videoResolution") else None,
+            str(media.get("videoCodec") or "").upper() or None,
+            (str(media.get("audioCodec") or "").upper() + (f" {media.get('audioChannels')}ch" if media.get("audioChannels") else ""))
+            if media.get("audioCodec") else None,
+        ] if x) or None,
+    }
+    return ok(data)
+
+
+@route("/api/local/plex/thumb/{rk}", methods=("GET",))
+async def local_plex_thumb(request):
+    rk = request.path_params["rk"]
+    art = request.query_params.get("kind") == "art"
+    row = db.connect().execute("SELECT thumb, art FROM plex_items WHERE rating_key=? LIMIT 1", (rk,)).fetchone()
+    path = row and (row["art"] if art else row["thumb"])
+    if not path or not (config.PLEX_URL and config.PLEX_TOKEN):
+        return Response(status_code=404)
+    try:
+        status, ctype, content = await plex.thumb(path, *((1280, 720) if art else (300, 450)))
+    except Exception:  # noqa: BLE001
+        return Response(status_code=502)
+    if status != 200:
+        return Response(status_code=404)
+    return Response(content, media_type=ctype, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@route("/plex")
+@route("/plex/{key}")
+async def plex_page(request):
+    return FileResponse(os.path.join(LOCAL, "plex.html"), headers={"Cache-Control": "no-cache"})
 
 
 @route("/api/local/plex/sync", methods=("POST",))

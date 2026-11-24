@@ -195,21 +195,89 @@
     if (movieIdFromPath() === mid) renderBox(mid, statusCache[mid]);
   }
 
-  /* ---------- Menylänk ---------- */
+  /* ---------- Menylänkar: Plex (med bibliotek) och Önskningar ---------- */
+  var plexSections = null;
+  var sectionsLoading = false;
+
+  function loadSections() {
+    if (plexSections || sectionsLoading) return;
+    sectionsLoading = true;
+    api("/api/local/plex/sections").then(function (r) {
+      sectionsLoading = false;
+      if (r.ok && Array.isArray(r.data)) { plexSections = r.data; fillPlexMenu(); }
+    }).catch(function () { sectionsLoading = false; });
+  }
+
+  function fillPlexMenu() {
+    var menu = document.getElementById("fd-plex-menu");
+    if (!menu) return;
+    menu.innerHTML = "";
+    if (!plexSections) {
+      menu.appendChild(el("span", { class: "fd-plex-empty", text: "Laddar …" }));
+      return;
+    }
+    plexSections.forEach(function (s) {
+      var a = el("a", { href: "/plex/" + encodeURIComponent(s.key), role: "menuitem" },
+        [el("span", { text: s.title }), el("span", { class: "fd-plex-count", text: String(s.count || 0) })]);
+      menu.appendChild(a);
+    });
+    if (!plexSections.length) menu.appendChild(el("span", { class: "fd-plex-empty", text: "Inga bibliotek än" }));
+    menu.appendChild(el("a", { href: "/plex", role: "menuitem", class: "fd-plex-all", text: "Alla bibliotek" }));
+    menu.appendChild(el("a", { href: "/onskningar", role: "menuitem", text: "Önskningar" }));
+  }
+
+  function makeNavItem(lists, id, href, text) {
+    var a = lists.cloneNode(false);
+    a.id = id;
+    a.setAttribute("href", href);
+    a.textContent = text;
+    a.removeAttribute("aria-current");
+    a.addEventListener("click", function (e) { e.preventDefault(); location.href = href; }, true);
+    return a;
+  }
+
   function addNavLink() {
     if (!token() || document.getElementById("fd-nav-wishes")) return;
     var links = Array.prototype.slice.call(document.querySelectorAll("header a, nav a"));
     var lists = links.filter(function (a) { return a.getAttribute("href") === "/lists"; })[0];
     if (!lists || !lists.parentElement) return;
-    var a = lists.cloneNode(false);
-    a.id = "fd-nav-wishes";
-    a.setAttribute("href", "/onskningar");
-    a.textContent = "Önskningar";
-    a.removeAttribute("aria-current");
-    a.addEventListener("click", function (e) { e.preventDefault(); location.href = "/onskningar"; }, true);
-    var container = lists.parentElement.tagName === "LI" ? lists.parentElement : lists;
-    var wrap = container === lists ? a : (function () { var li = container.cloneNode(false); li.appendChild(a); return li; })();
-    container.parentElement.appendChild(wrap);
+    var inLi = lists.parentElement.tagName === "LI";
+    var container = inLi ? lists.parentElement : lists;
+
+    function wrap(node) {
+      if (!inLi) return node;
+      var li = container.cloneNode(false);
+      li.appendChild(node);
+      return li;
+    }
+
+    // Plex med rullgardin
+    var plexLink = makeNavItem(lists, "fd-nav-plex", "/plex", "Plex");
+    plexLink.setAttribute("aria-haspopup", "true");
+    plexLink.setAttribute("aria-expanded", "false");
+    plexLink.appendChild(el("span", { class: "fd-plex-caret", "aria-hidden": "true", text: "▾" }));
+    var holder = el("span", { class: "fd-plex-nav" }, [plexLink, el("div", { id: "fd-plex-menu", class: "fd-plex-menu", role: "menu" })]);
+    var open = function () { holder.classList.add("open"); plexLink.setAttribute("aria-expanded", "true"); loadSections(); };
+    var close = function () { holder.classList.remove("open"); plexLink.setAttribute("aria-expanded", "false"); };
+    holder.addEventListener("mouseenter", open);
+    holder.addEventListener("mouseleave", close);
+    plexLink.addEventListener("focus", open);
+    holder.addEventListener("focusout", function (e) { if (!holder.contains(e.relatedTarget)) close(); });
+    holder.addEventListener("keydown", function (e) { if (e.key === "Escape") { close(); plexLink.focus(); } });
+
+    var parent = container.parentElement;
+    parent.insertBefore(wrap(holder), container.nextSibling);
+    holder.id = "fd-nav-wishes";   // markerar att menyn redan är tillagd
+
+    // "Famous Fans" bygger på Film Dilemmas egen data och är tom här – dölj den för att få plats
+    links.forEach(function (a) {
+      if (/^\s*famous fans\s*$/i.test(a.textContent || "")) {
+        var item = a.parentElement && a.parentElement.tagName === "LI" ? a.parentElement : a;
+        item.style.display = "none";
+      }
+    });
+    fillPlexMenu();
+    loadSections();
   }
 
   function tick() {

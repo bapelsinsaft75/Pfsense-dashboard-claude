@@ -57,3 +57,40 @@
 .fd-plex-auth { display: flex; flex-direction: column; gap: 14px; margin: 12px 0 8px; }
 .fd-plex-auth .fd-plex-note { margin: 0; font-size: 14px; line-height: 1.5; }
 .fd-plex-wide { justify-content: center; width: 100%; min-height: 42px; }
+
+/* Menyval "Plex" med rullgardin för biblioteken */
+.fd-plex-nav { position: relative; display: inline-flex; align-items: center; }
+.fd-plex-caret { margin-left: 4px; font-size: 10px; opacity: .7; }
+.fd-plex-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  min-width: 220px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--hairline-2, #3e3e48);
+  border-radius: 12px;
+  background: var(--surface, #18181c);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+}
+.fd-plex-menu::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.fd-plex-nav.open .fd-plex-menu { display: block; }
+.fd-plex-menu a {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text, #f2efe8);
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fd-plex-menu a:hover, .fd-plex-menu a:focus-visible { background: var(--surface-2, #212127); color: var(--accent, #ffc800); outline: none; }
+.fd-plex-count { color: var(--text-3, #8d8a85); font-size: 13px; }
+.fd-plex-menu .fd-plex-all { margin-top: 4px; border-top: 1px solid var(--hairline, #2e2e36); border-radius: 0 0 8px 8px; color: var(--text-2, #b3b0aa); }
+.fd-plex-empty { display: block; padding: 8px 10px; color: var(--text-3, #8d8a85); font-size: 14px; }
+#fd-nav-plex { white-space: nowrap; }

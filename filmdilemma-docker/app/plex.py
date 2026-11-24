@@ -123,10 +123,12 @@ async def login_with_token(user_token):
 
 # ---------- Bibliotek och sett-historik ----------
 
-async def _movie_sections(c, token):
+async def _sections(c, token):
+    """Film- och seriebibliotek som token har tillgång till: [{key, title, type}]."""
     r = await c.get(f"{config.PLEX_URL}/library/sections", headers=_headers(token))
     r.raise_for_status()
-    return [d["key"] for d in r.json()["MediaContainer"].get("Directory", []) if d.get("type") == "movie"]
+    return [{"key": str(d["key"]), "title": d.get("title") or d["key"], "type": d.get("type")}
+            for d in r.json()["MediaContainer"].get("Directory", []) if d.get("type") in ("movie", "show")]
 
 
 def _tmdb_id(item):
@@ -140,56 +142,112 @@ def _tmdb_id(item):
     return None
 
 
-async def _library_items(c, token):
-    items = []
-    for key in await _movie_sections(c, token):
-        r = await c.get(f"{config.PLEX_URL}/library/sections/{key}/all",
-                        params={"type": "1", "includeGuids": "1"}, headers=_headers(token), timeout=120)
-        r.raise_for_status()
-        items += r.json()["MediaContainer"].get("Metadata", []) or []
-    return items
+async def _section_items(c, token, section):
+    plex_type = "1" if section["type"] == "movie" else "2"
+    r = await c.get(f"{config.PLEX_URL}/library/sections/{section['key']}/all",
+                    params={"type": plex_type, "includeGuids": "1"}, headers=_headers(token), timeout=180)
+    r.raise_for_status()
+    return r.json()["MediaContainer"].get("Metadata", []) or []
 
 
 async def sync_library():
+    """Hämtar alla film- och seriebibliotek med innehåll (med admin-token)."""
     if not (config.PLEX_URL and config.PLEX_TOKEN):
         return 0
     await server_identity()
+    sections, items = [], []
     async with _lan_client() as c:
-        items = await _library_items(c, config.PLEX_TOKEN)
-    rows = []
-    for it in items:
-        tid = _tmdb_id(it)
-        if tid:
-            rows.append((tid, str(it["ratingKey"]), it.get("title"), it.get("year"), it.get("addedAt")))
+        for sec in await _sections(c, config.PLEX_TOKEN):
+            its = await _section_items(c, config.PLEX_TOKEN, sec)
+            sections.append((sec["key"], sec["title"], sec["type"], len(its)))
+            for it in its:
+                items.append((sec["key"], str(it["ratingKey"]), sec["type"], it.get("title") or "?",
+                               it.get("year"), it.get("thumb"), it.get("art"), _tmdb_id(it), it.get("addedAt"),
+                               it.get("leafCount"), it.get("childCount"), (it.get("summary") or "")[:500]))
+    movie_rows = {}
+    for (skey, rk, typ, title, year, thumb, art, tid, added, *_rest) in items:
+        if typ == "movie" and tid and tid not in movie_rows:
+            movie_rows[tid] = (tid, rk, title, year, added)
     conn = db.connect()
-    conn.execute("DELETE FROM plex_library")
-    conn.executemany("INSERT OR REPLACE INTO plex_library(tmdb_id,rating_key,title,year,added_at) VALUES(?,?,?,?,?)",
-                     rows)
-    # Önskningar som nu finns i Plex markeras som tillgängliga
-    conn.execute("UPDATE requests SET status='available' WHERE movie_id IN (SELECT tmdb_id FROM plex_library)")
-    conn.commit()
+    with conn:
+        conn.execute("DELETE FROM plex_sections")
+        conn.executemany("INSERT INTO plex_sections(key,title,type,item_count) VALUES(?,?,?,?)", sections)
+        conn.execute("DELETE FROM plex_items")
+        conn.executemany("""INSERT OR REPLACE INTO plex_items(section_key,rating_key,type,title,year,thumb,art,tmdb_id,
+            added_at,episodes,seasons,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", items)
+        conn.execute("DELETE FROM plex_library")
+        conn.executemany("INSERT INTO plex_library(tmdb_id,rating_key,title,year,added_at) VALUES(?,?,?,?,?)",
+                         list(movie_rows.values()))
+        # Önskningar som nu finns i Plex markeras som tillgängliga
+        conn.execute("UPDATE requests SET status='available' WHERE movie_id IN (SELECT tmdb_id FROM plex_library)")
     db.set_meta("plex_last_sync", int(time.time()))
-    log.info("Plex-bibliotek synkat: %d filmer med TMDB-id", len(rows))
-    return len(rows)
+    log.info("Plex synkat: %d bibliotek, %d objekt, %d filmer med TMDB-id",
+             len(sections), len(items), len(movie_rows))
+    return len(movie_rows)
 
 
 async def sync_watched(user_id):
-    """Markerar filmer som användaren sett i Plex som sedda."""
+    """Sparar vilka bibliotek användaren ser och markerar filmer som setts i Plex som sedda."""
     if not config.PLEX_URL:
         return 0
     conn = db.connect()
     u = conn.execute("SELECT server_token FROM users WHERE id=?", (user_id,)).fetchone()
     if not u or not u["server_token"]:
         return 0
+    seen, keys, progress = [], [], []
     async with _lan_client() as c:
-        items = await _library_items(c, u["server_token"])
-    seen = [tid for tid in (_tmdb_id(i) for i in items if (i.get("viewCount") or 0) > 0) if tid]
-    conn.execute("DELETE FROM watched WHERE user_id=? AND source='plex'", (user_id,))
-    conn.executemany("INSERT OR IGNORE INTO watched(user_id,movie_id,source) VALUES(?,?,'plex')",
-                     [(user_id, t) for t in seen])
-    conn.commit()
-    log.info("Sett-historik för användare %s: %d filmer", user_id, len(seen))
+        for sec in await _sections(c, u["server_token"]):
+            keys.append(sec["key"])
+            for it in await _section_items(c, u["server_token"], sec):
+                rk = str(it["ratingKey"])
+                if sec["type"] == "movie":
+                    if (it.get("viewCount") or 0) > 0:
+                        progress.append((user_id, rk, 1, 1))
+                        tid = _tmdb_id(it)
+                        if tid:
+                            seen.append(tid)
+                elif (it.get("viewedLeafCount") or 0) > 0:
+                    progress.append((user_id, rk, it.get("viewedLeafCount"), it.get("leafCount")))
+    with conn:
+        conn.execute("DELETE FROM user_plex_watched WHERE user_id=?", (user_id,))
+        conn.executemany("INSERT OR REPLACE INTO user_plex_watched(user_id,rating_key,viewed,total) VALUES(?,?,?,?)",
+                         progress)
+        conn.execute("DELETE FROM user_sections WHERE user_id=?", (user_id,))
+        conn.executemany("INSERT INTO user_sections(user_id,section_key) VALUES(?,?)", [(user_id, k) for k in keys])
+        conn.execute("DELETE FROM watched WHERE user_id=? AND source='plex'", (user_id,))
+        conn.executemany("INSERT OR IGNORE INTO watched(user_id,movie_id,source) VALUES(?,?,'plex')",
+                         [(user_id, t) for t in set(seen)])
+    log.info("Användare %s: %d bibliotek, %d sedda filmer", user_id, len(keys), len(set(seen)))
     return len(seen)
+
+
+async def item_details(rating_key, token):
+    """Detaljer om en film/serie från Plex-servern, med användarens egen token (sett-status per person)."""
+    async with _lan_client() as c:
+        r = await c.get(f"{config.PLEX_URL}/library/metadata/{rating_key}", headers=_headers(token))
+        if r.status_code in (401, 403, 404):
+            raise PlexError("Du har inte tillgång till den här titeln.")
+        r.raise_for_status()
+        meta = (r.json()["MediaContainer"].get("Metadata") or [None])[0]
+        if not meta:
+            raise PlexError("Titeln finns inte längre i Plex.")
+        seasons = []
+        if meta.get("type") == "show":
+            r = await c.get(f"{config.PLEX_URL}/library/metadata/{rating_key}/children", headers=_headers(token))
+            if r.status_code == 200:
+                seasons = r.json()["MediaContainer"].get("Metadata", []) or []
+    return meta, seasons
+
+
+async def thumb(path, width=300, height=450):
+    """Hämtar en (förminskad) bild från Plex-servern."""
+    async with _lan_client() as c:
+        r = await c.get(f"{config.PLEX_URL}/photo/:/transcode",
+                        params={"width": width, "height": height, "minSize": 1, "upscale": 1, "url": path},
+                        headers=_headers(config.PLEX_TOKEN))
+        if r.status_code != 200:
+            r = await c.get(f"{config.PLEX_URL}{path}", headers=_headers(config.PLEX_TOKEN))
+        return r.status_code, r.headers.get("content-type", "image/jpeg"), r.content
 
 
 async def sync_all():
