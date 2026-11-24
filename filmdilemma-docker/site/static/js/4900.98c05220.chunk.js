@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmovie_suggestions_frontend=self.webpackChunkmovie_suggestions_frontend||[]).push([[3121,4900],{49206(e,s,n){n.r(s),n.d(s,{default:()=>r});var t=n(38230),o=n(62562);function r(){return(0,o.jsx)(t.A,{role:"actor"})}}}]);

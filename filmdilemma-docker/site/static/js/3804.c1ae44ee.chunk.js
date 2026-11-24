@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmovie_suggestions_frontend=self.webpackChunkmovie_suggestions_frontend||[]).push([[3804],{63804(e,n,s){s.d(n,{Share:()=>t});const t=(0,s(83796).F3)("Share",{web:()=>s.e(5846).then(s.bind(s,95846)).then(e=>new e.ShareWeb)})}}]);

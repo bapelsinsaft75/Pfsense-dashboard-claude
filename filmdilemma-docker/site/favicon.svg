@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Flat mark, small form (no film holes, larger D) with the thin cinema red #E50914 outline (owner 2026-11-10). -->
+  <rect width="32" height="32" rx="6" fill="#121212" />
+  <rect x="3.6" y="3.6" width="24.8" height="24.8" rx="3.8" stroke="#E50914" stroke-width="1.6" />
+  <rect x="4.4" y="4.4" width="23.2" height="23.2" rx="3" fill="#FFC800" />
+  <path d="M12 10V22H16C19.3137 22 22 19.3137 22 16C22 12.6863 19.3137 10 16 10H12Z M12 13H15V19H12Z M16 13V19C17.6569 19 19 17.6569 19 16C19 14.3431 17.6569 13 16 13Z" fill="#0B0B0B" fill-rule="evenodd" transform="translate(-3.2 -3.2) scale(1.2)" />
+</svg>

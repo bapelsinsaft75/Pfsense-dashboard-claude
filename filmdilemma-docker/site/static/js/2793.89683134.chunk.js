@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmovie_suggestions_frontend=self.webpackChunkmovie_suggestions_frontend||[]).push([[2793],{22793(s,e,n){n.d(e,{SplashScreenWeb:()=>c});var a=n(83796);class c extends a.E_{async show(s){}async hide(s){}}}}]);

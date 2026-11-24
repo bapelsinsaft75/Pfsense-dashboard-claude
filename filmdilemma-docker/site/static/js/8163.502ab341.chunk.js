@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmovie_suggestions_frontend=self.webpackChunkmovie_suggestions_frontend||[]).push([[3121,8163],{86643(e,s,n){n.r(s),n.d(s,{default:()=>t});var o=n(38230),r=n(62562);function t(){return(0,r.jsx)(o.A,{role:"composer"})}}}]);

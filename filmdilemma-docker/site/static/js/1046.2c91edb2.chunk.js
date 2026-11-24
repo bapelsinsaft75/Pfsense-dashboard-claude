@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmovie_suggestions_frontend=self.webpackChunkmovie_suggestions_frontend||[]).push([[1046],{71046(s,e,o){o.d(e,{C:()=>i,j:()=>t});const t=-1,i="/movies?list_id=".concat(t,"&sort_by=list_position&sort_order=asc&page=1")}}]);
