@@ -104,6 +104,41 @@
   new MutationObserver(function () { patchAuthDialog(); })
     .observe(document.documentElement, { childList: true, subtree: true });
 
+  /* ---------- Dilemma solver: välj om den letar i Plex eller även i TMDB ---------- */
+  function getScope() {
+    var m = /(?:^|; )fd_dilemma_scope=(plex|all)/.exec(document.cookie);
+    return m ? m[1] : null;
+  }
+  function setScope(v) {
+    document.cookie = "fd_dilemma_scope=" + v + "; path=/; max-age=31536000; SameSite=Lax";
+  }
+
+  function addDilemmaScope() {
+    if (!/^\/(ka\/)?dilemma(\/|$)/.test(location.pathname)) {
+      var old = document.getElementById("fd-dilemma-scope");
+      if (old) old.remove();
+      return;
+    }
+    if (document.getElementById("fd-dilemma-scope") || !cfg) return;
+    var heads = Array.prototype.slice.call(document.querySelectorAll("main h1, main h2"));
+    var head = heads.filter(function (h) { return visible(h) && /dilemma/i.test(h.textContent || ""); })[0];
+    if (!head) return;
+    var current = getScope() || (cfg.plex_library_count ? "plex" : "all");
+    var group = el("div", { id: "fd-dilemma-scope", class: "fd-scope", role: "radiogroup", "aria-label": "Var ska den leta?" });
+    group.appendChild(el("span", { class: "fd-scope-label", text: "Leta bland" }));
+    [["plex", "Mina filmer i Plex"], ["all", "Plex + TMDB"]].forEach(function (o) {
+      var b = el("button", { type: "button", role: "radio", class: "fd-scope-opt", "aria-checked": String(o[0] === current), text: o[1] });
+      if (o[0] === "plex" && !cfg.plex_library_count) { b.disabled = true; b.title = "Plex-biblioteket är inte synkat än"; }
+      b.addEventListener("click", function () {
+        setScope(o[0]);
+        group.querySelectorAll(".fd-scope-opt").forEach(function (x) { x.setAttribute("aria-checked", String(x === b)); });
+      });
+      group.appendChild(b);
+    });
+    if (!getScope()) setScope(current);
+    head.insertAdjacentElement("afterend", group);
+  }
+
   /* ---------- Plex-ruta på filmsidor ---------- */
   function movieIdFromPath() {
     var m = /^\/(?:ka\/)?movies\/(\d+)/.exec(location.pathname);
@@ -287,6 +322,7 @@
     }
     refreshBox(false);
     addNavLink();
+    addDilemmaScope();
   }
 
   ["pushState", "replaceState"].forEach(function (fn) {

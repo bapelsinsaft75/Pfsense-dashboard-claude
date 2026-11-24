@@ -94,3 +94,15 @@
 .fd-plex-menu .fd-plex-all { margin-top: 4px; border-top: 1px solid var(--hairline, #2e2e36); border-radius: 0 0 8px 8px; color: var(--text-2, #b3b0aa); }
 .fd-plex-empty { display: block; padding: 8px 10px; color: var(--text-3, #8d8a85); font-size: 14px; }
 #fd-nav-plex { white-space: nowrap; }
+
+/* Dilemma solver: Plex eller Plex + TMDB */
+.fd-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 10px auto 14px; }
+.fd-scope-label { color: var(--text-3, #8d8a85); font-size: 13px; margin-right: 4px; }
+.fd-scope-opt {
+  min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--hairline-2, #3e3e48);
+  background: transparent; color: var(--text-2, #b3b0aa); font: inherit; font-size: 14px; cursor: pointer;
+}
+.fd-scope-opt:hover { color: var(--text, #f2efe8); background: var(--surface-2, #212127); }
+.fd-scope-opt[aria-checked="true"] { background: var(--accent, #ffc800); border-color: var(--accent, #ffc800); color: var(--accent-ink, #141000); font-weight: 600; }
+.fd-scope-opt:disabled { opacity: .45; cursor: not-allowed; }
+.fd-scope-opt:focus-visible { outline: 2px solid var(--focus, #ffd22e); outline-offset: 2px; }

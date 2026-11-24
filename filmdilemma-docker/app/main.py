@@ -18,7 +18,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import auth, config, db, plex, ratings, tmdb_import
+from . import auth, config, db, dilemma, plex, ratings, tmdb_import
 from .search import search
 from .serializers import (UserState, list_summary, movie_card, movie_detail, person, poster_url, profile_url)
 
@@ -388,6 +388,28 @@ async def trending(request):
     st = UserState(uid(request))
     movies = [movie_card(r, st) for r in rows]
     return ok({"movies": movies, "items": movies})
+
+
+# ------------------------------------------------------------------ dilemma solver
+
+@route("/api/v1/dilemma/finalists", methods=("GET",))
+async def dilemma_finalists(request):
+    scope = dilemma.scope_from_request(request)
+    return ok(dilemma.finalists(dict(request.query_params), uid(request), scope))
+
+
+@route("/api/v1/dilemma/sources", methods=("GET",))
+async def dilemma_sources(request):
+    u = current_user(request)
+    if not u:
+        return ok({"sources": []})
+    conn = db.connect()
+    sources = []
+    if conn.execute("SELECT 1 FROM watchlist WHERE user_id=? LIMIT 1", (u["id"],)).fetchone():
+        sources.append("watchlist")
+    if conn.execute("SELECT 1 FROM ratings WHERE user_id=? AND rating >= 8 LIMIT 1", (u["id"],)).fetchone():
+        sources.append("rewatch")
+    return ok({"sources": sources})
 
 
 # ------------------------------------------------------------------ listor
