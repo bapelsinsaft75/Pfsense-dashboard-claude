@@ -53,6 +53,10 @@ def _truthy(params, name):
 def search(params, user_id=None):
     where, args, joins = [], [], []
 
+    # Serier (från Plex) visas bara i personliga listor och när någon uttryckligen ber om dem
+    if not params.get("personal_collection") and not _truthy(params, "include_tv"):
+        where.append("COALESCE(m.media_type, 'movie') = 'movie'")
+
     q = (params.get("q") or params.get("query") or params.get("search") or "").strip()
     if q:
         where.append("(m.title LIKE ? OR m.original_title LIKE ?)")

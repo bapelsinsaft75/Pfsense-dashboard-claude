@@ -69,6 +69,7 @@ def movie_card(row, st: UserState = None):
         "genres": db.jl(row["genres"]),
         "directors": db.jl(row["directors"]) if "directors" in row.keys() else [],
         "imdb_id": row["imdb_id"],
+        "media_type": (row["media_type"] if "media_type" in row.keys() else None) or "movie",
     }
     if st is not None:
         d["my_rating"] = st.ratings.get(mid)

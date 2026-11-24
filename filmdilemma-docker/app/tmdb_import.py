@@ -217,13 +217,102 @@ async def fetch_movie(t, mid):
                        append_to_response="credits,keywords,videos,watch/providers")
 
 
+async def fetch_tv(t, tv_id):
+    return await t.get(f"/tv/{tv_id}", language=LANGUAGE,
+                       append_to_response="aggregate_credits,keywords,videos,watch/providers,external_ids")
+
+
+def save_tv(conn, d):
+    """Sparar en serie i movies-tabellen (id = TV_OFFSET + serie-id) i samma format som en film."""
+    agg = d.get("aggregate_credits") or {}
+    cast = []
+    for c in sorted(agg.get("cast", []), key=lambda c: c.get("order", 999))[:30]:
+        roles = c.get("roles") or [{}]
+        cast.append({"id": c["id"], "name": c["name"], "character": roles[0].get("character"),
+                     "profile_path": c.get("profile_path"), "order": c.get("order")})
+    crew = [{"id": p["id"], "name": p["name"], "profile_path": p.get("profile_path"), "job": "Director",
+             "department": "Directing"} for p in d.get("created_by", [])]
+    for c in agg.get("crew", []):
+        jobs = {j.get("job") for j in c.get("jobs", [])}
+        if jobs & {"Original Music Composer", "Music"}:
+            crew.append({"id": c["id"], "name": c["name"], "profile_path": c.get("profile_path"),
+                         "job": "Original Music Composer", "department": "Sound"})
+    runtimes = d.get("episode_run_time") or []
+    m = {
+        "id": db.TV_OFFSET + d["id"],
+        "title": d.get("name"), "original_title": d.get("original_name"),
+        "original_language": d.get("original_language"), "release_date": d.get("first_air_date"),
+        "runtime": runtimes[0] if runtimes else ((d.get("last_episode_to_air") or {}).get("runtime")),
+        "overview": d.get("overview"), "tagline": d.get("tagline"),
+        "poster_path": d.get("poster_path"), "backdrop_path": d.get("backdrop_path"),
+        "vote_average": d.get("vote_average"), "vote_count": d.get("vote_count"), "popularity": d.get("popularity"),
+        "imdb_id": (d.get("external_ids") or {}).get("imdb_id"),
+        "genres": d.get("genres", []),
+        "keywords": {"keywords": (d.get("keywords") or {}).get("results", [])},
+        "spoken_languages": d.get("spoken_languages", []),
+        "production_countries": d.get("production_countries", []),
+        "credits": {"cast": cast, "crew": crew},
+        "videos": d.get("videos"), "watch/providers": d.get("watch/providers"),
+    }
+    save_movie(conn, m)
+    conn.execute("UPDATE movies SET media_type='tv' WHERE id=?", (m["id"],))
+
+
+async def find_by_external(t, source, ext_id):
+    """Slår upp TMDB-id från IMDb- eller TVDB-id. source = 'imdb' eller 'tvdb'. Returnerar (tmdb_id, media)."""
+    conn = db.connect()
+    key = f"{source}:{ext_id}"
+    row = conn.execute("SELECT tmdb_id, media FROM tmdb_find WHERE ext_key=?", (key,)).fetchone()
+    if row:
+        return row["tmdb_id"], row["media"]
+    d = await t.get(f"/find/{ext_id}", external_source=f"{source}_id")
+    tid, media = None, None
+    if d:
+        if d.get("movie_results"):
+            tid, media = d["movie_results"][0]["id"], "movie"
+        elif d.get("tv_results"):
+            tid, media = d["tv_results"][0]["id"], "tv"
+    conn.execute("INSERT OR REPLACE INTO tmdb_find(ext_key,tmdb_id,media) VALUES(?,?,?)", (key, tid, media))
+    conn.commit()
+    return tid, media
+
+
+async def import_titles(movie_ids, tv_ids):
+    """Hämtar filmer och serier som finns i Plex men saknas i databasen."""
+    if not configured() or not (movie_ids or tv_ids):
+        return 0
+    conn = db.connect()
+    t = Tmdb()
+    done = 0
+    try:
+        for start in range(0, len(movie_ids), 100):
+            chunk = movie_ids[start:start + 100]
+            for m in await asyncio.gather(*(fetch_movie(t, i) for i in chunk)):
+                if m and not m.get("adult"):
+                    save_movie(conn, m)
+                    done += 1
+            conn.commit()
+        for start in range(0, len(tv_ids), 100):
+            chunk = tv_ids[start:start + 100]
+            for d in await asyncio.gather(*(fetch_tv(t, i) for i in chunk)):
+                if d:
+                    save_tv(conn, d)
+                    done += 1
+            conn.commit()
+    finally:
+        await t.close()
+    log.info("Hämtade %d titlar från Plex-biblioteket som saknades (%d filmer, %d serier efterfrågade)",
+             done, len(movie_ids), len(tv_ids))
+    return done
+
+
 def build_lists(conn):
     """Skapar listor av TMDB-nyckelord, samlingar och genre+årtionde (beräknas i minnet)."""
     import math
     log.info("Bygger listor ...")
     movies = {}
     for r in conn.execute("SELECT id, title, year, release_date, genres, vote_average, vote_count, popularity, "
-                          "collection_id, collection_name FROM movies"):
+                          "collection_id, collection_name FROM movies WHERE COALESCE(media_type,'movie')='movie'"):
         movies[r["id"]] = r
     score = {mid: (r["vote_average"] or 0) * math.log((r["vote_count"] or 0) + 2) for mid, r in movies.items()}
 
@@ -233,7 +322,8 @@ def build_lists(conn):
     kw_names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM keywords")}
     by_kw = {}
     for mk in conn.execute("SELECT movie_id, keyword_id FROM movie_keywords"):
-        by_kw.setdefault(mk["keyword_id"], []).append(mk["movie_id"])
+        if mk["movie_id"] in movies:
+            by_kw.setdefault(mk["keyword_id"], []).append(mk["movie_id"])
     skip = {"woman director", "duringcreditsstinger", "aftercreditsstinger", "independent film", "short film",
             "based on novel or book", "live action remake", "lgbt"}
     for kid, mids in sorted(by_kw.items(), key=lambda kv: -len(kv[1]))[:3000]:

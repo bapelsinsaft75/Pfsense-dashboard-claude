@@ -7,19 +7,22 @@ from . import db
 from .serializers import UserState, movie_card
 
 # Känsla -> (genrer där minst en ska finnas, genrer som inte får finnas, nyckelord som ger extra poäng)
+# (TMDB:s seriegenrer heter delvis annorlunda: "Action & Adventure", "Sci-Fi & Fantasy", "War & Politics", "Kids")
 FEELINGS = {
-    "light-funny": ({"Comedy"}, {"Horror", "War"}, set()),
-    "tense": ({"Thriller", "Action", "Crime"}, {"Comedy", "Family", "Animation"}, set()),
-    "dark": ({"Crime", "Thriller", "War", "Drama"}, {"Comedy", "Family", "Animation", "Romance"},
+    "light-funny": ({"Comedy"}, {"Horror", "War", "War & Politics"}, set()),
+    "tense": ({"Thriller", "Action", "Crime", "Action & Adventure", "Mystery"}, {"Comedy", "Family", "Animation", "Kids"}, set()),
+    "dark": ({"Crime", "Thriller", "War", "Drama", "War & Politics"}, {"Comedy", "Family", "Animation", "Romance", "Kids"},
              {"neo-noir", "violence", "revenge", "serial killer", "gangster", "dystopia", "corruption"}),
     "moving": ({"Drama", "Romance"}, {"Horror", "Comedy", "Action"},
                {"grief", "loss of loved one", "terminal illness", "tragedy", "friendship", "coming of age"}),
-    "mind-bending": ({"Science Fiction", "Mystery", "Thriller"}, {"Family", "Comedy"},
+    "mind-bending": ({"Science Fiction", "Mystery", "Thriller", "Sci-Fi & Fantasy"}, {"Family", "Comedy", "Kids"},
                      {"time travel", "twist ending", "dream", "parallel world", "alternate reality",
                       "memory", "artificial intelligence (a.i.)", "simulated reality", "time loop", "nonlinear timeline"}),
-    "scary": ({"Horror"}, {"Comedy", "Family", "Animation"}, set()),
-    "comforting": ({"Family", "Animation", "Comedy", "Romance"}, {"Horror", "Thriller", "War", "Crime", "Action"}, set()),
+    "scary": ({"Horror"}, {"Comedy", "Family", "Animation", "Kids"}, set()),
+    "comforting": ({"Family", "Animation", "Comedy", "Romance", "Kids"},
+                   {"Horror", "Thriller", "War", "Crime", "Action", "War & Politics"}, set()),
 }
+NEVER = ("News", "Talk", "Reality", "Soap")
 
 
 def scope_from_request(request):
@@ -35,10 +38,13 @@ def finalists(params, user_id, scope):
     conn = db.connect()
     where, args = [], []
     plex_only = scope == "plex"
+    where.append("NOT EXISTS (SELECT 1 FROM json_each(m.genres) j WHERE j.value IN ('News','Talk','Reality','Soap'))")
     if plex_only:
         where.append("m.id IN (SELECT tmdb_id FROM plex_library)")
     else:
-        where.append("m.vote_count >= 150 AND COALESCE(m.runtime, 90) >= 60")
+        # Hela TMDB-katalogen (filmer) plus serierna som finns i Plex
+        where.append("""((COALESCE(m.media_type,'movie')='movie' AND m.vote_count >= 150 AND COALESCE(m.runtime, 90) >= 60)
+                        OR m.id IN (SELECT tmdb_id FROM plex_library))""")
 
     source = params.get("source")
     if source == "watchlist" and user_id:

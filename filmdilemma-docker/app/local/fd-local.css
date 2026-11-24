@@ -106,3 +106,10 @@
 .fd-scope-opt[aria-checked="true"] { background: var(--accent, #ffc800); border-color: var(--accent, #ffc800); color: var(--accent-ink, #141000); font-weight: 600; }
 .fd-scope-opt:disabled { opacity: .45; cursor: not-allowed; }
 .fd-scope-opt:focus-visible { outline: 2px solid var(--focus, #ffd22e); outline-offset: 2px; }
+
+/* Cookie-rutan (originalets analys finns inte här) */
+[role="dialog"][aria-label="Cookie notice"] { display: none !important; }
+
+/* Plex-knappen i Dilemma solver-kortet */
+.fd-plex-compact { width: 100%; max-width: 24rem; margin: 0 0 6px; padding: 8px 10px; }
+.fd-plex-compact .fd-plex-btn { flex: 1; justify-content: center; min-height: 44px; font-size: 15px; }

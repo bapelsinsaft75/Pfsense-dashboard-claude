@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import re
 import time
 import urllib.parse
 
@@ -131,15 +132,31 @@ async def _sections(c, token):
             for d in r.json()["MediaContainer"].get("Directory", []) if d.get("type") in ("movie", "show")]
 
 
-def _tmdb_id(item):
+_LEGACY = re.compile(r"com\.plexapp\.agents\.(themoviedb|imdb|thetvdb|tvdb)://([^?/]+)")
+
+
+def _ext_ids(item):
+    """Plockar ut TMDB/IMDb/TVDB-id från både nya Plex-agenten (Guid-lista) och äldre agenter (guid-sträng)."""
+    ids = {}
     for g in item.get("Guid", []) or []:
-        gid = g.get("id", "")
-        if gid.startswith("tmdb://"):
-            try:
-                return int(gid[7:])
-            except ValueError:
-                return None
-    return None
+        gid = str(g.get("id", ""))
+        for prefix, key in (("tmdb://", "tmdb"), ("imdb://", "imdb"), ("tvdb://", "tvdb")):
+            if gid.startswith(prefix):
+                ids.setdefault(key, gid[len(prefix):])
+    m = _LEGACY.search(str(item.get("guid", "")))
+    if m:
+        key = {"themoviedb": "tmdb", "imdb": "imdb", "thetvdb": "tvdb", "tvdb": "tvdb"}[m.group(1)]
+        ids.setdefault(key, m.group(2))
+    if "tmdb" in ids:
+        try:
+            ids["tmdb"] = int(ids["tmdb"])
+        except ValueError:
+            ids.pop("tmdb")
+    return ids
+
+
+def _tmdb_id(item):
+    return _ext_ids(item).get("tmdb")
 
 
 async def _section_items(c, token, section):
@@ -150,40 +167,85 @@ async def _section_items(c, token, section):
     return r.json()["MediaContainer"].get("Metadata", []) or []
 
 
+async def _resolve_ids(raw):
+    """Fyller i TMDB-id för Plex-objekt som bara har IMDb- eller TVDB-id (slås upp via TMDB)."""
+    from . import tmdb_import
+    if not tmdb_import.configured():
+        return
+    todo = [r for r in raw if not r["tmdb"] and (r["imdb"] or r["tvdb"])]
+    if not todo:
+        return
+    t = tmdb_import.Tmdb()
+    try:
+        async def one(r):
+            src, ext = ("imdb", r["imdb"]) if r["imdb"] else ("tvdb", r["tvdb"])
+            tid, media = await tmdb_import.find_by_external(t, src, ext)
+            want = "movie" if r["type"] == "movie" else "tv"
+            if tid and media == want:
+                r["tmdb"] = tid
+        for start in range(0, len(todo), 100):
+            await asyncio.gather(*(one(r) for r in todo[start:start + 100]))
+    finally:
+        await t.close()
+
+
 async def sync_library():
-    """Hämtar alla film- och seriebibliotek med innehåll (med admin-token)."""
+    """Hämtar alla film- och seriebibliotek med innehåll (med admin-token) och kopplar dem till TMDB."""
     if not (config.PLEX_URL and config.PLEX_TOKEN):
         return 0
+    from . import tmdb_import
     await server_identity()
-    sections, items = [], []
+    sections, raw = [], []
     async with _lan_client() as c:
         for sec in await _sections(c, config.PLEX_TOKEN):
             its = await _section_items(c, config.PLEX_TOKEN, sec)
             sections.append((sec["key"], sec["title"], sec["type"], len(its)))
             for it in its:
-                items.append((sec["key"], str(it["ratingKey"]), sec["type"], it.get("title") or "?",
-                               it.get("year"), it.get("thumb"), it.get("art"), _tmdb_id(it), it.get("addedAt"),
-                               it.get("leafCount"), it.get("childCount"), (it.get("summary") or "")[:500]))
-    movie_rows = {}
-    for (skey, rk, typ, title, year, thumb, art, tid, added, *_rest) in items:
-        if typ == "movie" and tid and tid not in movie_rows:
-            movie_rows[tid] = (tid, rk, title, year, added)
+                ids = _ext_ids(it)
+                raw.append({"section": sec["key"], "rk": str(it["ratingKey"]), "type": sec["type"],
+                            "title": it.get("title") or "?", "year": it.get("year"), "thumb": it.get("thumb"),
+                            "art": it.get("art"), "tmdb": ids.get("tmdb"), "imdb": ids.get("imdb"),
+                            "tvdb": ids.get("tvdb"), "added": it.get("addedAt"), "episodes": it.get("leafCount"),
+                            "seasons": it.get("childCount"), "summary": (it.get("summary") or "")[:500]})
+    await _resolve_ids(raw)
+
+    # Lokalt id i movies-tabellen: filmer = TMDB-id, serier = TV_OFFSET + TMDB-id
+    def local_id(r):
+        if not r["tmdb"]:
+            return None
+        return r["tmdb"] if r["type"] == "movie" else db.TV_OFFSET + r["tmdb"]
+
     conn = db.connect()
+    have = {row[0] for row in conn.execute("SELECT id FROM movies")}
+    missing_movies = sorted({r["tmdb"] for r in raw if r["type"] == "movie" and r["tmdb"] and r["tmdb"] not in have})
+    missing_tv = sorted({r["tmdb"] for r in raw if r["type"] == "show" and r["tmdb"]
+                         and db.TV_OFFSET + r["tmdb"] not in have})
+    if missing_movies or missing_tv:
+        await tmdb_import.import_titles(missing_movies, missing_tv)
+
+    library = {}
+    for r in raw:
+        lid = local_id(r)
+        if lid and lid not in library:
+            library[lid] = (lid, r["rk"], r["title"], r["year"], r["added"])
     with conn:
         conn.execute("DELETE FROM plex_sections")
         conn.executemany("INSERT INTO plex_sections(key,title,type,item_count) VALUES(?,?,?,?)", sections)
         conn.execute("DELETE FROM plex_items")
         conn.executemany("""INSERT OR REPLACE INTO plex_items(section_key,rating_key,type,title,year,thumb,art,tmdb_id,
-            added_at,episodes,seasons,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", items)
+            imdb_id,tvdb_id,added_at,episodes,seasons,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         [(r["section"], r["rk"], r["type"], r["title"], r["year"], r["thumb"], r["art"], local_id(r),
+                           r["imdb"], r["tvdb"], r["added"], r["episodes"], r["seasons"], r["summary"]) for r in raw])
         conn.execute("DELETE FROM plex_library")
         conn.executemany("INSERT INTO plex_library(tmdb_id,rating_key,title,year,added_at) VALUES(?,?,?,?,?)",
-                         list(movie_rows.values()))
+                         list(library.values()))
         # Önskningar som nu finns i Plex markeras som tillgängliga
         conn.execute("UPDATE requests SET status='available' WHERE movie_id IN (SELECT tmdb_id FROM plex_library)")
     db.set_meta("plex_last_sync", int(time.time()))
-    log.info("Plex synkat: %d bibliotek, %d objekt, %d filmer med TMDB-id",
-             len(sections), len(items), len(movie_rows))
-    return len(movie_rows)
+    unmatched = sum(1 for r in raw if not r["tmdb"])
+    log.info("Plex synkat: %d bibliotek, %d titlar, %d kopplade till TMDB, %d utan TMDB-koppling",
+             len(sections), len(raw), len(raw) - unmatched, unmatched)
+    return len(library)
 
 
 async def sync_watched(user_id):
@@ -195,19 +257,24 @@ async def sync_watched(user_id):
     if not u or not u["server_token"]:
         return 0
     seen, keys, progress = [], [], []
+    # Plex-id -> lokalt film/serie-id (sätts av sync_library, som också löser IMDb/TVDB-id)
+    local_ids = {r["rating_key"]: r["tmdb_id"] for r in
+                 conn.execute("SELECT rating_key, tmdb_id FROM plex_items WHERE tmdb_id IS NOT NULL")}
     async with _lan_client() as c:
         for sec in await _sections(c, u["server_token"]):
             keys.append(sec["key"])
             for it in await _section_items(c, u["server_token"], sec):
                 rk = str(it["ratingKey"])
+                lid = local_ids.get(rk)
                 if sec["type"] == "movie":
                     if (it.get("viewCount") or 0) > 0:
                         progress.append((user_id, rk, 1, 1))
-                        tid = _tmdb_id(it)
-                        if tid:
-                            seen.append(tid)
+                        if lid:
+                            seen.append(lid)
                 elif (it.get("viewedLeafCount") or 0) > 0:
                     progress.append((user_id, rk, it.get("viewedLeafCount"), it.get("leafCount")))
+                    if lid and it.get("leafCount") and it["viewedLeafCount"] >= it["leafCount"]:
+                        seen.append(lid)
     with conn:
         conn.execute("DELETE FROM user_plex_watched WHERE user_id=?", (user_id,))
         conn.executemany("INSERT OR REPLACE INTO user_plex_watched(user_id,rating_key,viewed,total) VALUES(?,?,?,?)",
@@ -274,16 +341,21 @@ async def sync_loop():
 async def send_request(movie_row):
     """Skickar en önskan vidare till Overseerr/Jellyseerr eller Radarr. Returnerar (status, detalj)."""
     backend = config.request_backend()
+    is_tv = (movie_row["media_type"] or "movie") == "tv"
+    tmdb_id = movie_row["id"] - db.TV_OFFSET if is_tv else movie_row["id"]
     async with _lan_client() as c:
         if backend == "overseerr":
-            r = await c.post(f"{config.OVERSEERR_URL}/api/v1/request",
-                             json={"mediaType": "movie", "mediaId": movie_row["id"]},
+            body = {"mediaType": "tv", "mediaId": tmdb_id, "seasons": "all"} if is_tv \
+                else {"mediaType": "movie", "mediaId": tmdb_id}
+            r = await c.post(f"{config.OVERSEERR_URL}/api/v1/request", json=body,
                              headers={"X-Api-Key": config.OVERSEERR_API_KEY})
             if r.status_code in (200, 201):
                 return "sent", "Skickad till Overseerr"
             if r.status_code == 409:
                 return "sent", "Redan önskad i Overseerr"
             return "failed", f"Overseerr svarade {r.status_code}: {r.text[:200]}"
+        if backend == "radarr" and is_tv:
+            return "pending", "Radarr hanterar inte serier – sparad i önskelistan"
         if backend == "radarr":
             h = {"X-Api-Key": config.RADARR_API_KEY}
             root = config.RADARR_ROOT_FOLDER

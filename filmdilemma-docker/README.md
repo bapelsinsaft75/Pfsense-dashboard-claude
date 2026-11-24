@@ -13,10 +13,12 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Inloggning | **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
 | Finns i Plex | Filmsidan visar **▶ Spela på Plex** om filmen finns i ditt bibliotek |
 | Sett-historik | Filmer som setts i Plex markeras som sedda (per användare) och kan filtreras bort |
+| Dilemma solver | Föreslår filmer och serier utifrån känsla, era och språk. Välj **Mina filmer i Plex** eller **Plex + TMDB**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
+| Plex-koppling | Fungerar med både nya och äldre Plex-agenter (TMDB-, IMDb- och TVDB-id). Filmer och serier i Plex som saknas i databasen hämtas automatiskt från TMDB |
 | Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
 | Önskningar | **Önska film** på filmer som saknas → Overseerr/Jellyseerr eller Radarr, annars en lista på `/onskningar` |
 | Betyg, bevakningslista, sedda | Sparas lokalt per användare |
-| Spel, chatt, recensioner från partners, "Famous fans" m.m. | Finns inte (tomma sektioner) |
+| Allt som inte rör TMDB eller Plex | Borttaget: Coffee, Discover, Famous Fans, spel, recensioner, kommentarer, shop, affiliate-länkar, cookie-ruta och sidfotens länkar (TMDB-erkännandet är kvar, det kräver TMDB) |
 
 Bilder (affischer, porträtt) laddas direkt från `image.tmdb.org`.
 

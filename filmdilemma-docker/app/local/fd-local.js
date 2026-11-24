@@ -101,7 +101,13 @@
     anchor.parentElement.insertBefore(block, anchor);
   }
 
-  new MutationObserver(function () { patchAuthDialog(); })
+  var cleanupQueued = false;
+  function scheduleCleanup() {
+    if (cleanupQueued) return;
+    cleanupQueued = true;
+    requestAnimationFrame(function () { cleanupQueued = false; cleanup(); });
+  }
+  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); })
     .observe(document.documentElement, { childList: true, subtree: true });
 
   /* ---------- Dilemma solver: välj om den letar i Plex eller även i TMDB ---------- */
@@ -162,21 +168,14 @@
     return null;
   }
 
-  function renderBox(mid, st) {
-    var old = document.getElementById("fd-plex-box");
-    if (old && old.getAttribute("data-mid") === String(mid) && old.isConnected && visible(old) &&
-        old.getAttribute("data-state") === JSON.stringify(st)) return;
-    if (old) old.remove();
-    if (!st || !st.plex_configured) return;
-    var anchor = findAnchor();
-    if (!anchor) return;
-
+  /* Bygger Plex-rutan: "Watch on Plex" om titeln finns i Plex, annars "Request movie/show" */
+  function buildPlexBox(mid, st, id, extraClass) {
+    var isTv = st.media_type === "tv";
     var children = [];
     if (st.on_plex) {
       children.push(el("a", {
         class: "fd-plex-btn fd-plex-primary", href: st.plex_url || "#", target: "_blank", rel: "noopener"
-      }, [el("span", { class: "fd-plex-icon", text: "▶" }), el("span", { text: "Spela på Plex" })]));
-      children.push(el("span", { class: "fd-plex-badge", text: "Finns i Plex" }));
+      }, [el("span", { class: "fd-plex-icon", text: "▶" }), el("span", { text: "Watch on Plex" })]));
       if (st.watched) children.push(el("span", { class: "fd-plex-badge fd-plex-seen", text: "✓ Sedd" }));
     } else if (!st.logged_in) {
       children.push(el("span", { class: "fd-plex-note", text: "Finns inte i Plex." }));
@@ -190,8 +189,9 @@
       children.push(el("span", { class: "fd-plex-badge fd-plex-wish", text: "★ " + label }));
       children.push(el("a", { class: "fd-plex-link", href: "/onskningar", text: "Mina önskningar" }));
     } else {
+      var reqLabel = isTv ? "Request show" : "Request movie";
       var btn = el("button", { class: "fd-plex-btn fd-plex-primary", type: "button" },
-        [el("span", { class: "fd-plex-icon", text: "+" }), el("span", { text: "Önska film" })]);
+        [el("span", { class: "fd-plex-icon", text: "+" }), el("span", { text: reqLabel })]);
       btn.addEventListener("click", async function () {
         btn.disabled = true;
         btn.lastChild.textContent = "Skickar …";
@@ -199,24 +199,68 @@
         delete statusCache[mid];
         if (!r.ok) {
           btn.disabled = false;
-          btn.lastChild.textContent = "Önska film";
+          btn.lastChild.textContent = reqLabel;
           alert((r.data && r.data.detail) || "Det gick inte att skicka önskan.");
         }
         refreshBox(true);
       });
-      children.push(el("span", { class: "fd-plex-note", text: "Finns inte i Plex." }));
       children.push(btn);
+      children.push(el("span", { class: "fd-plex-note", text: "Finns inte i Plex." }));
       if (st.request_status === "failed") {
         children.push(el("span", { class: "fd-plex-note fd-plex-err", text: "Förra försöket misslyckades." }));
       }
     }
-    var box = el("div", { id: "fd-plex-box", class: "fd-plex-box", "data-mid": String(mid),
-                          "data-state": JSON.stringify(st) }, children);
-    anchor.insertAdjacentElement("afterend", box);
+    return el("div", { id: id, class: "fd-plex-box " + (extraClass || ""), "data-mid": String(mid),
+                       "data-state": JSON.stringify(st) }, children);
+  }
+
+  function upToDate(node, mid, st) {
+    return node && node.isConnected && visible(node) && node.getAttribute("data-mid") === String(mid) &&
+      node.getAttribute("data-state") === JSON.stringify(st);
+  }
+
+  function renderBox(mid, st) {
+    var old = document.getElementById("fd-plex-box");
+    if (upToDate(old, mid, st)) return;
+    if (old) old.remove();
+    if (!st || !st.plex_configured) return;
+    var anchor = findAnchor();
+    if (!anchor) return;
+    anchor.insertAdjacentElement("afterend", buildPlexBox(mid, st, "fd-plex-box"));
+  }
+
+  /* Dilemma solver: byt streamingknappen (Apple TV/Amazon m.fl.) mot Plex-knappen */
+  function dilemmaPick() {
+    var titles = document.querySelectorAll('[data-testid="pick-title"] a[href^="/movies/"]');
+    for (var i = 0; i < titles.length; i++) {
+      if (visible(titles[i])) {
+        var m = /\/movies\/(\d+)/.exec(titles[i].getAttribute("href"));
+        if (m) return Number(m[1]);
+      }
+    }
+    return null;
+  }
+
+  function renderDilemma(mid, st) {
+    var block = null;
+    var blocks = document.querySelectorAll('[data-testid="pick-buttons-block"]');
+    for (var i = 0; i < blocks.length; i++) if (visible(blocks[i])) { block = blocks[i]; break; }
+    if (!block) return;
+    // Göm originalets streaming-/affiliateknappar i kortet
+    block.querySelectorAll('[data-testid^="watch-"], a[target="_blank"]').forEach(function (n) {
+      if (!n.closest(".fd-plex-box")) n.style.display = "none";
+    });
+    if (!st || !st.plex_configured) return;
+    var old = document.getElementById("fd-dilemma-plex");
+    if (upToDate(old, mid, st)) return;
+    if (old) old.remove();
+    var host = block.firstElementChild || block;
+    host.insertBefore(buildPlexBox(mid, st, "fd-dilemma-plex", "fd-plex-compact"), host.firstChild);
   }
 
   async function refreshBox(force) {
-    var mid = movieIdFromPath();
+    var onDilemma = /^\/(ka\/)?dilemma(\/|$)/.test(location.pathname);
+    var mid = onDilemma ? dilemmaPick() : movieIdFromPath();
     if (!mid) {
       var old = document.getElementById("fd-plex-box");
       if (old) old.remove();
@@ -227,7 +271,11 @@
       if (!r.ok) return;
       statusCache[mid] = r.data;
     }
-    if (movieIdFromPath() === mid) renderBox(mid, statusCache[mid]);
+    if (onDilemma) {
+      if (dilemmaPick() === mid) renderDilemma(mid, statusCache[mid]);
+    } else if (movieIdFromPath() === mid) {
+      renderBox(mid, statusCache[mid]);
+    }
   }
 
   /* ---------- Menylänkar: Plex (med bibliotek) och Önskningar ---------- */
@@ -315,6 +363,69 @@
     loadSections();
   }
 
+  /* ---------- Bort med allt som inte har med TMDB eller Plex att göra ---------- */
+  var HIDE_HEADINGS = /^(awards and festivals|from the critics'? polls|film dilemma'?s picks|one of a kind|reader reviews|comments|recommended by|famous fans|reviews from critics|critics)$/i;
+  var AFFILIATE_TEXT = /amazon associate|may earn from|affiliate disclosure/i;
+
+  function hide(n) { if (n && n.style.display !== "none") n.style.display = "none"; }
+
+  function sectionOf(h) {
+    // Närmaste omslutande sektion, men aldrig hela <main>
+    var n = h.closest("section");
+    if (n && n.tagName !== "MAIN" && !n.contains(document.querySelector("main h1"))) return n;
+    n = h.parentElement;
+    return n && n.tagName !== "MAIN" ? n : h;
+  }
+
+  function cleanup() {
+    // Meny: Coffee och Discover
+    document.querySelectorAll("header button, header a").forEach(function (b) {
+      var t = (b.textContent || b.getAttribute("aria-label") || "").trim();
+      if (/^coffee$|buy me a coffee/i.test(t) || b.getAttribute("href") === "/discover") {
+        hide(b.parentElement && b.parentElement.tagName === "LI" ? b.parentElement : b);
+      }
+    });
+    // Sidfot: behåll bara TMDB-erkännandet
+    var footer = document.querySelector("footer");
+    if (footer && !footer.dataset.fdClean) {
+      var tmdb = footer.querySelector('a[href*="themoviedb.org"]');
+      if (tmdb) {
+        var keep = tmdb.closest("p") || tmdb;
+        var n = keep;
+        while (n && n !== footer) {
+          Array.prototype.forEach.call(n.parentElement.children, function (sib) { if (sib !== n) hide(sib); });
+          n = n.parentElement;
+        }
+        footer.dataset.fdClean = "1";
+      }
+    }
+    // Sektioner som bygger på Film Dilemmas egen data
+    document.querySelectorAll("main h2, main h3").forEach(function (h) {
+      if (HIDE_HEADINGS.test((h.textContent || "").trim())) hide(sectionOf(h));
+    });
+    // Flik "Shop / Merch" på filmsidan
+    document.querySelectorAll('[role="tab"]').forEach(function (t) {
+      if (/^\s*shop/i.test(t.textContent || "")) hide(t);
+    });
+    // Startsidan: originalets AI-funktion och rundtur
+    document.querySelectorAll("main button, main a").forEach(function (b) {
+      if (/^\s*(describe your dilemma|watch the tour|take the tour)\s*$/i.test(b.textContent || "")) hide(b);
+    });
+    // Originalets eget betyg ("Film Dilemma: 6/10")
+    document.querySelectorAll("main span").forEach(function (sp) {
+      if (/^\s*Film Dilemma:\s*\d/.test(sp.textContent || "") && sp.textContent.length < 40) hide(sp);
+    });
+    // Affiliate-texter
+    document.querySelectorAll("main p, main span, [role=dialog] p").forEach(function (p) {
+      if (p.children.length < 3 && AFFILIATE_TEXT.test(p.textContent || "")) hide(p);
+    });
+    document.querySelectorAll("main span, main p").forEach(function (sp) {
+      if (sp.childElementCount === 0 && /^Affiliate link ·\s*/.test(sp.textContent || "")) {
+        sp.textContent = sp.textContent.replace(/^Affiliate link ·\s*/, "");
+      }
+    });
+  }
+
   function tick() {
     if (location.pathname !== lastPath) {
       lastPath = location.pathname;
@@ -323,6 +434,7 @@
     refreshBox(false);
     addNavLink();
     addDilemmaScope();
+    cleanup();
   }
 
   ["pushState", "replaceState"].forEach(function (fn) {

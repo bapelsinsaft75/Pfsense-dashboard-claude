@@ -184,6 +184,11 @@ CREATE TABLE IF NOT EXISTS requests (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, movie_id)
 );
+CREATE TABLE IF NOT EXISTS tmdb_find (
+    ext_key TEXT PRIMARY KEY,     -- t.ex. imdb:tt0133093 eller tvdb:81189
+    tmdb_id INTEGER,
+    media TEXT                    -- movie / tv / NULL (hittades inte)
+);
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -207,7 +212,11 @@ def connect():
     return conn
 
 
-MIGRATIONS = [("plex_items", "art", "TEXT")]
+MIGRATIONS = [("plex_items", "art", "TEXT"), ("plex_items", "imdb_id", "TEXT"), ("plex_items", "tvdb_id", "TEXT"),
+              ("movies", "media_type", "TEXT DEFAULT 'movie'"), ("requests", "media_type", "TEXT DEFAULT 'movie'")]
+
+# Serier lagras i samma tabell som filmer med id = TV_OFFSET + TMDB:s serie-id (så att id:n inte krockar)
+TV_OFFSET = 1_000_000_000
 
 
 def init():

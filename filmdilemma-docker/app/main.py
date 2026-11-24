@@ -101,6 +101,8 @@ def prepare_web():
             with open(p, encoding="utf-8", errors="surrogateescape") as fh:
                 s = fh.read()
             n = s.replace("https://api.filmdilemma.com", "").replace("https://filmdilemma.com", pub)
+            # Ta bort originalets Amazon-affiliatetaggar
+            n = n.replace('tag:"filmdilemma20-20"', 'tag:""').replace('"filmdilemma-22"', '""')
             if f == "index.html" and root == WEB:
                 n = n.replace("</head>", '<link rel="stylesheet" href="/local/fd-local.css">'
                                          '<script defer src="/local/fd-local.js"></script></head>')
@@ -817,8 +819,10 @@ async def local_movie_status(request):
     conn = db.connect()
     req = conn.execute("SELECT status, detail FROM requests WHERE movie_id=? ORDER BY "
                        "(user_id=?) DESC, created_at DESC LIMIT 1", (mid, u["id"] if u else 0)).fetchone()
+    mrow = conn.execute("SELECT media_type FROM movies WHERE id=?", (mid,)).fetchone()
     return ok({
         "movie_id": mid,
+        "media_type": (mrow["media_type"] if mrow else None) or ("tv" if mid > db.TV_OFFSET else "movie"),
         "on_plex": rk is not None,
         "plex_url": config.plex_web_url(rk) if rk else None,
         "watched": mid in st.watched,
@@ -846,9 +850,9 @@ async def local_request_create(request):
         status, detail = await plex.send_request(row)
     except Exception as ex:  # noqa: BLE001
         status, detail = "failed", f"Kunde inte skicka önskan: {ex}"
-    conn.execute("""INSERT INTO requests(user_id,movie_id,status,detail) VALUES(?,?,?,?)
+    conn.execute("""INSERT INTO requests(user_id,movie_id,status,detail,media_type) VALUES(?,?,?,?,?)
         ON CONFLICT(user_id,movie_id) DO UPDATE SET status=excluded.status, detail=excluded.detail""",
-                 (u["id"], mid, status, detail))
+                 (u["id"], mid, status, detail, row["media_type"] or "movie"))
     conn.commit()
     return ok({"status": status, "detail": detail}, 200 if status != "failed" else 502)
 
@@ -916,7 +920,7 @@ async def local_plex_items(request):
     if not sec:
         return err("Biblioteket finns inte.", 404)
     rows = conn.execute("""SELECT i.*, m.poster_path, m.vote_average, m.id AS movie_id FROM plex_items i
-        LEFT JOIN movies m ON m.id=i.tmdb_id AND i.type='movie'
+        LEFT JOIN movies m ON m.id=i.tmdb_id
         WHERE i.section_key=? ORDER BY i.title COLLATE NOCASE""", (key,)).fetchall()
     watched = {r[0] for r in conn.execute("SELECT movie_id FROM watched WHERE user_id=?", (u["id"],))}
     progress = {r["rating_key"]: (r["viewed"], r["total"]) for r in conn.execute(
@@ -975,9 +979,9 @@ async def local_plex_item(request):
         log.warning("Plex-detaljer %s: %s", rk, ex)
         return err("Kunde inte hämta uppgifter från Plex.", 502)
 
-    movie = conn.execute("SELECT * FROM movies WHERE id=?", (row["tmdb_id"],)).fetchone() \
-        if row["type"] == "movie" and row["tmdb_id"] else None
-    rating_info = await ratings.collect(meta, row["tmdb_id"], movie)
+    movie = conn.execute("SELECT * FROM movies WHERE id=?", (row["tmdb_id"],)).fetchone() if row["tmdb_id"] else None
+    raw_tmdb = row["tmdb_id"] - db.TV_OFFSET if row["tmdb_id"] and row["tmdb_id"] > db.TV_OFFSET else row["tmdb_id"]
+    rating_info = await ratings.collect(meta, raw_tmdb, movie)
 
     def tags(key, limit=None):
         return [t.get("tag") for t in (meta.get(key) or [])[:limit] if t.get("tag")]
@@ -1059,7 +1063,7 @@ async def local_plex_sync(request):
     if e:
         return e
     if u["is_admin"]:
-        asyncio.create_task(_safe(plex.sync_all()))
+        _start_thread(plex.sync_all, "plex-sync-now")
     else:
         asyncio.create_task(_safe(plex.sync_watched(u["id"])))
     return ok({"started": True})
@@ -1077,6 +1081,18 @@ async def api_fallback(request):
 
 
 # ------------------------------------------------------------------ start
+
+def _start_thread(coro_fn, name):
+    """Kör ett asynkront jobb i en egen tråd (egen event-loop och databasanslutning)."""
+    import threading
+
+    def run():
+        try:
+            asyncio.run(coro_fn())
+        except Exception as ex:  # noqa: BLE001
+            log.warning("%s misslyckades: %s", name, ex)
+    threading.Thread(target=run, name=name, daemon=True).start()
+
 
 def _run_import_thread(limit):
     # Egen tråd med egen event-loop och egen databasanslutning, så att webbservern
@@ -1105,7 +1121,7 @@ async def lifespan(app):
     prepare_web()
     tasks = [asyncio.create_task(_safe(import_if_empty()))]
     if config.PLEX_URL and config.PLEX_TOKEN:
-        tasks.append(asyncio.create_task(plex.sync_loop()))
+        _start_thread(plex.sync_loop, "plex-sync")
     yield
     for t in tasks:
         t.cancel()
