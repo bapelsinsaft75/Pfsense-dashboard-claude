@@ -107,42 +107,76 @@
     cleanupQueued = true;
     requestAnimationFrame(function () { cleanupQueued = false; cleanup(); });
   }
-  new MutationObserver(function () { patchAuthDialog(); scheduleCleanup(); hideServicePicker(); patchUserMenu(); hideExtraLinks(); })
+  new MutationObserver(function () {
+    patchAuthDialog(); scheduleCleanup(); hideServicePicker(); patchUserMenu(); hideExtraLinks(); patchLogo(); addDilemmaScope();
+  })
     .observe(document.documentElement, { childList: true, subtree: true });
 
   /* ---------- Dilemma solver: välj om den letar i Plex eller även i TMDB ---------- */
   function getScope() {
-    var m = /(?:^|; )fd_dilemma_scope=(plex|all)/.exec(document.cookie);
+    var m = /(?:^|; )fd_dilemma_scope=(plex|tmdb|all)/.exec(document.cookie);
     return m ? m[1] : null;
   }
   function setScope(v) {
     document.cookie = "fd_dilemma_scope=" + v + "; path=/; max-age=31536000; SameSite=Lax";
   }
 
+  var SCOPES = [["plex", "Bara Plex"], ["tmdb", "Bara TMDB"], ["all", "Båda"]];
+
+  function buildScope(id) {
+    var current = getScope() || (cfg && cfg.plex_library_count ? "plex" : "all");
+    var group = el("div", { id: id, class: "fd-scope", role: "radiogroup", "aria-label": "Var ska den leta?" });
+    group.appendChild(el("span", { class: "fd-scope-label", text: "Sök bland" }));
+    SCOPES.forEach(function (o) {
+      var b = el("button", { type: "button", role: "radio", class: "fd-scope-opt", "aria-checked": String(o[0] === current), text: o[1] });
+      if (o[0] === "plex" && cfg && !cfg.plex_library_count) { b.disabled = true; b.title = "Plex-biblioteket är inte synkat än"; }
+      b.addEventListener("click", function () {
+        setScope(o[0]);
+        document.querySelectorAll(".fd-scope").forEach(function (g) {
+          g.querySelectorAll(".fd-scope-opt").forEach(function (x, i) { x.setAttribute("aria-checked", String(SCOPES[i][0] === o[0])); });
+        });
+      });
+      group.appendChild(b);
+    });
+    if (!getScope()) setScope(current);
+    return group;
+  }
+
   function addDilemmaScope() {
+    if (!cfg) return;
+    // 1) Rutan som poppar upp från menyn ("What are you in the mood for?")
+    document.querySelectorAll('[role="dialog"]').forEach(function (dlg) {
+      if (dlg.querySelector(".fd-scope") || !visible(dlg)) return;
+      var q = Array.prototype.filter.call(dlg.querySelectorAll("h1, h2, h3"), function (h) {
+        return /in the mood for/i.test(h.textContent || "");
+      })[0];
+      if (q) q.insertAdjacentElement("beforebegin", buildScope("fd-dilemma-scope-dlg"));
+    });
+    // 2) Sidan /dilemma
     if (!/^\/(ka\/)?dilemma(\/|$)/.test(location.pathname)) {
       var old = document.getElementById("fd-dilemma-scope");
       if (old) old.remove();
       return;
     }
-    if (document.getElementById("fd-dilemma-scope") || !cfg) return;
+    if (document.getElementById("fd-dilemma-scope")) return;
     var heads = Array.prototype.slice.call(document.querySelectorAll("main h1, main h2"));
-    var head = heads.filter(function (h) { return visible(h) && /dilemma/i.test(h.textContent || ""); })[0];
-    if (!head) return;
-    var current = getScope() || (cfg.plex_library_count ? "plex" : "all");
-    var group = el("div", { id: "fd-dilemma-scope", class: "fd-scope", role: "radiogroup", "aria-label": "Var ska den leta?" });
-    group.appendChild(el("span", { class: "fd-scope-label", text: "Leta bland" }));
-    [["plex", "Mina filmer i Plex"], ["all", "Plex + TMDB"]].forEach(function (o) {
-      var b = el("button", { type: "button", role: "radio", class: "fd-scope-opt", "aria-checked": String(o[0] === current), text: o[1] });
-      if (o[0] === "plex" && !cfg.plex_library_count) { b.disabled = true; b.title = "Plex-biblioteket är inte synkat än"; }
-      b.addEventListener("click", function () {
-        setScope(o[0]);
-        group.querySelectorAll(".fd-scope-opt").forEach(function (x) { x.setAttribute("aria-checked", String(x === b)); });
-      });
-      group.appendChild(b);
+    var head = heads.filter(function (h) { return visible(h) && /filmförslag|dilemma/i.test(h.textContent || ""); })[0];
+    if (head) head.insertAdjacentElement("afterend", buildScope("fd-dilemma-scope"));
+  }
+
+  /* Ny filmikon i loggan (ersätter originalets "D") */
+  var LOGO_SVG = '<rect x="1" y="1" width="30" height="30" rx="7" fill="#FFC800"/>' +
+    '<g transform="rotate(-14 6.5 13)"><rect x="6.5" y="8.2" width="19.5" height="4.8" rx="1" fill="#141000"/>' +
+    '<path d="M9.6 8.2h2.8l-2.3 4.8H7.3zM15.2 8.2H18l-2.3 4.8h-2.8zM20.8 8.2h2.8l-2.3 4.8h-2.8z" fill="#FFC800"/></g>' +
+    '<rect x="6.5" y="14.2" width="19.5" height="11.8" rx="1.6" fill="#141000"/>' +
+    '<path d="M14.2 17.1v6l5.2-3z" fill="#FFC800"/>';
+  function patchLogo() {
+    document.querySelectorAll("svg.fd-logo, svg.fd-mq-logo").forEach(function (svg) {
+      if (svg.getAttribute("data-fd-logo") === "1") return;
+      svg.setAttribute("viewBox", "0 0 32 32");
+      svg.innerHTML = LOGO_SVG;
+      svg.setAttribute("data-fd-logo", "1");
     });
-    if (!getScope()) setScope(current);
-    head.insertAdjacentElement("afterend", group);
   }
 
   /* ---------- Plex-ruta på filmsidor ---------- */

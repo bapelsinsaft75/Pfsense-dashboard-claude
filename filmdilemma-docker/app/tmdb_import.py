@@ -306,6 +306,85 @@ async def import_titles(movie_ids, tv_ids):
     return done
 
 
+_search_cache = {}
+
+
+async def import_ids(t, ids, conn):
+    """Hämtar filmer som saknas lokalt. Returnerar antal nya."""
+    have = {r[0] for r in conn.execute("SELECT id FROM movies WHERE id IN (%s)" % ",".join(map(str, ids)))} if ids else set()
+    todo = [i for i in ids if i not in have]
+    for start in range(0, len(todo), 50):
+        for m in await asyncio.gather(*(fetch_movie(t, i) for i in todo[start:start + 50])):
+            if m and not m.get("adult"):
+                save_movie(conn, m)
+        conn.commit()
+    return len(todo)
+
+
+async def search_and_import(query, limit=10):
+    """Söker direkt i TMDB och hämtar in träffar som saknas lokalt (t.ex. årets nya filmer)."""
+    q = (query or "").strip().lower()
+    if len(q) < 2 or not configured():
+        return 0
+    hit = _search_cache.get(q)
+    if hit and time.time() - hit < 1800:
+        return 0
+    _search_cache[q] = time.time()
+    conn = db.connect()
+    t = Tmdb()
+    try:
+        d = await t.get("/search/movie", query=query, language=LANGUAGE, include_adult="false", page=1)
+        ids = [m["id"] for m in (d or {}).get("results", [])
+               if not m.get("adult") and (m.get("poster_path") or (m.get("vote_count") or 0) > 0)][:limit]
+        return await import_ids(t, ids, conn)
+    finally:
+        await t.close()
+
+
+async def refresh_recent():
+    """Hämtar nya och aktuella filmer: på bio, kommande, trendande och årets populäraste."""
+    if not configured():
+        return 0
+    conn = db.connect()
+    t = Tmdb()
+    try:
+        ids = []
+        year = dt.date.today().year
+        for path, pages in (("/movie/now_playing", 3), ("/movie/upcoming", 3), ("/trending/movie/week", 3),
+                            ("/movie/popular", 5)):
+            for page in range(1, pages + 1):
+                d = await t.get(path, language=LANGUAGE, page=page)
+                ids += [m["id"] for m in (d or {}).get("results", []) if not m.get("adult")]
+        for y in (year, year - 1):
+            for page in range(1, 6):
+                d = await t.get("/discover/movie", language=LANGUAGE, sort_by="popularity.desc", page=page,
+                                include_adult="false", **{"primary_release_year": y, "vote_count.gte": 5})
+                ids += [m["id"] for m in (d or {}).get("results", []) if not m.get("adult")]
+        ids = list(dict.fromkeys(ids))
+        n = await import_ids(t, ids, conn)
+        db.set_meta("recent_refreshed", int(time.time()))
+        log.info("Nya filmer från TMDB: %d kontrollerade, %d hämtade", len(ids), n)
+        if n:
+            build_lists(conn)
+        return n
+    finally:
+        await t.close()
+
+
+async def refresh_loop():
+    """Kör refresh_recent en gång per dygn (första gången när huvudimporten är klar)."""
+    while db.get_meta("import_status") == "running":
+        await asyncio.sleep(60)
+    while True:
+        last = int(db.get_meta("recent_refreshed") or 0)
+        if time.time() - last > 20 * 3600:
+            try:
+                await refresh_recent()
+            except Exception as e:  # noqa: BLE001
+                log.warning("Hämtning av nya filmer misslyckades: %s", e)
+        await asyncio.sleep(3600)
+
+
 def build_lists(conn):
     """Skapar listor av TMDB-nyckelord, samlingar och genre+årtionde (beräknas i minnet)."""
     import math

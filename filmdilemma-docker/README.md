@@ -8,12 +8,13 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | Del | Hur det fungerar här |
 |---|---|
 | Gränssnittet | Originalets frontend, oförändrad förutom adresser (`web/`) |
-| Filmer, personer, sök, filter | Eget API (`app/`) med data importerad från TMDB till SQLite |
+| Filmer, personer, sök, filter | Eget API (`app/`) med data importerad från TMDB till SQLite. Sökningen frågar även TMDB direkt, och nya filmer (på bio, kommande, trendande, årets populäraste) hämtas varje dygn |
+| Namn och ikon | Sidan heter **Filmförslag** och har en egen favicon/appikon (filmklappa) |
 | Listor | Skapas automatiskt: "Best movies about …" (TMDB-nyckelord), filmserier, bästa per genre och årtionde |
 | Inloggning | **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
 | Finns i Plex | Filmsidan visar **▶ Spela på Plex** om filmen finns i ditt bibliotek |
 | Sett-historik | Filmer som setts i Plex markeras som sedda (per användare) och kan filtreras bort |
-| Dilemma solver | Föreslår filmer och serier utifrån känsla, era och språk. Välj **Mina filmer i Plex** eller **Plex + TMDB**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
+| Filmförslag (f.d. Dilemma solver) | Föreslår filmer och serier utifrån känsla, era och språk. Välj **Bara Plex**, **Bara TMDB** (frågar TMDB direkt, hela katalogen) eller **Båda**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
 | Plex-koppling | Fungerar med både nya och äldre Plex-agenter (TMDB-, IMDb- och TVDB-id). Filmer och serier i Plex som saknas i databasen hämtas automatiskt från TMDB |
 | Plex-menyn | **Plex** i menyn listar dina bibliotek (filmer och serier). Klick på en titel öppnar en informationsruta med handling, skådespelare, säsonger, sett-status och betyg från TMDB och IMDb |
 | Request via Plex-watchlist | Standard (`REQUEST_MODE=watchlist`): **Request movie/show** lägger titeln på den inloggades **egen Plex-watchlist**. Seerr:s *Plex Watchlist Sync* önskar den sedan i användarens namn. Kräver att användarna har behörigheten *Auto-Request* i Seerr |

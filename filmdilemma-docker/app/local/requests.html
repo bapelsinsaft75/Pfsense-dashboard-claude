@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Requests | Film Dilemma</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+<title>Requests | Filmförslag</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
 <link rel="stylesheet" href="/local/page.css">
 </head>
 <body>
 <main class="wide">
   <header class="top">
-    <a href="/" class="brand"><img src="/favicon.svg?v=2" alt="" width="32" height="32"><span>Film Dilemma</span></a>
+    <a href="/" class="brand"><img src="/favicon.svg?v=3" alt="" width="32" height="32"><span>Filmförslag</span></a>
     <nav><a href="/movies">Filmer</a><a href="/plex">Plex</a><a href="/profile">Profil</a></nav>
   </header>
   <div class="req-head">
@@ -68,7 +68,7 @@
     data.items.forEach(function (it) {
       var li = el("li", "rq-item");
       var img = el("img", "rq-poster");
-      img.src = it.poster_url || "/favicon.svg?v=2"; img.alt = ""; img.loading = "lazy";
+      img.src = it.poster_url || "/favicon.svg?v=3"; img.alt = ""; img.loading = "lazy";
       li.appendChild(img);
 
       var body = el("div", "rq-body");

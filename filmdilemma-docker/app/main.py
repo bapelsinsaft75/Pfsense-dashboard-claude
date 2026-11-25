@@ -88,6 +88,19 @@ def merged_params(request, body=None):
 
 # ------------------------------------------------------------------ frontend
 
+BRAND_REPLACEMENTS = [
+    ('children:"D"}),"ilemma"]', 'children:"F"}),"örslag"]'),     # loggan i sidhuvudet
+    ('children:"Dilemma"}', 'children:"Förslag"}'),               # loggan i stor storlek
+    ("Dilemma Solver: one film for tonight", "Filmförslag: one film for tonight"),
+    ("Dilemma solver", "Filmförslag"),
+    ("Dilemma Solver", "Filmförslag"),
+    ("Film Dilemma", "Filmförslag"),
+    ('"Dilemma"', '"Filmförslag"'),
+    ("/favicon.svg?v=2", "/favicon.svg?v=3"),
+    ("/favicon.ico?v=2", "/favicon.ico?v=3"),
+]
+
+
 def prepare_web():
     """Kopierar frontenden och byter ut adresser så att inget går mot filmdilemma.com."""
     if os.path.isdir(WEB):
@@ -104,12 +117,19 @@ def prepare_web():
             n = s.replace("https://api.filmdilemma.com", "").replace("https://filmdilemma.com", pub)
             # Ta bort originalets Amazon-affiliatetaggar
             n = n.replace('tag:"filmdilemma20-20"', 'tag:""').replace('"filmdilemma-22"', '""')
+            # Nytt namn: Filmförslag (loggan visas som "Film Förslag")
+            for old_s, new_s in BRAND_REPLACEMENTS:
+                n = n.replace(old_s, new_s)
             if f == "index.html" and root == WEB:
                 n = n.replace("</head>", '<link rel="stylesheet" href="/local/fd-local.css">'
                                          '<script defer src="/local/fd-local.js"></script></head>')
             if n != s:
                 with open(p, "w", encoding="utf-8", errors="surrogateescape") as fh:
                     fh.write(n)
+    # Ny favicon och appikoner
+    brand = os.path.join(LOCAL, "brand")
+    for f in os.listdir(brand):
+        shutil.copyfile(os.path.join(brand, f), os.path.join(WEB, f))
 
 
 async def spa(request: Request):
@@ -241,6 +261,13 @@ def _movie_row(mid):
 @route("/api/v1/movies/simple/", methods=("GET",))
 async def movies_search(request):
     body = await body_json(request) if request.method == "POST" else {}
+    q = (request.query_params.get("q") or request.query_params.get("query") or
+         (body.get("query") if isinstance(body, dict) else "") or "").strip()
+    if len(q) >= 2:
+        try:
+            await asyncio.wait_for(tmdb_import.search_and_import(q), timeout=8)
+        except Exception as ex:  # noqa: BLE001
+            log.info("TMDB-sökning för %r misslyckades: %s", q, ex)
     return ok(search(merged_params(request, body), uid(request)))
 
 
@@ -367,6 +394,12 @@ async def movies_unified(request):
     q = (request.query_params.get("q") or "").strip()
     if len(q) < 2:
         return ok([])
+    if request.url.path.startswith("/api/v1/movies/search-unified"):
+        # Sökresultatsidan: fråga även TMDB direkt så att nya filmer hittas
+        try:
+            await asyncio.wait_for(tmdb_import.search_and_import(q), timeout=8)
+        except Exception as ex:  # noqa: BLE001
+            log.info("TMDB-sökning för %r misslyckades: %s", q, ex)
     return ok(_unified(q, int(request.query_params.get("limit") or 20)))
 
 
@@ -399,7 +432,11 @@ async def trending(request):
 @route("/api/v1/dilemma/finalists", methods=("GET",))
 async def dilemma_finalists(request):
     scope = dilemma.scope_from_request(request)
-    return ok(dilemma.finalists(dict(request.query_params), uid(request), scope))
+    try:
+        return ok(await dilemma.finalists_any(dict(request.query_params), uid(request), scope))
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Filmförslag (%s) misslyckades: %s", scope, ex)
+        return ok(dilemma.finalists(dict(request.query_params), uid(request), "all"))
 
 
 @route("/api/v1/dilemma/sources", methods=("GET",))
@@ -1157,6 +1194,8 @@ async def lifespan(app):
     tasks = [asyncio.create_task(_safe(import_if_empty()))]
     if config.PLEX_URL and config.PLEX_TOKEN:
         _start_thread(plex.sync_loop, "plex-sync")
+    if tmdb_import.configured():
+        _start_thread(tmdb_import.refresh_loop, "tmdb-nya-filmer")
     yield
     for t in tasks:
         t.cancel()
