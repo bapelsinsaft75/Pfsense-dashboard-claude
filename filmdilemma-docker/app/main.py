@@ -101,6 +101,7 @@ BRAND_REPLACEMENTS = [
     ('children:"Dilemma"}', 'children:"Förslag"}'),               # loggan i stor storlek
     ("Dilemma Solver: one film for tonight", "Vad ska jag se? Ett förslag för ikväll"),
     ("Dilemma solver", "Vad ska jag se?"),
+    ("What are you in the mood for?", "Vad är du sugen på?"),
     ("Dilemma Solver", "Vad ska jag se?"),
     ("Film Dilemma", "Filmförslag"),
     ('"Dilemma"', '"Filmförslag"'),

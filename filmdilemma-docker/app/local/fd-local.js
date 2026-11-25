@@ -181,7 +181,7 @@
     document.querySelectorAll('[role="dialog"]').forEach(function (dlg) {
       if (dlg.querySelector(".fd-choices") || !visible(dlg)) return;
       var q = Array.prototype.filter.call(dlg.querySelectorAll("h1, h2, h3"), function (h) {
-        return /in the mood for/i.test(h.textContent || "");
+        return /in the mood for|vad är du sugen på/i.test(h.textContent || "");
       })[0];
       if (q) q.insertAdjacentElement("beforebegin", buildChoices("fd-dilemma-scope-dlg"));
     });
