@@ -26,6 +26,8 @@ API_KEY = os.environ.get("TMDB_API_KEY", "").strip()
 LANGUAGE = os.environ.get("TMDB_LANGUAGE", "en-US")
 MAX_MOVIES = int(os.environ.get("MAX_MOVIES", "20000"))
 MIN_VOTES = int(os.environ.get("MIN_VOTES", "40"))
+MAX_SHOWS = int(os.environ.get("MAX_SHOWS", "4000"))
+TV_SKIP_GENRES = "10763,10764,10766,10767"   # News, Reality, Soap, Talk
 CONCURRENCY = int(os.environ.get("TMDB_CONCURRENCY", "20"))
 REQ_PER_SEC = float(os.environ.get("TMDB_RATE", "35"))
 
@@ -336,7 +338,12 @@ async def search_and_import(query, limit=10):
         d = await t.get("/search/movie", query=query, language=LANGUAGE, include_adult="false", page=1)
         ids = [m["id"] for m in (d or {}).get("results", [])
                if not m.get("adult") and (m.get("poster_path") or (m.get("vote_count") or 0) > 0)][:limit]
-        return await import_ids(t, ids, conn)
+        n = await import_ids(t, ids, conn)
+        d = await t.get("/search/tv", query=query, language=LANGUAGE, include_adult="false", page=1)
+        tv = [m["id"] for m in (d or {}).get("results", [])
+              if (m.get("poster_path") or (m.get("vote_count") or 0) > 0)
+              and not set(m.get("genre_ids") or []) & {10763, 10764, 10766, 10767}][:max(3, limit // 2)]
+        return n + await import_tv_ids(t, tv, conn)
     finally:
         await t.close()
 
@@ -371,17 +378,89 @@ async def refresh_recent():
         await t.close()
 
 
+async def import_tv_ids(t, tv_ids, conn):
+    """Hämtar serier (TMDB-serie-id) som saknas lokalt. Returnerar antal nya."""
+    have = {r[0] - db.TV_OFFSET for r in conn.execute("SELECT id FROM movies WHERE id > ?", (db.TV_OFFSET,))}
+    todo = [i for i in dict.fromkeys(tv_ids) if i not in have]
+    for start in range(0, len(todo), 50):
+        for d in await asyncio.gather(*(fetch_tv(t, i) for i in todo[start:start + 50])):
+            if d:
+                save_tv(conn, d)
+        conn.commit()
+    return len(todo)
+
+
+async def import_tv_catalog(limit=None):
+    """Importerar de mest omtyckta TV-serierna från TMDB (en gång)."""
+    if not configured():
+        return 0
+    limit = limit or MAX_SHOWS
+    conn = db.connect()
+    t = Tmdb()
+    db.set_meta("tv_import_status", "running")
+    try:
+        ids, page = [], 1
+        while len(ids) < limit and page <= 500:
+            d = await t.get("/discover/tv", language=LANGUAGE, sort_by="vote_count.desc", page=page,
+                            include_adult="false", without_genres=TV_SKIP_GENRES, **{"vote_count.gte": 30})
+            res = (d or {}).get("results", [])
+            if not res:
+                break
+            ids += [m["id"] for m in res]
+            if page >= (d or {}).get("total_pages", 1):
+                break
+            page += 1
+        ids = ids[:limit]
+        log.info("TV-serier: %d att kontrollera", len(ids))
+        n = 0
+        for start in range(0, len(ids), 200):
+            n += await import_tv_ids(t, ids[start:start + 200], conn)
+            db.set_meta("tv_import_progress", f"{min(start + 200, len(ids))}/{len(ids)}")
+            log.info("TV-serier importerade: %d/%d", min(start + 200, len(ids)), len(ids))
+        db.set_meta("tv_import_status", "done")
+        return n
+    finally:
+        await t.close()
+
+
+async def refresh_recent_tv():
+    """Nya och aktuella serier: trendande, sänds nu och populära."""
+    if not configured():
+        return 0
+    conn = db.connect()
+    t = Tmdb()
+    try:
+        ids = []
+        for path, pages in (("/trending/tv/week", 3), ("/tv/on_the_air", 3), ("/tv/popular", 3)):
+            for page in range(1, pages + 1):
+                d = await t.get(path, language=LANGUAGE, page=page)
+                ids += [m["id"] for m in (d or {}).get("results", [])
+                        if not set(m.get("genre_ids") or []) & {10763, 10764, 10766, 10767}]
+        n = await import_tv_ids(t, ids, conn)
+        log.info("Nya serier från TMDB: %d kontrollerade, %d hämtade", len(set(ids)), n)
+        return n
+    finally:
+        await t.close()
+
+
 async def refresh_loop():
-    """Kör refresh_recent en gång per dygn (första gången när huvudimporten är klar)."""
+    """Kör refresh_recent en gång per dygn (första gången när huvudimporten är klar).
+    Importerar också TV-katalogen en gång om den inte finns."""
     while db.get_meta("import_status") == "running":
         await asyncio.sleep(60)
+    if db.get_meta("tv_import_status") != "done":
+        try:
+            await import_tv_catalog()
+        except Exception as e:  # noqa: BLE001
+            log.warning("Import av TV-serier misslyckades: %s", e)
     while True:
         last = int(db.get_meta("recent_refreshed") or 0)
         if time.time() - last > 20 * 3600:
             try:
                 await refresh_recent()
+                await refresh_recent_tv()
             except Exception as e:  # noqa: BLE001
-                log.warning("Hämtning av nya filmer misslyckades: %s", e)
+                log.warning("Hämtning av nya filmer/serier misslyckades: %s", e)
         await asyncio.sleep(3600)
 
 
@@ -494,7 +573,12 @@ def main():
     ap.add_argument("--max", type=int, default=MAX_MOVIES)
     ap.add_argument("--refresh", action="store_true", help="hämta om filmer som redan finns")
     ap.add_argument("--lists-only", action="store_true", help="bygg bara om listorna")
+    ap.add_argument("--tv", action="store_true", help="importera TV-serier (MAX_SHOWS)")
     a = ap.parse_args()
+    if a.tv:
+        db.init()
+        asyncio.run(import_tv_catalog())
+        return
     if a.lists_only:
         db.init()
         build_lists(db.connect())

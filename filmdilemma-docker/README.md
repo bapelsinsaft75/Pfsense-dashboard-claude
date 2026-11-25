@@ -9,6 +9,9 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 |---|---|
 | Gränssnittet | Originalets frontend, oförändrad förutom adresser (`web/`) |
 | Filmer, personer, sök, filter | Eget API (`app/`) med data importerad från TMDB till SQLite. Sökningen frågar även TMDB direkt, och nya filmer (på bio, kommande, trendande, årets populäraste) hämtas varje dygn |
+| TV-shows | Menyval som fungerar som **Movies** men bara visar TV-serier (filter, sortering, sök) |
+| TV-förslag | Menyval som fungerar som **Filmförslag** men bara föreslår TV-serier (Bara Plex / Bara TMDB / Båda) |
+| TV-serier | Importeras från TMDB efter filmerna (`MAX_SHOWS`, standard 4 000), nya serier hämtas varje dygn |
 | Namn och ikon | Sidan heter **Filmförslag** och har en egen favicon/appikon (filmklappa) |
 | Listor | Skapas automatiskt: "Best movies about …" (TMDB-nyckelord), filmserier, bästa per genre och årtionde |
 | Inloggning | **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
@@ -101,6 +104,7 @@ docker build -t filmdilemma-local .
 |---|---|
 | Uppdatera | **Force update** i Docker-fliken. En pågående import fortsätter där den slutade |
 | Importera fler/nyare filmer | `docker exec filmdilemma python -m app.tmdb_import --max 49000` |
+| Importera fler TV-serier | `docker exec -e MAX_SHOWS=10000 filmdilemma python -m app.tmdb_import --tv` |
 | Uppdatera befintliga filmer | `docker exec filmdilemma python -m app.tmdb_import --refresh` |
 | Synka Plex direkt | Knappen **Synka Plex nu** på `/onskningar` (admin), annars var `PLEX_SYNC_MINUTES` |
 | Börja om från noll | Stoppa containern och ta bort `/mnt/user/appdata/filmdilemma` |
@@ -114,6 +118,7 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `PUBLIC_URL` | `http://192.168.2.50` | Adressen du surfar till |
 | `TMDB_TOKEN` | – | TMDB API Read Access Token (krävs) |
 | `MAX_MOVIES` | `20000` | Antal filmer vid första importen |
+| `MAX_SHOWS` | `4000` | Antal TV-serier som importeras (efter filmerna) |
 | `WATCH_REGION` | `SE` | Land för streamingtjänster |
 | `PLEX_URL` / `PLEX_TOKEN` | – | Din Plex-server och admin-token (krävs för inloggning) |
 | `PLEX_SYNC_MINUTES` | `30` | Hur ofta bibliotek och sett-historik synkas |

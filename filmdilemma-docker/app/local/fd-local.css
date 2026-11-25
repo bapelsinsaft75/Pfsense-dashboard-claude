@@ -119,3 +119,8 @@
 .fd-plex-src-tmdb { color: #01b4e4; border-color: currentColor; }
 .fd-plex-compact { flex-wrap: wrap; }
 .fd-plex-compact .fd-plex-btn { flex: 1 1 100%; }
+
+/* TV-menyvalen */
+.fd-nav-active { color: var(--accent, #ffc800) !important; }
+.fd-nav-inactive { color: inherit !important; }
+.fd-nav-inactive::after, .fd-nav-inactive *::after { display: none !important; }

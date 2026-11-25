@@ -109,6 +109,7 @@
   }
   new MutationObserver(function () {
     patchAuthDialog(); scheduleCleanup(); hideServicePicker(); patchUserMenu(); hideExtraLinks(); patchLogo(); addDilemmaScope();
+    addTvNav(); tvTexts();
   })
     .observe(document.documentElement, { childList: true, subtree: true });
 
@@ -153,14 +154,14 @@
       if (q) q.insertAdjacentElement("beforebegin", buildScope("fd-dilemma-scope-dlg"));
     });
     // 2) Sidan /dilemma
-    if (!/^\/(ka\/)?dilemma(\/|$)/.test(location.pathname)) {
+    if (!/^\/(ka\/)?(dilemma|tv-forslag)(\/|$)/.test(location.pathname)) {
       var old = document.getElementById("fd-dilemma-scope");
       if (old) old.remove();
       return;
     }
     if (document.getElementById("fd-dilemma-scope")) return;
     var heads = Array.prototype.slice.call(document.querySelectorAll("main h1, main h2"));
-    var head = heads.filter(function (h) { return visible(h) && /filmförslag|dilemma/i.test(h.textContent || ""); })[0];
+    var head = heads.filter(function (h) { return visible(h) && /filmförslag|tv-förslag|dilemma/i.test(h.textContent || ""); })[0];
     if (head) head.insertAdjacentElement("afterend", buildScope("fd-dilemma-scope"));
   }
 
@@ -307,7 +308,7 @@
 
   /* Dilemma solver: dölj tjänstväljaren ("Any service") */
   function hideServicePicker() {
-    if (!/^\/(ka\/)?dilemma(\/|$)/.test(location.pathname)) return;
+    if (!/^\/(ka\/)?(dilemma|tv-forslag)(\/|$)/.test(location.pathname)) return;
     document.querySelectorAll('main button[aria-haspopup="true"]').forEach(function (b) {
       if (b.closest(".fd-plex-box, #fd-dilemma-scope")) return;
       if (/service/i.test(b.textContent || "") || b.querySelector("img")) {
@@ -318,7 +319,7 @@
   }
 
   async function refreshBox(force) {
-    var onDilemma = /^\/(ka\/)?dilemma(\/|$)/.test(location.pathname);
+    var onDilemma = /^\/(ka\/)?(dilemma|tv-forslag)(\/|$)/.test(location.pathname);
     var mid = onDilemma ? dilemmaPick() : movieIdFromPath();
     if (!mid) {
       var old = document.getElementById("fd-plex-box");
@@ -471,6 +472,85 @@
     });
   }
 
+  /* ---------- TV: menyvalen "TV-förslag" och "TV-shows" ---------- */
+  function spaNavigate(href) {
+    history.pushState({}, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate", { state: {} }));
+  }
+
+  function addTvNav() {
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll("header nav a"));
+    [["/dilemma", "/tv-forslag", "TV-förslag", "fd-nav-tvforslag"],
+     ["/movies", "/tv-shows", "TV-shows", "fd-nav-tvshows"]].forEach(function (d) {
+      if (document.getElementById(d[3])) return;
+      var src = navLinks.filter(function (a) { return a.getAttribute("href") === d[0]; })[0];
+      if (!src) return;
+      var item = src.parentElement && src.parentElement.getAttribute("data-fit-item") !== null ? src.parentElement : src;
+      var clone = item.cloneNode(true);
+      var a = clone.tagName === "A" ? clone : clone.querySelector("a");
+      a.id = d[3];
+      a.setAttribute("href", d[1]);
+      a.removeAttribute("aria-current");
+      var label = a.querySelector("span") || a;
+      label.textContent = d[2];
+      a.addEventListener("click", function (e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        location.href = d[1];
+      }, true);
+      item.insertAdjacentElement("afterend", clone);
+    });
+    // Markera aktivt menyval
+    var p = location.pathname;
+    [["fd-nav-tvforslag", "/tv-forslag"], ["fd-nav-tvshows", "/tv-shows"]].forEach(function (d) {
+      var a = document.getElementById(d[0]);
+      if (a) a.classList.toggle("fd-nav-active", p.indexOf(d[1]) === 0);
+    });
+    if (/^\/tv-(shows|forslag)/.test(p)) {
+      navLinks.forEach(function (a) {
+        var h = a.getAttribute("href");
+        if (h === "/movies" || h === "/dilemma") a.classList.add("fd-nav-inactive");
+      });
+    } else {
+      navLinks.forEach(function (a) { a.classList.remove("fd-nav-inactive"); });
+    }
+  }
+
+  /* Byte mellan film- och TV-sidor: ladda om sidan så att appens minne (sökresultat) töms.
+     Sidorna är desamma, så appen skulle annars visa filmer på TV-shows och tvärtom. */
+  var TV_PATH = /^\/(ka\/)?tv-(shows|forslag)(\/|$)/;
+  var startedAsTv = TV_PATH.test(location.pathname);
+  function guardMediaSwitch() {
+    var nowTv = TV_PATH.test(location.pathname);
+    var appPage = /^\/(ka\/)?(movies|dilemma|tv-shows|tv-forslag)\/?$/.test(location.pathname);
+    if (nowTv !== startedAsTv && (nowTv || appPage)) location.reload();
+  }
+  window.addEventListener("popstate", function () { setTimeout(guardMediaSwitch, 0); });
+
+  /* Texter på TV-sidorna (sidorna är samma som Movies/Filmförslag) */
+  function tvTexts() {
+    var p = location.pathname;
+    var shows = /^\/tv-shows/.test(p), sugg = /^\/tv-forslag/.test(p);
+    if (!shows && !sugg) return;
+    if (shows && /movies/i.test(document.title)) document.title = "TV-shows | Filmförslag";
+    if (sugg && !/^TV-förslag/.test(document.title)) document.title = "TV-förslag | Filmförslag";
+    var walker = document.createTreeWalker(document.querySelector("main") || document.body, NodeFilter.SHOW_TEXT);
+    var n;
+    while ((n = walker.nextNode())) {
+      var t = n.nodeValue;
+      if (!t || !t.trim()) continue;
+      var r = t;
+      if (sugg) r = r.replace(/^Filmförslag$/, "TV-förslag");
+      if (shows) {
+        r = r.replace(/^([\d,.\s]+) movies?$/i, "$1 serier")
+             .replace(/^No movies found$/i, "Inga serier hittades")
+             .replace(/^Movies$/, "TV-shows");
+      }
+      if (r !== t) n.nodeValue = r;
+    }
+  }
+
   /* ---------- Bort med allt som inte har med TMDB eller Plex att göra ---------- */
   var HIDE_HEADINGS = /^(awards and festivals|from the critics'? polls|film dilemma'?s picks|one of a kind|reader reviews|comments|recommended by|famous fans|reviews from critics|critics)$/i;
   var AFFILIATE_TEXT = /amazon associate|may earn from|affiliate disclosure/i;
@@ -537,6 +617,7 @@
   function tick() {
     if (location.pathname !== lastPath) {
       lastPath = location.pathname;
+      if (typeof guardMediaSwitch === "function") guardMediaSwitch();
       if (handleAuthRoutes()) return;
     }
     refreshBox(false);

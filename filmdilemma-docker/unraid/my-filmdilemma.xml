@@ -20,6 +20,7 @@
   <Config Name="PLEX_TOKEN" Target="PLEX_TOKEN" Default="" Mode="" Description="Plex-token för ditt admin-konto" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="WATCH_REGION" Target="WATCH_REGION" Default="SE" Mode="" Description="Land för streamingtjänster" Type="Variable" Display="always" Required="false" Mask="false">SE</Config>
   <Config Name="MAX_MOVIES" Target="MAX_MOVIES" Default="20000" Mode="" Description="Antal filmer vid första importen" Type="Variable" Display="advanced" Required="false" Mask="false">20000</Config>
+  <Config Name="MAX_SHOWS" Target="MAX_SHOWS" Default="4000" Mode="" Description="Antal TV-serier som importeras från TMDB" Type="Variable" Display="advanced" Required="false" Mask="false">4000</Config>
   <Config Name="REQUIRE_LOGIN" Target="REQUIRE_LOGIN" Default="false" Mode="" Description="true = hela sidan kräver Plex-inloggning" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="PLEX_SYNC_MINUTES" Target="PLEX_SYNC_MINUTES" Default="30" Mode="" Description="Hur ofta Plex synkas (minuter)" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
   <Config Name="OMDB_API_KEY" Target="OMDB_API_KEY" Default="" Mode="" Description="Valfri gratis nyckel från omdbapi.com för IMDb-betyg när Plex saknar dem" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>

@@ -28,6 +28,24 @@ FEELINGS = {
 }
 NEVER = ("News", "Talk", "Reality", "Soap")
 
+# Samma känslor för TV-serier (TMDB:s seriegenrer)
+FEELINGS_TV = {
+    "light-funny": ({"Comedy"}, {"Crime", "War & Politics", "Documentary"}, set()),
+    "tense": ({"Action & Adventure", "Crime", "Mystery"}, {"Comedy", "Kids", "Family"}, set()),
+    "dark": ({"Crime", "Drama", "War & Politics"}, {"Comedy", "Kids", "Family", "Animation"},
+             {"neo-noir", "violence", "revenge", "serial killer", "gangster", "dystopia", "corruption"}),
+    "moving": ({"Drama"}, {"Comedy", "Crime", "Action & Adventure"},
+               {"grief", "loss of loved one", "terminal illness", "tragedy", "friendship", "coming of age"}),
+    "mind-bending": ({"Sci-Fi & Fantasy", "Mystery"}, {"Kids", "Comedy"},
+                     {"time travel", "twist ending", "parallel world", "alternate reality", "time loop", "dystopia"}),
+    "scary": ({"Mystery", "Sci-Fi & Fantasy", "Drama"}, {"Comedy", "Kids", "Family"},
+              {"horror", "supernatural", "ghost", "zombie", "vampire", "demon", "monster", "haunted house"}),
+    "comforting": ({"Family", "Animation", "Comedy", "Kids"}, {"Crime", "War & Politics", "Action & Adventure"}, set()),
+}
+TMDB_TV_GENRES = {"Action & Adventure": 10759, "Animation": 16, "Comedy": 35, "Crime": 80, "Documentary": 99,
+                  "Drama": 18, "Family": 10751, "Kids": 10762, "Mystery": 9648, "News": 10763, "Reality": 10764,
+                  "Sci-Fi & Fantasy": 10765, "Soap": 10766, "Talk": 10767, "War & Politics": 10768, "Western": 37}
+
 
 def scope_from_request(request):
     v = (request.cookies.get("fd_dilemma_scope") or "").lower()
@@ -38,16 +56,21 @@ def scope_from_request(request):
     return "plex" if has_plex else "all"
 
 
-def finalists(params, user_id, scope):
-    """Förslag ur den lokala databasen (används för Plex-läget och för egna listor)."""
+def finalists(params, user_id, scope, media="movie"):
+    """Förslag ur den lokala databasen (används för Plex-läget och för egna listor).
+    media = "movie" (Filmförslag) eller "tv" (TV-förslag)."""
     conn = db.connect()
     where, args = [], []
     plex_only = scope == "plex"
+    feelings = FEELINGS_TV if media == "tv" else FEELINGS
     where.append("NOT EXISTS (SELECT 1 FROM json_each(m.genres) j WHERE j.value IN ('News','Talk','Reality','Soap'))")
+    where.append("m.media_type = 'tv'" if media == "tv" else "COALESCE(m.media_type,'movie') = 'movie'")
     if plex_only:
         where.append("m.id IN (SELECT tmdb_id FROM plex_library)")
+    elif media == "tv":
+        where.append("(m.vote_count >= 50 OR m.id IN (SELECT tmdb_id FROM plex_library))")
     else:
-        where.append("""((COALESCE(m.media_type,'movie')='movie' AND m.vote_count >= 150 AND COALESCE(m.runtime, 90) >= 60)
+        where.append("""((m.vote_count >= 150 AND COALESCE(m.runtime, 90) >= 60)
                         OR m.id IN (SELECT tmdb_id FROM plex_library))""")
 
     source = params.get("source")
@@ -67,8 +90,8 @@ def finalists(params, user_id, scope):
 
     feeling = params.get("feeling") or "surprise"
     boost_kw = set()
-    if feeling in FEELINGS and not source and not anchor_ids:
-        want, avoid, boost_kw = FEELINGS[feeling]
+    if feeling in feelings and not source and not anchor_ids:
+        want, avoid, boost_kw = feelings[feeling]
         where.append("EXISTS (SELECT 1 FROM json_each(m.genres) j WHERE j.value IN (%s))" % ",".join("?" * len(want)))
         args += sorted(want)
         where.append("NOT EXISTS (SELECT 1 FROM json_each(m.genres) j WHERE j.value IN (%s))"
@@ -81,7 +104,7 @@ def finalists(params, user_id, scope):
     if str(params.get("not_english", "")).lower() in ("1", "true"):
         where.append("m.original_language != 'en'")
     max_rt = params.get("max_runtime")
-    if max_rt and str(max_rt).isdigit():
+    if max_rt and str(max_rt).isdigit() and media != "tv":
         where.append("COALESCE(m.runtime, 0) <= ?")
         args.append(int(max_rt))
     w = (params.get("with") or "").lower()
@@ -142,10 +165,12 @@ def _ids(names):
     return sorted({TMDB_GENRES[n] for n in names if n in TMDB_GENRES})
 
 
-async def tmdb_candidates(params, user_id, n):
-    """Frågar TMDB direkt (discover/recommendations) och returnerar lokala film-id:n (importerar vid behov)."""
+async def tmdb_candidates(params, user_id, n, media="movie"):
+    """Frågar TMDB direkt (discover/recommendations) och returnerar lokala id:n (importerar vid behov)."""
     if not tmdb_import.configured():
         return [], 0
+    if media == "tv":
+        return await tmdb_tv_candidates(params, user_id, n)
     conn = db.connect()
     skip = {r[0] for r in conn.execute("SELECT tmdb_id FROM plex_library")}
     if user_id:
@@ -202,14 +227,62 @@ async def tmdb_candidates(params, user_id, n):
     return [m["id"] for m in picked], total
 
 
-async def finalists_any(params, user_id, scope):
-    """Väljer källa: plex (lokalt), tmdb (direkt mot TMDB) eller all (blandat)."""
+async def tmdb_tv_candidates(params, user_id, n):
+    """TV-serier direkt från TMDB. Returnerar lokala id:n (TV_OFFSET + serie-id)."""
+    conn = db.connect()
+    off = db.TV_OFFSET
+    skip = {r[0] for r in conn.execute("SELECT tmdb_id FROM plex_library")}
+    if user_id:
+        skip |= {r[0] for r in conn.execute("SELECT movie_id FROM watched WHERE user_id=?", (user_id,))}
+    skip |= {int(x) for x in str(params.get("exclude") or "").split(",") if x.strip().isdigit()}
+    not_en = str(params.get("not_english", "")).lower() in ("1", "true")
+    t = tmdb_import.Tmdb()
+    try:
+        anchor = params.get("anchor")
+        if anchor and str(anchor).isdigit() and int(anchor) > off:
+            d = await t.get(f"/tv/{int(anchor) - off}/recommendations", language=tmdb_import.LANGUAGE,
+                            page=random.randint(1, 2))
+            results, total = (d or {}).get("results", []), (d or {}).get("total_results", 0)
+        else:
+            q = {"language": tmdb_import.LANGUAGE, "include_adult": "false", "vote_count.gte": 40,
+                 "sort_by": random.choice(["popularity.desc", "vote_average.desc", "vote_count.desc"])}
+            feeling = params.get("feeling") or "surprise"
+            avoid_ids = {10763, 10764, 10766, 10767}
+            if feeling in FEELINGS_TV:
+                want, avoid, _ = FEELINGS_TV[feeling]
+                q["with_genres"] = "|".join(str(TMDB_TV_GENRES[g]) for g in sorted(want) if g in TMDB_TV_GENRES)
+                avoid_ids |= {TMDB_TV_GENRES[g] for g in avoid if g in TMDB_TV_GENRES}
+            q["without_genres"] = ",".join(map(str, sorted(avoid_ids)))
+            if params.get("year_min") and params.get("year_max"):
+                q["first_air_date.gte"] = f"{int(params['year_min'])}-01-01"
+                q["first_air_date.lte"] = f"{int(params['year_max'])}-12-31"
+            if str(params.get("with") or "").lower() in ("kids", "family", "children"):
+                q["with_genres"] = "10751|10762|16"
+            first = await t.get("/discover/tv", page=1, **q)
+            total = (first or {}).get("total_results", 0)
+            pages = min(20, (first or {}).get("total_pages", 1))
+            page = random.randint(1, max(1, pages))
+            d = first if page == 1 else await t.get("/discover/tv", page=page, **q)
+            results = (d or {}).get("results", [])
+        results = [m for m in results if off + m["id"] not in skip
+                   and not (not_en and m.get("original_language") == "en")]
+        random.shuffle(results)
+        picked = [m["id"] for m in results[:n]]
+        if picked:
+            await tmdb_import.import_tv_ids(t, picked, conn)
+    finally:
+        await t.close()
+    return [off + i for i in picked], total
+
+
+async def finalists_any(params, user_id, scope, media="movie"):
+    """Väljer källa: plex (lokalt), tmdb (direkt mot TMDB) eller all (blandat). media = movie/tv."""
     n = max(1, min(10, int(params.get("n") or 3)))
     if params.get("source") or scope == "plex":
-        return finalists(params, user_id, "plex" if scope == "plex" else "all")
-    ids, total = await tmdb_candidates(params, user_id, n)
+        return finalists(params, user_id, "plex" if scope == "plex" else "all", media)
+    ids, total = await tmdb_candidates(params, user_id, n, media)
     if scope == "all":
-        local = finalists(params, user_id, "plex")
+        local = finalists(params, user_id, "plex", media)
         mix = local["finalists"] + []
         conn = db.connect()
         st = UserState(user_id)

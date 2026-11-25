@@ -47,6 +47,14 @@ def err(msg, status=400, code=None):
     return JSONResponse({"detail": msg, "code": code}, status_code=status)
 
 
+def tv_mode(request):
+    """True när anropet kommer från TV-shows- eller TV-förslag-sidan (Referer)."""
+    import urllib.parse
+    ref = request.headers.get("referer") or ""
+    path = urllib.parse.urlparse(ref).path
+    return path.startswith(("/tv-shows", "/tv-forslag", "/ka/tv-shows", "/ka/tv-forslag"))
+
+
 def current_user(request):
     return auth.user_from_request(request)
 
@@ -96,6 +104,13 @@ BRAND_REPLACEMENTS = [
     ("Dilemma Solver", "Filmförslag"),
     ("Film Dilemma", "Filmförslag"),
     ('"Dilemma"', '"Filmförslag"'),
+    # Nya sidor: TV-shows (samma som Movies) och TV-förslag (samma som Filmförslag)
+    ('(0,S.jsx)(u.qh,{path:"/movies",element:(0,S.jsx)(T,{children:(0,S.jsx)(Ke,{})})}),',
+     '(0,S.jsx)(u.qh,{path:"/movies",element:(0,S.jsx)(T,{children:(0,S.jsx)(Ke,{})})}),'
+     '(0,S.jsx)(u.qh,{path:"/tv-shows",element:(0,S.jsx)(T,{children:(0,S.jsx)(Ke,{})})}),'),
+    ('(0,S.jsx)(u.qh,{path:"/dilemma",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),',
+     '(0,S.jsx)(u.qh,{path:"/dilemma",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),'
+     '(0,S.jsx)(u.qh,{path:"/tv-forslag",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),'),
     ("/favicon.svg?v=2", "/favicon.svg?v=3"),
     ("/favicon.ico?v=2", "/favicon.ico?v=3"),
 ]
@@ -312,7 +327,10 @@ async def movies_search(request):
             await asyncio.wait_for(tmdb_import.search_and_import(q), timeout=8)
         except Exception as ex:  # noqa: BLE001
             log.info("TMDB-sökning för %r misslyckades: %s", q, ex)
-    return ok(search(merged_params(request, body), uid(request)))
+    p = merged_params(request, body)
+    if tv_mode(request):
+        p["media"] = "tv"
+    return ok(search(p, uid(request)))
 
 
 @route("/api/v1/movies/advanced-search/count", methods=("GET", "POST"))
@@ -321,6 +339,8 @@ async def movies_count(request):
     p = merged_params(request, body)
     p["page_size"] = 1
     p["light"] = "1"
+    if tv_mode(request):
+        p["media"] = "tv"
     r = search(p, uid(request))
     return ok({"total": r["total"], "count": r["total"]})
 
@@ -477,10 +497,12 @@ async def trending(request):
 async def dilemma_finalists(request):
     scope = dilemma.scope_from_request(request)
     try:
-        return ok(await dilemma.finalists_any(dict(request.query_params), uid(request), scope))
+        return ok(await dilemma.finalists_any(dict(request.query_params), uid(request), scope,
+                                              "tv" if tv_mode(request) else "movie"))
     except Exception as ex:  # noqa: BLE001
         log.warning("Filmförslag (%s) misslyckades: %s", scope, ex)
-        return ok(dilemma.finalists(dict(request.query_params), uid(request), "all"))
+        return ok(dilemma.finalists(dict(request.query_params), uid(request), "all",
+                                    "tv" if tv_mode(request) else "movie"))
 
 
 @route("/api/v1/dilemma/sources", methods=("GET",))
@@ -660,7 +682,8 @@ async def actors_list(request):
 @route("/api/v1/genres-themes/master-genres", methods=("GET",))
 async def master_genres(request):
     gs = set()
-    for (g,) in db.connect().execute("SELECT genres FROM movies"):
+    media = "tv" if tv_mode(request) else "movie"
+    for (g,) in db.connect().execute("SELECT genres FROM movies WHERE COALESCE(media_type,'movie')=?", (media,)):
         gs.update(db.jl(g))
     return ok(sorted(gs))
 
