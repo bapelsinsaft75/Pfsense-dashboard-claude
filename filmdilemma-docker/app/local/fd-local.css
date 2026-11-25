@@ -124,3 +124,8 @@
 .fd-nav-active { color: var(--accent, #ffc800) !important; }
 .fd-nav-inactive { color: inherit !important; }
 .fd-nav-inactive::after, .fd-nav-inactive *::after { display: none !important; }
+
+/* Vad ska jag se?: två rader med val */
+.fd-choices { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 8px auto 12px; }
+.fd-choices .fd-scope { margin: 2px auto; }
+.fd-choices .fd-scope-label { min-width: 70px; text-align: right; }

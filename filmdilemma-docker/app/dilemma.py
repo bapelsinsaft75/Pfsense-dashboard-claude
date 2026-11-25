@@ -187,9 +187,10 @@ async def tmdb_candidates(params, user_id, n, media="movie"):
                             page=random.randint(1, 2))
             results, total = (d or {}).get("results", []), (d or {}).get("total_results", 0)
         else:
+            sort = random.choice(["popularity.desc", "vote_average.desc", "vote_count.desc"])
             q = {"language": tmdb_import.LANGUAGE, "include_adult": "false", "include_video": "false",
-                 "vote_count.gte": 80, "sort_by": random.choice(["popularity.desc", "vote_average.desc",
-                                                                 "vote_count.desc"]), "with_runtime.gte": 60}
+                 "vote_count.gte": 500 if sort == "vote_average.desc" else 100, "sort_by": sort,
+                 "with_runtime.gte": 60}
             feeling = params.get("feeling") or "surprise"
             if feeling in FEELINGS:
                 want, avoid, _ = FEELINGS[feeling]
@@ -244,8 +245,9 @@ async def tmdb_tv_candidates(params, user_id, n):
                             page=random.randint(1, 2))
             results, total = (d or {}).get("results", []), (d or {}).get("total_results", 0)
         else:
-            q = {"language": tmdb_import.LANGUAGE, "include_adult": "false", "vote_count.gte": 40,
-                 "sort_by": random.choice(["popularity.desc", "vote_average.desc", "vote_count.desc"])}
+            sort = random.choice(["popularity.desc", "vote_average.desc", "vote_count.desc"])
+            q = {"language": tmdb_import.LANGUAGE, "include_adult": "false",
+                 "vote_count.gte": 300 if sort == "vote_average.desc" else 80, "sort_by": sort}
             feeling = params.get("feeling") or "surprise"
             avoid_ids = {10763, 10764, 10766, 10767}
             if feeling in FEELINGS_TV:
@@ -302,3 +304,32 @@ async def finalists_any(params, user_id, scope, media="movie"):
                                              % ",".join(map(str, ids)))} if ids else {}
     return {"finalists": [dict(movie_card(rows[i], st), providers=[]) for i in ids if i in rows],
             "total": total, "scope": scope}
+
+
+def media_from_request(request, tv_page=False):
+    """Filmer, TV-serier eller båda – väljs i rutan (cookien fd_dilemma_media)."""
+    if tv_page:
+        return "tv"
+    v = (request.cookies.get("fd_dilemma_media") or "").lower()
+    return v if v in ("movie", "tv", "both") else "movie"
+
+
+async def finalists_media(params, user_id, scope, media):
+    """Som finalists_any men med media = movie, tv eller both (blandar filmer och serier)."""
+    anchor = params.get("anchor")
+    if anchor and str(anchor).isdigit():
+        # "Mer som den här": följ ankarets typ
+        media = "tv" if int(anchor) > db.TV_OFFSET else "movie"
+    if media != "both":
+        return await finalists_any(params, user_id, scope, media)
+    n = max(1, min(10, int(params.get("n") or 3)))
+    mov = await finalists_any(params, user_id, scope, "movie")
+    tv = await finalists_any(params, user_id, scope, "tv")
+    a, b = list(mov["finalists"]), list(tv["finalists"])
+    out = []
+    while (a or b) and len(out) < n:
+        if a and (not b or random.random() < 0.5):
+            out.append(a.pop(0))
+        else:
+            out.append(b.pop(0))
+    return {"finalists": out, "total": (mov.get("total") or 0) + (tv.get("total") or 0), "scope": scope}

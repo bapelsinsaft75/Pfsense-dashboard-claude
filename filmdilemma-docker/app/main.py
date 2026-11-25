@@ -99,9 +99,9 @@ def merged_params(request, body=None):
 BRAND_REPLACEMENTS = [
     ('children:"D"}),"ilemma"]', 'children:"F"}),"örslag"]'),     # loggan i sidhuvudet
     ('children:"Dilemma"}', 'children:"Förslag"}'),               # loggan i stor storlek
-    ("Dilemma Solver: one film for tonight", "Filmförslag: one film for tonight"),
-    ("Dilemma solver", "Filmförslag"),
-    ("Dilemma Solver", "Filmförslag"),
+    ("Dilemma Solver: one film for tonight", "Vad ska jag se? Ett förslag för ikväll"),
+    ("Dilemma solver", "Vad ska jag se?"),
+    ("Dilemma Solver", "Vad ska jag se?"),
     ("Film Dilemma", "Filmförslag"),
     ('"Dilemma"', '"Filmförslag"'),
     # Nya sidor: TV-shows (samma som Movies) och TV-förslag (samma som Filmförslag)
@@ -497,8 +497,8 @@ async def trending(request):
 async def dilemma_finalists(request):
     scope = dilemma.scope_from_request(request)
     try:
-        return ok(await dilemma.finalists_any(dict(request.query_params), uid(request), scope,
-                                              "tv" if tv_mode(request) else "movie"))
+        return ok(await dilemma.finalists_media(dict(request.query_params), uid(request), scope,
+                                                dilemma.media_from_request(request, tv_mode(request))))
     except Exception as ex:  # noqa: BLE001
         log.warning("Filmförslag (%s) misslyckades: %s", scope, ex)
         return ok(dilemma.finalists(dict(request.query_params), uid(request), "all",

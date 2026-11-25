@@ -133,7 +133,7 @@
       if (o[0] === "plex" && cfg && !cfg.plex_library_count) { b.disabled = true; b.title = "Plex-biblioteket är inte synkat än"; }
       b.addEventListener("click", function () {
         setScope(o[0]);
-        document.querySelectorAll(".fd-scope").forEach(function (g) {
+        document.querySelectorAll(".fd-scope:not(.fd-media)").forEach(function (g) {
           g.querySelectorAll(".fd-scope-opt").forEach(function (x, i) { x.setAttribute("aria-checked", String(SCOPES[i][0] === o[0])); });
         });
       });
@@ -143,15 +143,47 @@
     return group;
   }
 
+  var MEDIA = [["movie", "Filmer"], ["tv", "TV-serier"], ["both", "Båda"]];
+  function getMedia() {
+    var m = /(?:^|; )fd_dilemma_media=(movie|tv|both)/.exec(document.cookie);
+    return m ? m[1] : null;
+  }
+  function setMedia(v) {
+    document.cookie = "fd_dilemma_media=" + v + "; path=/; max-age=31536000; SameSite=Lax";
+  }
+  function buildMedia() {
+    var current = getMedia() || "movie";
+    var group = el("div", { class: "fd-scope fd-media", role: "radiogroup", "aria-label": "Vad vill du se?" });
+    group.appendChild(el("span", { class: "fd-scope-label", text: "Visa" }));
+    MEDIA.forEach(function (o) {
+      var b = el("button", { type: "button", role: "radio", class: "fd-scope-opt", "aria-checked": String(o[0] === current), text: o[1] });
+      b.addEventListener("click", function () {
+        setMedia(o[0]);
+        document.querySelectorAll(".fd-media").forEach(function (g) {
+          g.querySelectorAll(".fd-scope-opt").forEach(function (x, i) { x.setAttribute("aria-checked", String(MEDIA[i][0] === o[0])); });
+        });
+      });
+      group.appendChild(b);
+    });
+    if (!getMedia()) setMedia(current);
+    return group;
+  }
+  function buildChoices(id) {
+    var wrap = el("div", { id: id, class: "fd-choices" });
+    wrap.appendChild(buildMedia());
+    wrap.appendChild(buildScope(id + "-scope"));
+    return wrap;
+  }
+
   function addDilemmaScope() {
     if (!cfg) return;
     // 1) Rutan som poppar upp från menyn ("What are you in the mood for?")
     document.querySelectorAll('[role="dialog"]').forEach(function (dlg) {
-      if (dlg.querySelector(".fd-scope") || !visible(dlg)) return;
+      if (dlg.querySelector(".fd-choices") || !visible(dlg)) return;
       var q = Array.prototype.filter.call(dlg.querySelectorAll("h1, h2, h3"), function (h) {
         return /in the mood for/i.test(h.textContent || "");
       })[0];
-      if (q) q.insertAdjacentElement("beforebegin", buildScope("fd-dilemma-scope-dlg"));
+      if (q) q.insertAdjacentElement("beforebegin", buildChoices("fd-dilemma-scope-dlg"));
     });
     // 2) Sidan /dilemma
     if (!/^\/(ka\/)?(dilemma|tv-forslag)(\/|$)/.test(location.pathname)) {
@@ -161,8 +193,8 @@
     }
     if (document.getElementById("fd-dilemma-scope")) return;
     var heads = Array.prototype.slice.call(document.querySelectorAll("main h1, main h2"));
-    var head = heads.filter(function (h) { return visible(h) && /filmförslag|tv-förslag|dilemma/i.test(h.textContent || ""); })[0];
-    if (head) head.insertAdjacentElement("afterend", buildScope("fd-dilemma-scope"));
+    var head = heads.filter(function (h) { return visible(h) && /vad ska jag se|filmförslag|tv-förslag|dilemma/i.test(h.textContent || ""); })[0];
+    if (head) head.insertAdjacentElement("afterend", buildChoices("fd-dilemma-scope"));
   }
 
   /* Ny filmikon i loggan (ersätter originalets "D") */
@@ -480,8 +512,7 @@
 
   function addTvNav() {
     var navLinks = Array.prototype.slice.call(document.querySelectorAll("header nav a"));
-    [["/dilemma", "/tv-forslag", "TV-förslag", "fd-nav-tvforslag"],
-     ["/movies", "/tv-shows", "TV-shows", "fd-nav-tvshows"]].forEach(function (d) {
+    [["/movies", "/tv-shows", "TV-shows", "fd-nav-tvshows"]].forEach(function (d) {
       if (document.getElementById(d[3])) return;
       var src = navLinks.filter(function (a) { return a.getAttribute("href") === d[0]; })[0];
       if (!src) return;
