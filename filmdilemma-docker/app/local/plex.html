@@ -14,7 +14,13 @@
     <nav><a href="/movies">Filmer</a><a href="/lists">Listor</a><a href="/requests">Requests</a></nav>
   </header>
   <nav class="libtabs" id="tabs" aria-label="Plex-bibliotek"></nav>
-  <h1 id="title">Plex</h1>
+  <div class="req-head">
+    <h1 id="title">Plex</h1>
+    <div class="syncbox" id="syncbox" hidden>
+      <span class="small" id="syncinfo" role="status" aria-live="polite"></span>
+      <button class="btn small-btn" id="syncnow" type="button">Synka nu</button>
+    </div>
+  </div>
   <p class="lead" id="lead"></p>
   <div class="toolbar" id="toolbar" hidden>
     <input id="q" class="input" type="search" placeholder="Sök i biblioteket" aria-label="Sök i biblioteket">
@@ -244,6 +250,46 @@
     }
   }
 
+  /* ---------- Synka nu (vyn Alla bibliotek) ---------- */
+  function fmtTime(ts) {
+    if (!ts) return "aldrig";
+    return new Date(ts * 1000).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
+  }
+  var syncTimer = null;
+  async function showSync(afterDone) {
+    var st = await api("/api/local/plex/sync-status");
+    var info = document.getElementById("syncinfo");
+    var btn = document.getElementById("syncnow");
+    document.getElementById("syncbox").hidden = false;
+    if (st.running) {
+      info.textContent = "Synkar biblioteken …";
+      btn.disabled = true;
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(function () { showSync(true); }, 3000);
+      return;
+    }
+    btn.disabled = false;
+    info.textContent = (st.error ? "Senaste synken misslyckades. " : "") + "Senast synkad " + fmtTime(st.last_sync) +
+      " · synkas var " + st.interval_hours + ":e timme";
+    btn.title = st.can_sync_library ? "Hämta biblioteken från Plex nu" : "Uppdatera din sett-historik från Plex";
+    if (afterDone) {
+      // Synken är klar: läs in biblioteken på nytt
+      var sections = await api("/api/local/plex/sections");
+      renderTabs(sections);
+      document.getElementById("libs").innerHTML = "";
+      renderLibs(sections);
+    }
+  }
+  document.getElementById("syncnow").addEventListener("click", async function () {
+    var btn = this;
+    btn.disabled = true;
+    document.getElementById("syncinfo").textContent = "Startar synk …";
+    var r = await fetch("/api/local/plex/sync", { method: "POST",
+      headers: { "Authorization": "Bearer " + (localStorage.getItem("access_token") || "") } });
+    if (!r.ok) { btn.disabled = false; document.getElementById("syncinfo").textContent = "Kunde inte starta synken."; return; }
+    setTimeout(function () { showSync(true); }, 1000);
+  });
+
   async function main() {
     if (!localStorage.getItem("access_token")) {
       location.replace("/plex-login?next=" + encodeURIComponent(location.pathname));
@@ -251,7 +297,7 @@
     }
     var sections = await api("/api/local/plex/sections");
     renderTabs(sections);
-    if (!key) { renderLibs(sections); return; }
+    if (!key) { renderLibs(sections); showSync(false).catch(function () {}); return; }
     document.getElementById("msg").textContent = "Laddar …";
     data = await api("/api/local/plex/sections/" + encodeURIComponent(key) + "/items");
     document.title = data.title + " | Plex | Filmförslag";

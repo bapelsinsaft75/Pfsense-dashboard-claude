@@ -105,7 +105,7 @@ docker build -t filmdilemma-local .
 | Importera fler/nyare filmer | `docker exec filmdilemma python -m app.tmdb_import --max 49000` |
 | Importera fler TV-serier | `docker exec -e MAX_SHOWS=10000 filmdilemma python -m app.tmdb_import --tv` |
 | Uppdatera befintliga filmer | `docker exec filmdilemma python -m app.tmdb_import --refresh` |
-| Synka Plex direkt | Knappen **Synka Plex nu** på `/onskningar` (admin), annars var `PLEX_SYNC_MINUTES` |
+| Synka Plex direkt | Knappen **Synka nu** på *Plex → Alla bibliotek* (admin synkar biblioteken, övriga sin sett-historik). Annars automatiskt var 12:e timme |
 | Börja om från noll | Stoppa containern och ta bort `/mnt/user/appdata/filmdilemma` |
 
 All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/filmdilemma/filmdilemma.db`.
@@ -120,7 +120,8 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `MAX_SHOWS` | `4000` | Antal TV-serier som importeras (efter filmerna) |
 | `WATCH_REGION` | `SE` | Land för streamingtjänster |
 | `PLEX_URL` / `PLEX_TOKEN` | – | Din Plex-server och admin-token (krävs för inloggning) |
-| `PLEX_SYNC_MINUTES` | `30` | Hur ofta bibliotek och sett-historik synkas |
+| `PLEX_LIBRARY_SYNC_HOURS` | `12` | Hur ofta Plex-biblioteken synkas (knappen **Synka nu** på *Plex → Alla bibliotek* synkar direkt) |
+| `PLEX_SYNC_MINUTES` | `30` | Hur ofta sett-historik och Seerr-status synkas |
 | `REQUIRE_LOGIN` | `false` | `true` = hela sidan kräver Plex-inloggning |
 | `OMDB_API_KEY` | – | Valfri. IMDb-betyg tas från Plex; den här gratisnyckeln (omdbapi.com) används när Plex saknar dem |
 | `REQUEST_MODE` | `watchlist` | `watchlist` = lägg på användarens Plex-watchlist, `seerr` = skicka direkt till Seerr |

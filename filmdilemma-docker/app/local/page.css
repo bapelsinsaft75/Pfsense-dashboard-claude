@@ -148,3 +148,5 @@ a.rq-title:hover{color:var(--accent)}
 .rq-summary{font-size:14px;color:var(--text)}
 .rq-link{font-size:14px}
 @media (max-width:560px){.rq-item{gap:12px;padding:12px}.rq-poster{width:56px;height:84px}.rq-step{padding-right:14px}.rq-step:not(:last-child)::after{display:none}}
+.syncbox{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){.syncbox{justify-content:flex-start}}

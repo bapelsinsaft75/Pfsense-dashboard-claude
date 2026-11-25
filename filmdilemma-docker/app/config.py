@@ -15,7 +15,8 @@ REQUIRE_LOGIN = env("REQUIRE_LOGIN", "false").lower() in ("1", "true", "yes")
 
 PLEX_URL = env("PLEX_URL").rstrip("/")
 PLEX_TOKEN = env("PLEX_TOKEN")
-PLEX_SYNC_MINUTES = int(env("PLEX_SYNC_MINUTES", "30") or 30)
+PLEX_SYNC_MINUTES = int(env("PLEX_SYNC_MINUTES", "30") or 30)              # sett-historik och Seerr-status
+PLEX_LIBRARY_SYNC_HOURS = float(env("PLEX_LIBRARY_SYNC_HOURS", "12") or 12)  # biblioteken (filmer/serier i Plex)
 
 # Seerr (seerr.dev) – efterföljaren till Overseerr/Jellyseerr, samma API. OVERSEERR_* fungerar som alias.
 SEERR_URL = (env("SEERR_URL") or env("OVERSEERR_URL")).rstrip("/")

@@ -1197,13 +1197,29 @@ async def plex_page(request):
     return FileResponse(os.path.join(LOCAL, "plex.html"), headers={"Cache-Control": "no-cache"})
 
 
+@route("/api/local/plex/sync-status", methods=("GET",))
+async def local_plex_sync_status(request):
+    u, e = require_user(request)
+    if e:
+        return e
+    last = int(db.get_meta("plex_last_sync") or 0)
+    return ok({"running": plex.SYNC_STATE["running"], "last_sync": last or None,
+               "error": plex.SYNC_STATE["error"], "interval_hours": config.PLEX_LIBRARY_SYNC_HOURS,
+               "can_sync_library": bool(u["is_admin"])})
+
+
 @route("/api/local/plex/sync", methods=("POST",))
 async def local_plex_sync(request):
     u, e = require_user(request)
     if e:
         return e
     if u["is_admin"]:
-        _start_thread(plex.sync_all, "plex-sync-now")
+        if not plex.SYNC_STATE["running"]:
+            plex.SYNC_STATE.update(running=True, started=int(time.time()), error=None)
+
+            async def run():
+                await plex.sync_all(claimed=True)
+            _start_thread(run, "plex-sync-now")
     else:
         asyncio.create_task(_safe(plex.sync_watched(u["id"])))
     return ok({"started": True})

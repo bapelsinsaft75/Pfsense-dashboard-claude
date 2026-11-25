@@ -317,15 +317,12 @@ async def thumb(path, width=300, height=450):
         return r.status_code, r.headers.get("content-type", "image/jpeg"), r.content
 
 
-async def sync_all():
-    try:
-        await sync_requests()
-    except Exception as e:  # noqa: BLE001
-        log.warning("Seerr-synk misslyckades: %s", e)
-    try:
-        await sync_library()
-    except Exception as e:  # noqa: BLE001
-        log.warning("Plex-synk av bibliotek misslyckades: %s", e)
+# Status för pågående synk (läses av /api/local/plex/sync-status; synken körs i en egen tråd)
+SYNC_STATE = {"running": False, "started": None, "error": None}
+
+
+async def sync_users():
+    """Sett-historik och biblioteksbehörighet för alla inloggade användare."""
     for (uid,) in db.connect().execute("SELECT id FROM users WHERE server_token IS NOT NULL").fetchall():
         try:
             await sync_watched(uid)
@@ -333,10 +330,41 @@ async def sync_all():
             log.warning("Plex-synk av sett-historik för %s misslyckades: %s", uid, e)
 
 
+async def sync_all(claimed=False):
+    """Full synk: Seerr-status, biblioteken och sett-historik (används av "Synka nu").
+    claimed=True när anroparen redan har markerat synken som pågående."""
+    if SYNC_STATE["running"] and not claimed:
+        return
+    SYNC_STATE.update(running=True, started=int(time.time()), error=None)
+    try:
+        try:
+            await sync_requests()
+        except Exception as e:  # noqa: BLE001
+            log.warning("Seerr-synk misslyckades: %s", e)
+        try:
+            await sync_library()
+        except Exception as e:  # noqa: BLE001
+            SYNC_STATE["error"] = str(e)
+            log.warning("Plex-synk av bibliotek misslyckades: %s", e)
+        await sync_users()
+    finally:
+        SYNC_STATE["running"] = False
+
+
 async def sync_loop():
+    """Biblioteken var PLEX_LIBRARY_SYNC_HOURS (standard 12 h), sett-historik och Seerr var PLEX_SYNC_MINUTES."""
     await asyncio.sleep(5)
     while True:
-        await sync_all()
+        last = int(db.get_meta("plex_last_sync") or 0)
+        if time.time() - last >= config.PLEX_LIBRARY_SYNC_HOURS * 3600:
+            log.info("Schemalagd synk av Plex-bibliotek (var %g:e timme)", config.PLEX_LIBRARY_SYNC_HOURS)
+            await sync_all()
+        elif not SYNC_STATE["running"]:
+            try:
+                await sync_requests()
+            except Exception as e:  # noqa: BLE001
+                log.warning("Seerr-synk misslyckades: %s", e)
+            await sync_users()
         await asyncio.sleep(max(5, config.PLEX_SYNC_MINUTES) * 60)
 
 
