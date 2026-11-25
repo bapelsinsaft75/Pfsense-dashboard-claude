@@ -130,15 +130,59 @@ def prepare_web():
     brand = os.path.join(LOCAL, "brand")
     for f in os.listdir(brand):
         shutil.copyfile(os.path.join(brand, f), os.path.join(WEB, f))
+    _version_assets()
+
+
+def _version_assets():
+    """Lägger in en innehållsbaserad version i sökvägen till JS/CSS (/v/<hash>/static/...).
+
+    Filnamnen från originalet ändras inte när vi byter text i dem, så utan detta skulle webbläsare
+    fortsätta använda gamla cachade filer i ett år.
+    """
+    import hashlib
+    global ASSET_VERSION
+    h = hashlib.sha1()
+    static = os.path.join(WEB, "static")
+    for root, _, files in sorted(os.walk(static)):
+        for f in sorted(files):
+            with open(os.path.join(root, f), "rb") as fh:
+                h.update(f.encode())
+                h.update(fh.read())
+    ASSET_VERSION = h.hexdigest()[:10]
+    prefix = f"/v/{ASSET_VERSION}/static/"
+    js_dir = os.path.join(static, "js")
+    for f in os.listdir(js_dir):
+        if f.startswith("main.") and f.endswith(".js"):
+            p = os.path.join(js_dir, f)
+            with open(p, encoding="utf-8", errors="surrogateescape") as fh:
+                s = fh.read()
+            s = s.replace('n.p="/"', f'n.p="/v/{ASSET_VERSION}/"', 1)
+            with open(p, "w", encoding="utf-8", errors="surrogateescape") as fh:
+                fh.write(s)
+    idx = os.path.join(WEB, "index.html")
+    with open(idx, encoding="utf-8") as fh:
+        s = fh.read()
+    s = s.replace('"/static/', '"' + prefix)
+    with open(idx, "w", encoding="utf-8") as fh:
+        fh.write(s)
+    log.info("Frontend-version %s", ASSET_VERSION)
+
+
+ASSET_VERSION = None
+_VERSIONED = re.compile(r"^/v/[0-9a-f]{6,40}(/static/.*)$")
 
 
 async def spa(request: Request):
     path = request.url.path
     if path.startswith("/api/"):
         return await api_fallback(request)
+    versioned = _VERSIONED.match(path)
+    if versioned:
+        path = versioned.group(1)
     f = os.path.normpath(os.path.join(WEB, path.lstrip("/")))
     if f.startswith(WEB) and os.path.isfile(f):
-        headers = {"Cache-Control": "public, max-age=31536000, immutable"} if "/static/" in path or "/fonts/" in path \
+        # Versionerade filer (och typsnitt) får cachas länge; allt annat valideras om varje gång
+        headers = {"Cache-Control": "public, max-age=31536000, immutable"} if versioned or "/fonts/" in path \
             else {"Cache-Control": "no-cache"}
         return FileResponse(f, headers=headers)
     if re.search(r"\.(js|css|png|jpg|svg|ico|woff2?|map|json)$", path):
