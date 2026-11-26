@@ -1107,20 +1107,30 @@ async def local_plex_item(request):
         return e
     rk = request.path_params["rk"]
     conn = db.connect()
+    keys = _user_section_keys(u)
     row = conn.execute("SELECT * FROM plex_items WHERE rating_key=? AND section_key IN (%s) LIMIT 1"
-                       % ",".join("?" * max(1, len(_user_section_keys(u)))),
-                       (rk, *(_user_section_keys(u) or [""]))).fetchone()
-    if not row:
-        return err("Du har inte tillgång till den här titeln.", 403)
-    token = (conn.execute("SELECT server_token FROM users WHERE id=?", (u["id"],)).fetchone() or {})["server_token"] \
-        or config.PLEX_TOKEN
+                       % ",".join("?" * max(1, len(keys))), (rk, *(keys or [""]))).fetchone()
+    urow = conn.execute("SELECT server_token FROM users WHERE id=?", (u["id"],)).fetchone()
+    token = (urow["server_token"] if urow else None) or config.PLEX_TOKEN
     try:
+        # Hämtas med användarens egen token – Plex nekar titlar personen inte har tillgång till
         meta, seasons = await plex.item_details(rk, token)
     except plex.PlexError as ex:
         return err(str(ex), 404)
     except Exception as ex:  # noqa: BLE001
         log.warning("Plex-detaljer %s: %s", rk, ex)
         return err("Kunde inte hämta uppgifter från Plex.", 502)
+    if not row:
+        # Nytillagd i Plex (efter senaste bibliotekssynken): koppla till TMDB direkt
+        sec = str(meta.get("librarySectionID") or "")
+        if keys and sec and sec not in keys and not u["is_admin"]:
+            return err("Du har inte tillgång till den här titeln.", 403)
+        try:
+            lid = await plex.local_id_for(meta)
+        except Exception as ex:  # noqa: BLE001
+            log.info("TMDB-koppling för %s misslyckades: %s", rk, ex)
+            lid = None
+        row = {"tmdb_id": lid, "thumb": meta.get("thumb"), "art": meta.get("art")}
 
     movie = conn.execute("SELECT * FROM movies WHERE id=?", (row["tmdb_id"],)).fetchone() if row["tmdb_id"] else None
     raw_tmdb = row["tmdb_id"] - db.TV_OFFSET if row["tmdb_id"] and row["tmdb_id"] > db.TV_OFFSET else row["tmdb_id"]
@@ -1152,9 +1162,9 @@ async def local_plex_item(request):
                  for r in (meta.get("Role") or [])[:12]],
         "ratings": rating_info,
         "poster_url": poster_url(movie["poster_path"], "w500") if movie and movie["poster_path"]
-        else (f"/api/local/plex/thumb/{rk}" if row["thumb"] else None),
+        else (f"/api/local/plex/img?path={row['thumb']}" if row["thumb"] else None),
         "backdrop_url": poster_url(movie["backdrop_path"], "w1280") if movie and movie["backdrop_path"]
-        else (f"/api/local/plex/thumb/{rk}?kind=art" if row["art"] else None),
+        else (f"/api/local/plex/img?path={row['art']}" if row["art"] else None),
         "plex_url": config.plex_web_url(rk),
         "film_url": f"/movies/{movie['id']}" if movie else None,
         "watched": (viewed is not None and total and viewed >= total) or (not is_show and (meta.get("viewCount") or 0) > 0),
@@ -1191,7 +1201,7 @@ async def local_plex_latest(request):
     year = int(request.query_params.get("year") or time.localtime().tm_year)
     key = (u["id"], kind, year)
     hit = _latest_cache.get(key)
-    if hit and time.time() - hit[0] < 120:
+    if hit and time.time() - hit[0] < 120 and request.query_params.get("refresh") != "1":
         return ok(hit[1])
     conn = db.connect()
     token = (conn.execute("SELECT server_token FROM users WHERE id=?", (u["id"],)).fetchone() or {})["server_token"] \
@@ -1226,6 +1236,26 @@ async def local_plex_latest(request):
     data = {"kind": kind, "year": year if kind == "movies" else None, "items": out}
     _latest_cache[key] = (time.time(), data)
     return ok(data)
+
+
+@route("/api/local/plex/sync-recent", methods=("POST",))
+async def local_plex_sync_recent(request):
+    """Knappen "Synka senaste": lägger in det senast tillagda i Plex direkt och uppdaterar sett-status."""
+    u, e = require_user(request)
+    if e:
+        return e
+    try:
+        added = await asyncio.wait_for(plex.sync_recent(), timeout=90)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Synka senaste: %s", ex)
+        return err("Kunde inte synka med Plex.", 502)
+    try:
+        await plex.sync_watched(u["id"])
+    except Exception as ex:  # noqa: BLE001
+        log.info("Sett-historik efter snabbsynk: %s", ex)
+    for k in [k for k in _latest_cache if k[0] == u["id"]]:
+        _latest_cache.pop(k, None)
+    return ok({"added": added})
 
 
 @route("/api/local/plex/img", methods=("GET",))

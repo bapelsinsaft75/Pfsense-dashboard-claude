@@ -308,6 +308,78 @@ async def item_details(rating_key, token):
     return meta, seasons
 
 
+async def local_id_for(meta):
+    """Lokalt id (film = TMDB-id, serie = TV_OFFSET + TMDB-id) för en Plex-titel. Hämtar in den från TMDB vid behov."""
+    from . import tmdb_import
+    ids = _ext_ids(meta)
+    kind = "tv" if meta.get("type") == "show" else "movie"
+    tid = ids.get("tmdb")
+    if not tid and tmdb_import.configured() and (ids.get("imdb") or ids.get("tvdb")):
+        t = tmdb_import.Tmdb()
+        try:
+            src, ext = ("imdb", ids["imdb"]) if ids.get("imdb") else ("tvdb", ids["tvdb"])
+            found, media = await tmdb_import.find_by_external(t, src, ext)
+            if found and media == kind:
+                tid = found
+        finally:
+            await t.close()
+    if not tid:
+        return None
+    lid = db.TV_OFFSET + tid if kind == "tv" else tid
+    conn = db.connect()
+    if not conn.execute("SELECT 1 FROM movies WHERE id=?", (lid,)).fetchone() and tmdb_import.configured():
+        t = tmdb_import.Tmdb()
+        try:
+            if kind == "tv":
+                await tmdb_import.import_tv_ids(t, [tid], conn)
+            else:
+                await tmdb_import.import_ids(t, [tid], conn)
+        finally:
+            await t.close()
+    return lid
+
+
+async def sync_recent(limit=100):
+    """Snabbsynk: lägger in det senast tillagda i Plex (filmer och serier) utan att vänta på bibliotekssynken."""
+    if not (config.PLEX_URL and config.PLEX_TOKEN):
+        return 0
+    await server_identity()
+    added = 0
+    conn = db.connect()
+    async with _lan_client() as c:
+        for sec in await _sections(c, config.PLEX_TOKEN):
+            r = await c.get(f"{config.PLEX_URL}/library/sections/{sec['key']}/all", headers=_headers(config.PLEX_TOKEN),
+                            params={"type": "1" if sec["type"] == "movie" else "2", "sort": "addedAt:desc",
+                                    "includeGuids": "1", "X-Plex-Container-Start": "0",
+                                    "X-Plex-Container-Size": str(limit)}, timeout=60)
+            if r.status_code != 200:
+                continue
+            for it in r.json()["MediaContainer"].get("Metadata", []) or []:
+                rk = str(it["ratingKey"])
+                known = conn.execute("SELECT tmdb_id FROM plex_items WHERE rating_key=?", (rk,)).fetchone()
+                if known and (known["tmdb_id"] or not _ext_ids(it)):
+                    continue   # redan inlagd (eller saknar id helt, t.ex. hemmafilmer)
+                try:
+                    lid = await local_id_for(it)
+                except Exception as e:  # noqa: BLE001
+                    log.info("Snabbsynk: kunde inte koppla %s: %s", it.get("title"), e)
+                    lid = None
+                ids = _ext_ids(it)
+                conn.execute("""INSERT OR REPLACE INTO plex_items(section_key,rating_key,type,title,year,thumb,art,tmdb_id,
+                    imdb_id,tvdb_id,added_at,episodes,seasons,summary) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                             (sec["key"], rk, sec["type"], it.get("title") or "?", it.get("year"), it.get("thumb"),
+                              it.get("art"), lid, ids.get("imdb"), ids.get("tvdb"), it.get("addedAt"),
+                              it.get("leafCount"), it.get("childCount"), (it.get("summary") or "")[:500]))
+                if lid:
+                    conn.execute("INSERT OR IGNORE INTO plex_library(tmdb_id,rating_key,title,year,added_at) VALUES(?,?,?,?,?)",
+                                 (lid, rk, it.get("title"), it.get("year"), it.get("addedAt")))
+                    conn.execute("UPDATE requests SET status='available' WHERE movie_id=?", (lid,))
+                added += 1
+            conn.commit()
+    log.info("Snabbsynk av senaste: %d nya titlar", added)
+    return added
+
+
 async def latest(token, section_keys, kind, limit=30, year=None):
     """Senast tillagda i Plex. kind = "movies" (filmer, ev. bara ett visst år) eller "episodes" (avsnitt).
     Hämtas med användarens egen token så att sett-status och behörighet blir rätt."""

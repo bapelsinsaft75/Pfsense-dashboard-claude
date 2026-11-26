@@ -338,14 +338,37 @@
       if (t[2]) a.setAttribute("aria-current", "page");
       tabs.appendChild(a);
     });
+    var head = el("div", "req-head");
     var h1 = el("h1", null, episodes ? "Senaste serier" : "Senaste filmer");
+    head.appendChild(h1);
+    var syncbox = el("div", "syncbox");
+    var syncinfo = el("span", "small"); syncinfo.setAttribute("role", "status"); syncinfo.setAttribute("aria-live", "polite");
+    var syncbtn = el("button", "btn small-btn", "Synka senaste"); syncbtn.type = "button";
+    syncbtn.title = "Hämta det senast tillagda från Plex nu";
+    syncbox.appendChild(syncinfo); syncbox.appendChild(syncbtn);
+    head.appendChild(syncbox);
     var lead = el("p", "lead", "Hämtar från Plex …");
     var grid = el("ul", "pgrid");
     var msg = el("p", "msg"); msg.setAttribute("role", "status");
-    [tabs, h1, lead, grid, msg].forEach(function (n) { root.appendChild(n); });
+    [tabs, head, lead, grid, msg].forEach(function (n) { root.appendChild(n); });
     document.title = (episodes ? "Senaste serier" : "Senaste filmer") + " | Filmförslag";
 
-    var d = await api("/api/local/plex/latest?kind=" + (episodes ? "episodes" : "movies"));
+    syncbtn.addEventListener("click", async function () {
+      syncbtn.disabled = true;
+      syncinfo.textContent = "Synkar med Plex …";
+      try {
+        var res = await api("/api/local/plex/sync-recent", { method: "POST" });
+        syncinfo.textContent = res.added ? res.added + " nya titlar inlagda" : "Allt är redan synkat";
+        await load(true);
+      } catch (e) {
+        syncinfo.textContent = "Synken misslyckades.";
+      }
+      syncbtn.disabled = false;
+    });
+
+    async function load(fresh) {
+    var d = await api("/api/local/plex/latest?kind=" + (episodes ? "episodes" : "movies") + (fresh ? "&refresh=1" : ""));
+    grid.innerHTML = ""; msg.textContent = "";
     lead.textContent = episodes
       ? "De " + d.items.length + " senast tillagda avsnitten i din Plex."
       : "De " + d.items.length + " senast tillagda filmerna från " + d.year + " i din Plex.";
@@ -360,6 +383,8 @@
       }, { lines: lines }));
     });
     grid.appendChild(frag);
+    }
+    await load(false);
   }
 
   /* ---------- Requests ---------- */
