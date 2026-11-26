@@ -109,7 +109,7 @@
   }
   new MutationObserver(function () {
     patchAuthDialog(); scheduleCleanup(); hideServicePicker(); patchUserMenu(); hideExtraLinks(); patchLogo(); addDilemmaScope();
-    addTvNav(); tvTexts();
+    addTvNav(); tvTexts(); addNavLink();
   })
     .observe(document.documentElement, { childList: true, subtree: true });
 
@@ -401,15 +401,29 @@
     menu.appendChild(el("a", { href: "/requests", role: "menuitem", text: "Requests" }));
   }
 
+  function inAppGo(href) {
+    if (window.fdLocalGo) window.fdLocalGo(href); else location.href = href;
+  }
+
   function makeNavItem(lists, id, href, text) {
     var a = lists.cloneNode(false);
     a.id = id;
     a.setAttribute("href", href);
     a.textContent = text;
     a.removeAttribute("aria-current");
-    a.addEventListener("click", function (e) { e.preventDefault(); location.href = href; }, true);
+    a.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); inAppGo(href); }, true);
     return a;
   }
+
+  // Länkar i våra rullgardiner (Plex, Senaste): navigera i appen
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".fd-plex-menu a[href^='/']");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    var holder = a.closest(".fd-plex-nav");
+    if (holder) holder.classList.remove("open");
+    inAppGo(a.getAttribute("href"));
+  }, true);
 
   function addNavLink() {
     if (!token() || document.getElementById("fd-nav-wishes")) return;
@@ -443,6 +457,25 @@
     var parent = container.parentElement;
     parent.insertBefore(wrap(holder), container.nextSibling);
     holder.id = "fd-nav-wishes";   // markerar att menyn redan är tillagd
+
+    // Senaste med rullgardin: senaste filmer och senaste serier från Plex
+    var latestLink = makeNavItem(lists, "fd-nav-latest", "/senaste/filmer", "Senaste");
+    latestLink.setAttribute("aria-haspopup", "true");
+    latestLink.setAttribute("aria-expanded", "false");
+    latestLink.appendChild(el("span", { class: "fd-plex-caret", "aria-hidden": "true", text: "▾" }));
+    var latestMenu = el("div", { class: "fd-plex-menu", role: "menu" }, [
+      el("a", { href: "/senaste/filmer", role: "menuitem", text: "Senaste filmer" }),
+      el("a", { href: "/senaste/serier", role: "menuitem", text: "Senaste serier" })
+    ]);
+    var lholder = el("span", { class: "fd-plex-nav" }, [latestLink, latestMenu]);
+    var lopen = function () { lholder.classList.add("open"); latestLink.setAttribute("aria-expanded", "true"); };
+    var lclose = function () { lholder.classList.remove("open"); latestLink.setAttribute("aria-expanded", "false"); };
+    lholder.addEventListener("mouseenter", lopen);
+    lholder.addEventListener("mouseleave", lclose);
+    latestLink.addEventListener("focus", lopen);
+    lholder.addEventListener("focusout", function (e) { if (!lholder.contains(e.relatedTarget)) lclose(); });
+    lholder.addEventListener("keydown", function (e) { if (e.key === "Escape") { lclose(); latestLink.focus(); } });
+    parent.insertBefore(wrap(lholder), holder.parentElement === parent ? holder.nextSibling : holder.parentElement.nextSibling);
 
     // "Famous Fans" bygger på Film Dilemmas egen data och är tom här – dölj den för att få plats
     links.forEach(function (a) {
@@ -483,7 +516,11 @@
       // byt bara texten, behåll ikonen
       Array.prototype.forEach.call(item.childNodes, function (n) { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = "Requests"; });
       if ((item.textContent || "").indexOf("Requests") === -1) item.appendChild(document.createTextNode("Requests"));
-      item.addEventListener("click", function (e) { e.preventDefault(); location.href = "/requests"; }, true);
+      item.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        document.body.click();   // stäng användarmenyn
+        inAppGo("/requests");
+      }, true);
       profile.insertAdjacentElement("afterend", item);
     }
     (menu || document).querySelectorAll("button, a").forEach(function (b) {
@@ -537,6 +574,10 @@
     [["fd-nav-tvforslag", "/tv-forslag"], ["fd-nav-tvshows", "/tv-shows"]].forEach(function (d) {
       var a = document.getElementById(d[0]);
       if (a) a.classList.toggle("fd-nav-active", p.indexOf(d[1]) === 0);
+    });
+    [["fd-nav-plex", /^\/plex(\/|$)/], ["fd-nav-latest", /^\/senaste(\/|$)/]].forEach(function (d) {
+      var a = document.getElementById(d[0]);
+      if (a) a.classList.toggle("fd-nav-active", d[1].test(p));
     });
     if (/^\/tv-(shows|forslag)/.test(p)) {
       navLinks.forEach(function (a) {

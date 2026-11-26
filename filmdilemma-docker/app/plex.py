@@ -292,8 +292,10 @@ async def item_details(rating_key, token):
     """Detaljer om en film/serie från Plex-servern, med användarens egen token (sett-status per person)."""
     async with _lan_client() as c:
         r = await c.get(f"{config.PLEX_URL}/library/metadata/{rating_key}", headers=_headers(token))
-        if r.status_code in (401, 403, 404):
+        if r.status_code in (401, 403):
             raise PlexError("Du har inte tillgång till den här titeln.")
+        if r.status_code == 404:
+            raise PlexError("Titeln finns inte längre i Plex. Tryck på Synka nu under Plex → Alla bibliotek.")
         r.raise_for_status()
         meta = (r.json()["MediaContainer"].get("Metadata") or [None])[0]
         if not meta:
@@ -304,6 +306,35 @@ async def item_details(rating_key, token):
             if r.status_code == 200:
                 seasons = r.json()["MediaContainer"].get("Metadata", []) or []
     return meta, seasons
+
+
+async def latest(token, section_keys, kind, limit=30, year=None):
+    """Senast tillagda i Plex. kind = "movies" (filmer, ev. bara ett visst år) eller "episodes" (avsnitt).
+    Hämtas med användarens egen token så att sett-status och behörighet blir rätt."""
+    out = []
+    async with _lan_client() as c:
+        for sec in await _sections(c, token):
+            if sec["key"] not in section_keys:
+                continue
+            if kind == "movies" and sec["type"] != "movie":
+                continue
+            if kind == "episodes" and sec["type"] != "show":
+                continue
+            params = {"type": "1" if kind == "movies" else "4", "sort": "addedAt:desc", "includeGuids": "1",
+                      "X-Plex-Container-Start": "0", "X-Plex-Container-Size": str(limit)}
+            if kind == "movies" and year:
+                params["year"] = str(year)
+            r = await c.get(f"{config.PLEX_URL}/library/sections/{sec['key']}/all", params=params,
+                            headers=_headers(token), timeout=60)
+            if r.status_code != 200:
+                continue
+            for it in r.json()["MediaContainer"].get("Metadata", []) or []:
+                if kind == "movies" and year and it.get("year") and int(it["year"]) != int(year):
+                    continue
+                it["_section"] = sec["title"]
+                out.append(it)
+    out.sort(key=lambda i: i.get("addedAt") or 0, reverse=True)
+    return out[:limit]
 
 
 async def thumb(path, width=300, height=450):

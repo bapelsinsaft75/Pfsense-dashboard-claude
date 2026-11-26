@@ -112,6 +112,8 @@ BRAND_REPLACEMENTS = [
     ('(0,S.jsx)(u.qh,{path:"/dilemma",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),',
      '(0,S.jsx)(u.qh,{path:"/dilemma",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),'
      '(0,S.jsx)(u.qh,{path:"/tv-forslag",element:(0,S.jsx)(T,{children:(0,S.jsx)(In,{})})}),'),
+    # Egna vyer (Plex, Requests, Senaste): appen känner inte till adresserna och visar sin
+    # "sidan finns inte"-sida (med sidhuvud och meny); views.js byter ut innehållet mot vyn.
     ("/favicon.svg?v=2", "/favicon.svg?v=3"),
     ("/favicon.ico?v=2", "/favicon.ico?v=3"),
 ]
@@ -138,6 +140,8 @@ def prepare_web():
                 n = n.replace(old_s, new_s)
             if f == "index.html" and root == WEB:
                 n = n.replace("</head>", '<link rel="stylesheet" href="/local/fd-local.css">'
+                                         '<link rel="stylesheet" href="/local/views.css">'
+                                         '<script defer src="/local/views.js"></script>'
                                          '<script defer src="/local/fd-local.js"></script></head>')
             if n != s:
                 with open(p, "w", encoding="utf-8", errors="surrogateescape") as fh:
@@ -220,10 +224,9 @@ async def plex_login_page(request):
     return FileResponse(os.path.join(LOCAL, "plex-login.html"), headers={"Cache-Control": "no-cache"})
 
 
-@route("/requests")
 @route("/onskningar")
-async def requests_page(request):
-    return FileResponse(os.path.join(LOCAL, "requests.html"), headers={"Cache-Control": "no-cache"})
+async def requests_page_old(request):
+    return RedirectResponse("/requests", status_code=301)
 
 
 @route("/__fd/pass")
@@ -1174,6 +1177,72 @@ async def local_plex_item(request):
     return ok(data)
 
 
+_latest_cache = {}
+_IMG_PATH = re.compile(r"^/library/metadata/\d+/(thumb|art)(/\d+)?$")
+
+
+@route("/api/local/plex/latest", methods=("GET",))
+async def local_plex_latest(request):
+    """Senaste filmer (från innevarande år) eller senaste avsnitt från Plex, 30 st."""
+    u, e = require_user(request)
+    if e:
+        return e
+    kind = "episodes" if request.query_params.get("kind") in ("episodes", "serier", "shows") else "movies"
+    year = int(request.query_params.get("year") or time.localtime().tm_year)
+    key = (u["id"], kind, year)
+    hit = _latest_cache.get(key)
+    if hit and time.time() - hit[0] < 120:
+        return ok(hit[1])
+    conn = db.connect()
+    token = (conn.execute("SELECT server_token FROM users WHERE id=?", (u["id"],)).fetchone() or {})["server_token"] \
+        or config.PLEX_TOKEN
+    try:
+        items = await plex.latest(token, set(_user_section_keys(u)), kind, 30, year if kind == "movies" else None)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Senaste från Plex: %s", ex)
+        return err("Kunde inte hämta från Plex.", 502)
+    local = {r["rating_key"]: r["tmdb_id"] for r in conn.execute("SELECT rating_key, tmdb_id FROM plex_items")}
+    out = []
+    for it in items:
+        rk = str(it.get("ratingKey"))
+        if kind == "movies":
+            lid = local.get(rk)
+            out.append({"rating_key": rk, "type": "movie", "title": it.get("title"), "year": it.get("year"),
+                        "added_at": it.get("addedAt"), "section": it.get("_section"),
+                        "poster_url": f"/api/local/plex/img?path={it['thumb']}" if it.get("thumb") else None,
+                        "watched": (it.get("viewCount") or 0) > 0, "url": f"/movies/{lid}" if lid else None,
+                        "plex_url": config.plex_web_url(rk)})
+        else:
+            show_rk = str(it.get("grandparentRatingKey") or "")
+            s_no, e_no = it.get("parentIndex"), it.get("index")
+            code = f"S{int(s_no):02d}E{int(e_no):02d}" if s_no is not None and e_no is not None else ""
+            poster = it.get("grandparentThumb") or it.get("parentThumb") or it.get("thumb")
+            out.append({"rating_key": rk, "show_rating_key": show_rk, "type": "episode",
+                        "title": it.get("grandparentTitle") or it.get("title"), "episode_title": it.get("title"),
+                        "episode_code": code, "year": it.get("year"), "added_at": it.get("addedAt"),
+                        "aired": it.get("originallyAvailableAt"), "section": it.get("_section"),
+                        "poster_url": f"/api/local/plex/img?path={poster}" if poster else None,
+                        "watched": (it.get("viewCount") or 0) > 0, "plex_url": config.plex_web_url(rk)})
+    data = {"kind": kind, "year": year if kind == "movies" else None, "items": out}
+    _latest_cache[key] = (time.time(), data)
+    return ok(data)
+
+
+@route("/api/local/plex/img", methods=("GET",))
+async def local_plex_img(request):
+    """Bild från Plex-servern (affischer för avsnitt m.m.). Bara bildvägar under /library/metadata tillåts."""
+    path = request.query_params.get("path") or ""
+    if not _IMG_PATH.match(path) or not (config.PLEX_URL and config.PLEX_TOKEN):
+        return Response(status_code=404)
+    try:
+        status, ctype, content = await plex.thumb(path)
+    except Exception:  # noqa: BLE001
+        return Response(status_code=502)
+    if status != 200:
+        return Response(status_code=404)
+    return Response(content, media_type=ctype, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @route("/api/local/plex/thumb/{rk}", methods=("GET",))
 async def local_plex_thumb(request):
     rk = request.path_params["rk"]
@@ -1189,12 +1258,6 @@ async def local_plex_thumb(request):
     if status != 200:
         return Response(status_code=404)
     return Response(content, media_type=ctype, headers={"Cache-Control": "public, max-age=86400"})
-
-
-@route("/plex")
-@route("/plex/{key}")
-async def plex_page(request):
-    return FileResponse(os.path.join(LOCAL, "plex.html"), headers={"Cache-Control": "no-cache"})
 
 
 @route("/api/local/plex/sync-status", methods=("GET",))
