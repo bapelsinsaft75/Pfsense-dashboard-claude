@@ -96,7 +96,7 @@
     if (!anchor || !anchor.parentElement) return;
     var block = el("div", { id: "fd-plex-auth", class: "fd-plex-auth" }, [
       el("p", { class: "fd-plex-note", text: "Logga in med ditt Plex-konto. Du kommer in om du har tillgång till Plex-servern." }),
-      el("a", { class: "fd-plex-btn fd-plex-primary fd-plex-wide", href: loginUrl(), text: "Logga in med Plex" })
+      el("a", { class: "fd-plex-btn fd-plex-primary fd-plex-wide", href: loginUrl(), text: "Logga in via Plex" })
     ]);
     anchor.parentElement.insertBefore(block, anchor);
   }
@@ -247,7 +247,7 @@
       if (st.watched) children.push(el("span", { class: "fd-plex-badge fd-plex-seen", text: "✓ Sedd" }));
     } else if (!st.logged_in) {
       children.push(el("span", { class: "fd-plex-badge fd-plex-src-tmdb", text: "Endast TMDB" }));
-      children.push(el("a", { class: "fd-plex-btn", href: loginUrl(), text: "Logga in med Plex för att önska" }));
+      children.push(el("a", { class: "fd-plex-btn", href: loginUrl(), text: "Logga in via Plex för att önska" }));
     } else if (st.request_status && st.request_status !== "failed") {
       var label = {
         pending: st.request_backend === "seerr" ? "Önskad – väntar på godkännande" : "Önskad – väntar på att läggas till",

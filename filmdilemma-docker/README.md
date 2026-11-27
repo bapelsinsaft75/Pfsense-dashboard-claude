@@ -13,7 +13,7 @@ Inget anrop går till filmdilemma.com. Filmdata kommer från **TMDB** och inlogg
 | TV-serier | Importeras från TMDB efter filmerna (`MAX_SHOWS`, standard 4 000), nya serier hämtas varje dygn |
 | Namn och ikon | Sidan heter **Filmförslag** och har en egen favicon/appikon (filmklappa) |
 | Listor | Skapas automatiskt: "Best movies about …" (TMDB-nyckelord), filmserier, bästa per genre och årtionde |
-| Inloggning | **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
+| Inloggning | Det första man möter är **Logga in via Plex** – hela sidan kräver inloggning. **Endast Plex.** Bara du och de du delat Plex-servern med kommer in. Du blir admin. |
 | Finns i Plex | Filmsidan visar **▶ Spela på Plex** om filmen finns i ditt bibliotek |
 | Sett-historik | Filmer som setts i Plex markeras som sedda (per användare) och kan filtreras bort |
 | Vad ska jag se? (f.d. Dilemma solver) | Föreslår utifrån känsla, era och språk. Välj **Visa: Filmer / TV-serier / Båda** och **Sök bland: Bara Plex / Bara TMDB** (frågar TMDB direkt) **/ Båda**. Finns förslaget i Plex visas **Watch on Plex**, annars **Request movie/show** |
@@ -123,7 +123,6 @@ All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/fi
 | `PLEX_URL` / `PLEX_TOKEN` | – | Din Plex-server och admin-token (krävs för inloggning) |
 | `PLEX_LIBRARY_SYNC_HOURS` | `12` | Hur ofta Plex-biblioteken synkas (knappen **Synka nu** på *Plex → Alla bibliotek* synkar direkt) |
 | `PLEX_SYNC_MINUTES` | `30` | Hur ofta sett-historik och Seerr-status synkas |
-| `REQUIRE_LOGIN` | `false` | `true` = hela sidan kräver Plex-inloggning |
 | `OMDB_API_KEY` | – | Valfri. IMDb-betyg tas från Plex; den här gratisnyckeln (omdbapi.com) används när Plex saknar dem |
 | `REQUEST_MODE` | `watchlist` | `watchlist` = lägg på användarens Plex-watchlist, `seerr` = skicka direkt till Seerr |
 | `SEERR_URL` / `SEERR_API_KEY` | – | Skicka önskningar till Seerr (även Overseerr/Jellyseerr). Gamla namnen `OVERSEERR_URL`/`OVERSEERR_API_KEY` fungerar också |

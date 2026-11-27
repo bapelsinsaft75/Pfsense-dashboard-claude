@@ -119,6 +119,14 @@ BRAND_REPLACEMENTS = [
 ]
 
 
+LOGIN_GATE = (
+    "<script>(function(){try{var p=location.pathname;"
+    "if(!localStorage.getItem('access_token')&&!/^\\/(plex-login|embed\\/)/.test(p)){"
+    "document.documentElement.style.visibility='hidden';"
+    "location.replace('/plex-login?next='+encodeURIComponent(p+location.search));}}catch(e){}})();</script>"
+)
+
+
 def prepare_web():
     """Kopierar frontenden och byter ut adresser så att inget går mot filmdilemma.com."""
     if os.path.isdir(WEB):
@@ -139,6 +147,8 @@ def prepare_web():
             for old_s, new_s in BRAND_REPLACEMENTS:
                 n = n.replace(old_s, new_s)
             if f == "index.html" and root == WEB:
+                # Inte inloggad? Gå direkt till "Logga in via Plex" innan något annat visas
+                n = n.replace("<head>", "<head>" + LOGIN_GATE, 1)
                 n = n.replace("</head>", '<link rel="stylesheet" href="/local/fd-local.css">'
                                          '<link rel="stylesheet" href="/local/views.css">'
                                          '<script defer src="/local/views.js"></script>'

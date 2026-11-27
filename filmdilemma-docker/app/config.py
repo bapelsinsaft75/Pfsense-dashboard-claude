@@ -11,7 +11,7 @@ def env(name, default=""):
 
 PUBLIC_URL = env("PUBLIC_URL", "http://192.168.2.50").rstrip("/")
 WATCH_REGION = env("WATCH_REGION", "SE").upper()
-REQUIRE_LOGIN = env("REQUIRE_LOGIN", "false").lower() in ("1", "true", "yes")
+REQUIRE_LOGIN = True   # sidan kräver alltid Plex-inloggning (första man ser är "Logga in via Plex")
 
 PLEX_URL = env("PLEX_URL").rstrip("/")
 PLEX_TOKEN = env("PLEX_TOKEN")
