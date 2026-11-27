@@ -17,6 +17,7 @@ import time
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.middleware import Middleware
 from starlette.routing import Route
 
 from . import auth, config, db, dilemma, plex, ratings, requests_view, tmdb_import
@@ -268,17 +269,58 @@ async def auth_me_update(request):
 @route("/api/v1/auth/refresh", methods=("POST",))
 async def auth_refresh(request):
     b = await body_json(request)
+    conn = db.connect()
+    row = conn.execute("SELECT u.* FROM refresh_tokens r JOIN users u ON u.id=r.user_id WHERE r.token=?",
+                       (b.get("refresh_token", ""),)).fetchone()
+    # Kontrollera med jämna mellanrum att Plex-kontot fortfarande har tillgång till servern
+    if row and not await plex.reverify_user(row):
+        resp = err("Ditt Plex-konto har inte längre tillgång till servern.", 401)
+        auth.clear_session_cookie(resp)
+        return resp
     t = auth.refresh(b.get("refresh_token", ""))
     if not t:
-        return err("Invalid refresh token", 401)
-    return ok(t)
+        resp = err("Invalid refresh token", 401)
+        auth.clear_session_cookie(resp)
+        return resp
+    resp = ok(t)
+    auth.set_session_cookie(resp, request, row["id"])
+    return resp
 
 
 @route("/api/v1/auth/logout", methods=("POST",))
 async def auth_logout(request):
     b = await body_json(request)
     auth.revoke(b.get("refresh_token", ""))
-    return ok()
+    resp = ok()
+    auth.clear_session_cookie(resp)
+    return resp
+
+
+@route("/api/local/session", methods=("GET",))
+async def local_session_get(request):
+    """Inloggningssidan: finns en giltig sessionscookie får webbläsaren nya tokens (ingen ny Plex-inloggning)."""
+    uid = auth.verify_session(request.cookies.get(auth.SESSION_COOKIE))
+    user = auth._active_user(uid)
+    if not user:
+        return err("Inte inloggad.", 401)
+    if not await plex.reverify_user(user):
+        resp = err("Ditt Plex-konto har inte längre tillgång till servern.", 401)
+        auth.clear_session_cookie(resp)
+        return resp
+    resp = ok({"status": "ok", **auth.issue_tokens(user["id"]), "user": auth.user_json(user)})
+    auth.set_session_cookie(resp, request, user["id"])
+    return resp
+
+
+@route("/api/local/session", methods=("POST",))
+async def local_session_post(request):
+    """Inloggad med token men saknar cookie (t.ex. efter uppdatering): sätt sessionscookien."""
+    u = current_user(request)
+    if not u:
+        return err("Inte inloggad.", 401)
+    resp = ok({"status": "ok"})
+    auth.set_session_cookie(resp, request, u["id"])
+    return resp
 
 
 @route("/api/v1/auth/login", methods=("POST",))
@@ -287,19 +329,62 @@ async def auth_login_disabled(request):
     return err("Logga in med Plex på /plex-login", 400)
 
 
+PIN_COOKIE = "fd_pin"
+_used_pins = set()
+_rate = {}
+
+
+def _client_ip(request):
+    return request.client.host if request.client else "?"
+
+
+def rate_limited(request, bucket, limit, per_seconds):
+    """Enkel begränsning per IP-adress: högst `limit` anrop per `per_seconds`."""
+    now = time.time()
+    key = (bucket, _client_ip(request))
+    hits = [t for t in _rate.get(key, []) if now - t < per_seconds]
+    hits.append(now)
+    _rate[key] = hits
+    if len(_rate) > 5000:
+        _rate.clear()
+    return len(hits) > limit
+
+
+def _pin_sig(pin_id):
+    import hashlib
+    import hmac as _hmac
+    return _hmac.new(config.secret_key().encode(), f"pin:{pin_id}".encode(), hashlib.sha256).hexdigest()
+
+
 @route("/api/local/plex/pin", methods=("POST",))
 async def plex_pin(request):
+    if rate_limited(request, "pin", 10, 300):
+        return err("För många inloggningsförsök. Vänta några minuter.", 429)
     try:
-        return ok(await plex.create_pin())
+        pin = await plex.create_pin()
     except Exception as e:  # noqa: BLE001
         log.warning("Plex PIN: %s", e)
         return err("Kunde inte nå plex.tv.", 502)
+    # PIN:en knyts till den här webbläsaren – ingen annan kan hämta inloggningen
+    resp = ok(pin)
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
+    resp.set_cookie(PIN_COOKIE, f"{pin['id']}.{_pin_sig(pin['id'])}", max_age=900, httponly=True,
+                    samesite="lax", secure=secure, path="/")
+    return resp
 
 
 @route("/api/local/plex/pin/{pin_id:int}", methods=("GET",))
 async def plex_pin_check(request):
+    pin_id = request.path_params["pin_id"]
+    if rate_limited(request, "pincheck", 240, 300):
+        return err("För många försök. Vänta några minuter.", 429)
+    cookie = request.cookies.get(PIN_COOKIE, "")
+    import hmac as _hmac
+    if cookie != f"{pin_id}.{_pin_sig(pin_id)}" or not _hmac.compare_digest(cookie, f"{pin_id}.{_pin_sig(pin_id)}") \
+            or pin_id in _used_pins:
+        return err("Inloggningen hör inte till den här webbläsaren. Starta om inloggningen.", 403)
     try:
-        token = await plex.check_pin(request.path_params["pin_id"])
+        token = await plex.check_pin(pin_id)
         if not token:
             return ok({"status": "waiting"})
         user_id = await plex.login_with_token(token)
@@ -308,10 +393,14 @@ async def plex_pin_check(request):
     except Exception as e:  # noqa: BLE001
         log.warning("Plex-inloggning: %s", e)
         return err("Något gick fel vid Plex-inloggningen.", 502)
+    _used_pins.add(pin_id)
     asyncio.create_task(_safe(plex.sync_watched(user_id)))
     tokens = auth.issue_tokens(user_id)
     user = db.connect().execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-    return ok({"status": "ok", **tokens, "user": auth.user_json(user)})
+    resp = ok({"status": "ok", **tokens, "user": auth.user_json(user)})
+    auth.set_session_cookie(resp, request, user_id)
+    resp.delete_cookie(PIN_COOKIE, path="/")
+    return resp
 
 
 async def _safe(coro):
@@ -1388,8 +1477,59 @@ async def lifespan(app):
         t.cancel()
 
 
+# ------------------------------------------------------------------ spärr: inloggning krävs
+
+PUBLIC_EXACT = {"/plex-login", "/api/local/plex/pin", "/api/local/session", "/api/v1/auth/refresh",
+                "/api/v1/auth/logout", "/__fd/pass", "/api/v1/pass-trade", "/favicon.svg", "/favicon.ico",
+                "/manifest.json", "/robots.txt", "/apple-touch-icon.png"}
+PUBLIC_PREFIX = ("/api/local/plex/pin/", "/local/", "/static/", "/v/", "/fonts/", "/icon-")
+
+
+def is_public(path):
+    return path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIX)
+
+
+class SecurityMiddleware:
+    """Kräver giltig Plex-inloggning (token eller sessionscookie) för allt utom inloggningssidan och
+    sidans statiska filer, och lägger till säkerhetsrubriker."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        request = Request(scope, receive)
+        path = scope["path"]
+        https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = message.setdefault("headers", [])
+                extra = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"same-origin"),
+                         (b"x-frame-options", b"SAMEORIGIN"),
+                         (b"permissions-policy", b"camera=(), microphone=(), geolocation=()")]
+                if https:
+                    extra.append((b"strict-transport-security", b"max-age=31536000"))
+                headers.extend(extra)
+            await send(message)
+
+        if not is_public(path) and not auth.user_from_request(request):
+            if path.startswith("/api/"):
+                resp = JSONResponse({"detail": "Authentication required.", "code": "login_required"}, status_code=401)
+            elif request.method == "GET" and not re.search(r"\.(js|css|png|jpg|jpeg|svg|ico|webp|woff2?|json|map|txt|xml)$", path):
+                import urllib.parse
+                nxt = path + (("?" + scope.get("query_string", b"").decode()) if scope.get("query_string") else "")
+                resp = RedirectResponse("/plex-login?next=" + urllib.parse.quote(nxt, safe=""), status_code=302)
+                resp.headers["Cache-Control"] = "no-store"
+            else:
+                resp = Response(status_code=401)
+            return await resp(scope, receive, send_with_headers)
+        return await self.app(scope, receive, send_with_headers)
+
+
 ROUTES.append(Route("/{path:path}", spa, methods=["GET", "POST", "PUT", "PATCH", "DELETE"]))
-app = Starlette(routes=ROUTES, lifespan=lifespan)
+app = Starlette(routes=ROUTES, lifespan=lifespan, middleware=[Middleware(SecurityMiddleware)])
 
 
 def main():

@@ -55,7 +55,7 @@ def issue_tokens(user_id):
 def refresh(token):
     conn = db.connect()
     row = conn.execute("SELECT user_id, expires FROM refresh_tokens WHERE token=?", (token,)).fetchone()
-    if not row or row["expires"] < time.time():
+    if not row or row["expires"] < time.time() or not _active_user(row["user_id"]):
         return None
     conn.execute("DELETE FROM refresh_tokens WHERE token=?", (token,))
     conn.commit()
@@ -68,14 +68,65 @@ def revoke(token):
     conn.commit()
 
 
+# ---------- Sessionscookie (läses av servern, även för bilder och sidladdningar) ----------
+SESSION_COOKIE = "fd_sess"
+SESSION_TTL = REFRESH_TTL
+
+
+def make_session(user_id):
+    exp = int(time.time()) + SESSION_TTL
+    msg = f"{user_id}.{exp}"
+    sig = hmac.new(config.secret_key().encode(), ("sess:" + msg).encode(), hashlib.sha256).digest()
+    return f"{msg}.{_b64(sig)}"
+
+
+def verify_session(value):
+    try:
+        uid, exp, sig = (value or "").split(".")
+        msg = f"{uid}.{exp}"
+        expected = hmac.new(config.secret_key().encode(), ("sess:" + msg).encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(expected, _unb64(sig)) or int(exp) < time.time():
+            return None
+        return int(uid)
+    except (ValueError, TypeError):
+        return None
+
+
+def set_session_cookie(response, request, user_id):
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
+    response.set_cookie(SESSION_COOKIE, make_session(user_id), max_age=SESSION_TTL, httponly=True,
+                        samesite="lax", secure=secure, path="/")
+
+
+def clear_session_cookie(response):
+    response.delete_cookie(SESSION_COOKIE, path="/")
+
+
+def _active_user(uid):
+    if not uid:
+        return None
+    row = db.connect().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not row or ("disabled" in row.keys() and row["disabled"]):
+        return None
+    return row
+
+
 def user_from_request(request):
+    """Inloggad användare via Bearer-token eller sessionscookie. Spärrade användare räknas som utloggade."""
     h = request.headers.get("authorization", "")
     if h.lower().startswith("bearer "):
-        uid = verify_access(h[7:].strip())
-        if uid:
-            row = db.connect().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-            return row
-    return None
+        user = _active_user(verify_access(h[7:].strip()))
+        if user:
+            return user
+    return _active_user(verify_session(request.cookies.get(SESSION_COOKIE)))
+
+
+def revoke_user(user_id):
+    """Spärrar en användare (t.ex. när Plex-åtkomsten till servern tagits bort)."""
+    conn = db.connect()
+    conn.execute("UPDATE users SET disabled=1 WHERE id=?", (user_id,))
+    conn.execute("DELETE FROM refresh_tokens WHERE user_id=?", (user_id,))
+    conn.commit()
 
 
 def user_json(row):

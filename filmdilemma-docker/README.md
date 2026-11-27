@@ -111,6 +111,30 @@ docker build -t filmdilemma-local .
 
 All data (filmer, användare, betyg, önskningar) ligger i `/mnt/user/appdata/filmdilemma/filmdilemma.db`.
 
+## Exponera sidan mot internet
+
+Sidan är byggd för att kunna ligga ute på internet:
+
+- **All data kräver inloggning, kontrollerat på servern.** Utan giltig Plex-inloggning omdirigeras sidor till
+  *Logga in via Plex* och API/bilder svarar 401. Bara inloggningssidan och sidans statiska filer är öppna.
+- **Bara Plex-konton med tillgång till din server** kommer in. Åtkomsten kontrolleras igen var 6:e timme och vid
+  varje bibliotekssynk – tar du bort delningen i Plex loggas personen ut.
+- **Plex-inloggningen är knuten till webbläsaren** som startade den (går inte att kapa), och antalet
+  inloggningsförsök per IP-adress är begränsat.
+- Inloggningen sparas i en `HttpOnly`-cookie (och `Secure` över HTTPS), och svaren har säkerhetsrubriker
+  (nosniff, frame-skydd, HSTS över HTTPS).
+
+Gör så här:
+
+1. **Använd HTTPS via en omvänd proxy** – exponera aldrig port 80 på containern direkt. Exempel:
+   - *pfSense + HAProxy*: frontend på 443 med certifikat (ACME/Let's Encrypt), backend `192.168.2.50:80`,
+     och sätt `X-Forwarded-Proto: https` (`http-request set-header X-Forwarded-Proto https`).
+   - *Nginx Proxy Manager*: Proxy Host för din domän → `http://192.168.2.50:80`, slå på SSL och *Force SSL*.
+   - *Cloudflare Tunnel*: tunnel till `http://192.168.2.50:80`.
+2. **Sätt `PUBLIC_URL`** till den publika adressen, t.ex. `https://film.example.se` (används av Plex-inloggningen
+   och delningslänkar).
+3. Öppna sidan via den publika adressen och logga in – efter det fungerar den som vanligt.
+
 ## Inställningar (`.env`)
 
 | Variabel | Standard | Beskrivning |

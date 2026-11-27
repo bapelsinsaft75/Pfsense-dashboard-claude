@@ -108,18 +108,60 @@ async def login_with_token(user_token):
     conn = db.connect()
     row = conn.execute("SELECT id FROM users WHERE plex_id=?", (u["id"],)).fetchone()
     name = u.get("username") or u.get("title") or u.get("email") or f"plex{u['id']}"
+    now = int(time.time())
     if row:
         conn.execute("""UPDATE users SET username=?, email=?, thumb=?, is_admin=?, plex_token=?, server_token=?,
-            last_login=CURRENT_TIMESTAMP WHERE id=?""",
-                     (name, u.get("email"), u.get("thumb"), is_admin, user_token, server_token, row["id"]))
+            last_login=CURRENT_TIMESTAMP, disabled=0, verified_at=? WHERE id=?""",
+                     (name, u.get("email"), u.get("thumb"), is_admin, user_token, server_token, now, row["id"]))
         uid = row["id"]
     else:
-        cur = conn.execute("""INSERT INTO users(plex_id,username,email,thumb,is_admin,plex_token,server_token,last_login)
-            VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                           (u["id"], name, u.get("email"), u.get("thumb"), is_admin, user_token, server_token))
+        cur = conn.execute("""INSERT INTO users(plex_id,username,email,thumb,is_admin,plex_token,server_token,last_login,
+            disabled,verified_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP,0,?)""",
+                           (u["id"], name, u.get("email"), u.get("thumb"), is_admin, user_token, server_token, now))
         uid = cur.lastrowid
     conn.commit()
     return uid
+
+
+VERIFY_EVERY = 6 * 3600
+
+
+async def still_has_access(user_row):
+    """Har Plex-kontot fortfarande tillgång till din server? True/False, None om Plex inte gick att nå."""
+    token = user_row["plex_token"]
+    if not token:
+        return False
+    mid = await server_identity()
+    if not mid:
+        return None
+    try:
+        async with _client() as c:
+            r = await c.get(f"{PLEX_TV}/resources", params={"includeHttps": "1", "includeRelay": "0"},
+                            headers=_headers(token))
+    except httpx.HTTPError:
+        return None
+    if r.status_code in (401, 403):
+        return False
+    if r.status_code != 200:
+        return None
+    return any(s.get("clientIdentifier") == mid for s in r.json())
+
+
+async def reverify_user(user_row, force=False):
+    """Kontrollerar åtkomsten igen (högst var 6:e timme). Spärrar användaren om åtkomsten är borta."""
+    from . import auth
+    if not force and time.time() - (user_row["verified_at"] or 0) < VERIFY_EVERY:
+        return True
+    ok = await still_has_access(user_row)
+    conn = db.connect()
+    if ok is False:
+        auth.revoke_user(user_row["id"])
+        log.warning("Plex-kontot %s har inte längre tillgång till servern – utloggad", user_row["username"])
+        return False
+    if ok:
+        conn.execute("UPDATE users SET verified_at=? WHERE id=?", (int(time.time()), user_row["id"]))
+        conn.commit()
+    return True
 
 
 # ---------- Bibliotek och sett-historik ----------
@@ -425,8 +467,14 @@ SYNC_STATE = {"running": False, "started": None, "error": None}
 
 
 async def sync_users():
-    """Sett-historik och biblioteksbehörighet för alla inloggade användare."""
-    for (uid,) in db.connect().execute("SELECT id FROM users WHERE server_token IS NOT NULL").fetchall():
+    """Kontroll av serveråtkomst, sett-historik och biblioteksbehörighet för alla användare."""
+    for row in db.connect().execute("SELECT * FROM users WHERE server_token IS NOT NULL AND COALESCE(disabled,0)=0").fetchall():
+        uid = row["id"]
+        try:
+            if not await reverify_user(row):
+                continue
+        except Exception as e:  # noqa: BLE001
+            log.info("Kontroll av åtkomst för %s misslyckades: %s", uid, e)
         try:
             await sync_watched(uid)
         except Exception as e:  # noqa: BLE001
